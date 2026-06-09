@@ -1,15 +1,19 @@
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Bash](https://img.shields.io/badge/Bash-4.0%2B-green.svg)](https://www.gnu.org/software/bash/)
-[![Platform](https://img.shields.io/badge/platform-Linux-blue.svg)](https://www.linux.org)
-![My Screenshot](images/your-screenshot.png)
-**One script. 28 hardening options. All major Linux distributions.**
+# 🛡️ Ultimate System Hardening Script
 
-## 🎯 Quick Start
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/ef9d54c1-25ca-43b7-a72c-428564da318b" width="600">
+</p>
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/8dac2d7c-c917-4753-9009-c9eb5fc1cb78" width="600">
+</p>
+
+## Quick Start
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/ultimate-hardening.git
-cd ultimate-hardening
+git clone https://github.com/Kal1010101/ultimate-sys-hardening.git
+cd ultimate-sys-hardening
 
 # Run the script as root
 sudo ./ultimate_hardening.sh
