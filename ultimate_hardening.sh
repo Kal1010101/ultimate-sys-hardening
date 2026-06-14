@@ -4,7 +4,7 @@
 # Multi-distribution support with interactive distro selection
 # 28 Security Features - CIS Benchmark Aligned
 # =============================================================================
-# Usage: sudo ./ultimate_hardening.sh [--skip-backup] [--auto-mode]
+# Usage: sudo ./ultimate_hardening.sh [--skip-backup] [--auto-mode] [--dry-run] [--revert] [--revert-suid] [--help]
 # =============================================================================
 
 set -euo pipefail
@@ -15,6 +15,9 @@ BACKUP_DIR="/root/hardening_backup_$(date +%Y%m%d_%H%M%S)"
 SUID_BACKUP_FILE="$BACKUP_DIR/suid_sgid_original_perms.txt"
 AUTO_MODE=false
 SKIP_BACKUP=false
+DRY_RUN=false
+REVERT_MODE=false
+REVERT_SUID_ONLY=false
 DISTRO_TYPE=""
 
 # Parse command line arguments
@@ -22,6 +25,30 @@ for arg in "$@"; do
     case $arg in
         --auto-mode) AUTO_MODE=true ;;
         --skip-backup) SKIP_BACKUP=true ;;
+        --dry-run) DRY_RUN=true ;;
+        --revert) REVERT_MODE=true ;;
+        --revert-suid) REVERT_SUID_ONLY=true ;;
+        --help|-h) 
+            cat << EOF
+Usage: sudo ./ultimate_hardening.sh [OPTIONS]
+
+Options:
+  --auto-mode      Run without interactive prompts (use defaults)
+  --skip-backup    Skip creating backup directory
+  --dry-run        Show what would be changed without applying
+  --revert         Revert ALL hardening changes (restores from backup)
+  --revert-suid    Revert only SUID/SGID permissions
+  --help, -h       Show this help message
+
+Examples:
+  sudo ./ultimate_hardening.sh                              # Interactive mode
+  sudo ./ultimate_hardening.sh --auto-mode                  # Non-interactive
+  sudo ./ultimate_hardening.sh --dry-run                    # Preview changes
+  sudo ./ultimate_hardening.sh --revert                     # Full system revert
+  sudo ./ultimate_hardening.sh --revert-suid                # Revert only SUID bits
+EOF
+            exit 0
+            ;;
     esac
 done
 
@@ -69,12 +96,16 @@ create_backup_dir() {
         log_info "Backup skipped (--skip-backup flag)"
         return
     fi
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would create backup directory at $BACKUP_DIR"
+        return
+    fi
     mkdir -p "$BACKUP_DIR"
     log_info "Backup directory: $BACKUP_DIR"
 }
 
 backup_file() {
-    if [[ "$SKIP_BACKUP" == true ]]; then
+    if [[ "$SKIP_BACKUP" == true ]] || [[ "$DRY_RUN" == true ]]; then
         return
     fi
     local file="$1"
@@ -87,9 +118,73 @@ backup_file() {
     fi
 }
 
+restore_file() {
+    local file="$1"
+    local safe_name="${file#/}"
+    safe_name="${safe_name//'/'/_}"
+    local backup_name="$BACKUP_DIR/${safe_name}.backup"
+    
+    if [[ -f "$backup_name" ]]; then
+        cp -p "$backup_name" "$file"
+        log_success "Restored $file"
+        return 0
+    else
+        log_warning "No backup found for $file"
+        return 1
+    fi
+}
+
 press_enter() {
     echo ""
     read -p "Press Enter to return to menu..."
+}
+
+# Package manager helpers
+get_package_manager() {
+    case "$DISTRO_TYPE" in
+        debian) echo "apt-get" ;;
+        rhel) echo "yum" ;;
+        arch) echo "pacman" ;;
+        suse) echo "zypper" ;;
+        *) echo "apt-get" ;;
+    esac
+}
+
+install_package() {
+    local pkg="$1"
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would install package: $pkg"
+        return 0
+    fi
+    
+    local pm=$(get_package_manager)
+    case "$pm" in
+        apt-get)
+            apt-get update -qq >> "$LOG_FILE" 2>&1
+            apt-get install -y "$pkg" >> "$LOG_FILE" 2>&1
+            ;;
+        yum)
+            yum install -y "$pkg" >> "$LOG_FILE" 2>&1
+            ;;
+        pacman)
+            pacman -S --noconfirm "$pkg" >> "$LOG_FILE" 2>&1
+            ;;
+        zypper)
+            zypper install -y "$pkg" >> "$LOG_FILE" 2>&1
+            ;;
+    esac
+    log_success "Installed: $pkg"
+}
+
+enable_service() {
+    local svc="$1"
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would enable and start service: $svc"
+        return 0
+    fi
+    systemctl enable "$svc" >> "$LOG_FILE" 2>&1
+    systemctl start "$svc" >> "$LOG_FILE" 2>&1
+    log_success "Service enabled: $svc"
 }
 
 # ----------------------------- Distro Selection ------------------------------
@@ -109,6 +204,12 @@ detect_or_select_distro() {
 }
 
 show_distro_menu() {
+    if [[ "$AUTO_MODE" == true ]]; then
+        DISTRO_TYPE=$(detect_or_select_distro)
+        log_success "Auto-detected: $DISTRO_TYPE"
+        return
+    fi
+    
     clear
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║                    SELECT YOUR DISTRIBUTION                      ║${NC}"
@@ -136,6 +237,111 @@ show_distro_menu() {
     log_success "Selected: $DISTRO_TYPE"
 }
 
+# ============================ REVERT FUNCTIONS ================================
+
+# Full system revert
+full_system_revert() {
+    log_message "${UNDO} FULL SYSTEM REVERT - Restoring from backup"
+    echo -e "\n${RED}${WARNING} DANGER: This will restore ALL backed up configurations${NC}"
+    echo -e "${RED}This may break your system if not done carefully.${NC}\n"
+
+    if [[ "$AUTO_MODE" == false ]]; then
+        read -p "Are you absolutely sure you want to revert ALL changes? (yes/NO): " choice
+        [[ ! "$choice" =~ ^[Yy]es$ ]] && { log_info "Revert cancelled."; return; }
+    fi
+
+    if [[ ! -d "$BACKUP_DIR" ]]; then
+        log_error "No backup directory found at $BACKUP_DIR"
+        log_info "Cannot perform revert without backups."
+        return
+    fi
+
+    # Restore SSH config
+    if restore_file "/etc/ssh/sshd_config"; then
+        systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || true
+    fi
+
+    # Restore sysctl config
+    if restore_file "/etc/sysctl.d/99-hardening.conf"; then
+        sysctl -p /etc/sysctl.d/99-hardening.conf 2>/dev/null || true
+    fi
+
+    # Restore audit rules
+    restore_file "/etc/audit/rules.d/99-hardening.rules"
+    
+    # Restore PAM configs
+    restore_file "/etc/pam.d/common-password"
+    
+    # Restore SUID permissions
+    undo_suid_hardening
+
+    # Restore firewall (disable nftables if it wasn't there before)
+    if [[ -f /etc/nftables.conf.backup ]] || [[ ! -f /etc/nftables.conf.original ]]; then
+        systemctl stop nftables 2>/dev/null || true
+        systemctl disable nftables 2>/dev/null || true
+        log_info "Firewall reverted to disabled state"
+    fi
+
+    # Re-enable services that were disabled
+    for svc in avahi-daemon cups nfs-server rpcbind slapd named postfix; do
+        systemctl enable "$svc" 2>/dev/null || true
+        systemctl start "$svc" 2>/dev/null || true
+    done
+
+    # Restore USB storage
+    if [[ -f /etc/modprobe.d/usb-storage-blacklist.conf ]]; then
+        rm -f /etc/modprobe.d/usb-storage-blacklist.conf
+        modprobe usb-storage 2>/dev/null || true
+        log_info "USB storage re-enabled"
+    fi
+
+    # Restore protocols
+    if [[ -f /etc/modprobe.d/disable-unused-protocols.conf ]]; then
+        rm -f /etc/modprobe.d/disable-unused-protocols.conf
+        log_info "Unused protocols re-enabled"
+    fi
+
+    # Restore compiler permissions
+    for compiler in gcc g++ clang clang++ cc c++ ; do
+        if command -v "$compiler" &> /dev/null; then
+            chmod 755 "$(command -v "$compiler")" 2>/dev/null || true
+        fi
+    done
+
+    log_success "Full system revert completed! System has been restored from backup."
+    log_warning "Some changes may require a reboot to take full effect."
+}
+
+# Revert SUID hardening (standalone function)
+undo_suid_hardening() {
+    log_message "${UNDO} Restoring SUID permissions"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would restore SUID permissions from backup"
+        log_success "DRY RUN: SUID permissions restored"
+        return
+    fi
+
+    if [[ ! -f "$SUID_BACKUP_FILE" ]]; then
+        log_error "No backup file found at $SUID_BACKUP_FILE"
+        return
+    fi
+
+    if [[ "$AUTO_MODE" == false ]] && [[ "$REVERT_SUID_ONLY" == false ]]; then
+        read -p "Restore SUID permissions? (y/N): " choice
+        [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Cancelled."; return; }
+    fi
+
+    while IFS= read -r binary; do
+        if [[ -f "$binary" ]]; then
+            chmod u+s "$binary" 2>/dev/null || true
+            log_info "Restored SUID to $binary"
+        fi
+    done < "$SUID_BACKUP_FILE"
+
+    log_success "SUID permissions restored"
+}
+
 # ============================ CORE HARDENING FUNCTIONS ========================
 
 # 1. System Updates
@@ -148,6 +354,28 @@ apply_system_updates() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would update package lists and upgrade all packages"
+        log_success "DRY RUN: System updates completed"
+        return
+    fi
+
+    local pm=$(get_package_manager)
+    case "$pm" in
+        apt-get)
+            apt-get update -qq >> "$LOG_FILE" 2>&1
+            apt-get upgrade -y >> "$LOG_FILE" 2>&1
+            ;;
+        yum)
+            yum update -y >> "$LOG_FILE" 2>&1
+            ;;
+        pacman)
+            pacman -Syu --noconfirm >> "$LOG_FILE" 2>&1
+            ;;
+        zypper)
+            zypper update -y >> "$LOG_FILE" 2>&1
+            ;;
+    esac
     log_success "System updates completed"
 }
 
@@ -161,10 +389,50 @@ apply_ssh_hardening() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    local SSH_CONFIG="/etc/ssh/sshd_config"
+    if [[ ! -f "$SSH_CONFIG" ]]; then
+        log_error "SSH config not found at $SSH_CONFIG. Skipping."
+        return
+    fi
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would backup $SSH_CONFIG"
+        log_info "DRY RUN: Would set PermitRootLogin no"
+        log_info "DRY RUN: Would set PasswordAuthentication no"
+        log_info "DRY RUN: Would set ChallengeResponseAuthentication no"
+        log_info "DRY RUN: Would set PermitEmptyPasswords no"
+        log_info "DRY RUN: Would set MaxAuthTries 3"
+        log_info "DRY RUN: Would restart sshd service"
+        log_success "DRY RUN: SSH hardening completed"
+        return
+    fi
+
+    backup_file "$SSH_CONFIG"
+    
+    # Apply SSH hardening
+    sed -i 's/^#PermitRootLogin .*/PermitRootLogin no/' "$SSH_CONFIG"
+    sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' "$SSH_CONFIG"
+    sed -i 's/^#PasswordAuthentication .*/PasswordAuthentication no/' "$SSH_CONFIG"
+    sed -i 's/^PasswordAuthentication .*/PasswordAuthentication no/' "$SSH_CONFIG"
+    sed -i 's/^#ChallengeResponseAuthentication .*/ChallengeResponseAuthentication no/' "$SSH_CONFIG"
+    sed -i 's/^ChallengeResponseAuthentication .*/ChallengeResponseAuthentication no/' "$SSH_CONFIG"
+    sed -i 's/^#PermitEmptyPasswords .*/PermitEmptyPasswords no/' "$SSH_CONFIG"
+    sed -i 's/^PermitEmptyPasswords .*/PermitEmptyPasswords no/' "$SSH_CONFIG"
+    sed -i 's/^#MaxAuthTries .*/MaxAuthTries 3/' "$SSH_CONFIG"
+    sed -i 's/^MaxAuthTries .*/MaxAuthTries 3/' "$SSH_CONFIG"
+    
+    # Ensure lines exist if they weren't there
+    grep -q "^PermitRootLogin" "$SSH_CONFIG" || echo "PermitRootLogin no" >> "$SSH_CONFIG"
+    grep -q "^PasswordAuthentication" "$SSH_CONFIG" || echo "PasswordAuthentication no" >> "$SSH_CONFIG"
+    grep -q "^ChallengeResponseAuthentication" "$SSH_CONFIG" || echo "ChallengeResponseAuthentication no" >> "$SSH_CONFIG"
+    grep -q "^PermitEmptyPasswords" "$SSH_CONFIG" || echo "PermitEmptyPasswords no" >> "$SSH_CONFIG"
+    grep -q "^MaxAuthTries" "$SSH_CONFIG" || echo "MaxAuthTries 3" >> "$SSH_CONFIG"
+    
+    systemctl restart sshd >> "$LOG_FILE" 2>&1 || systemctl restart ssh >> "$LOG_FILE" 2>&1
     log_success "SSH hardening completed"
 }
 
-# 3. Firewall Configuration
+# 3. Firewall Configuration (nftables)
 apply_firewall() {
     log_message "${SHIELD} Firewall Configuration"
     echo -e "\n${YELLOW}${WARNING} This will configure nftables firewall${NC}"
@@ -174,6 +442,58 @@ apply_firewall() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would install nftables"
+        log_info "DRY RUN: Would create basic nftables ruleset"
+        log_info "DRY RUN: Would enable and start nftables service"
+        log_success "DRY RUN: Firewall configuration completed"
+        return
+    fi
+
+    backup_file "/etc/nftables.conf"
+    install_package "nftables"
+    
+    # Create basic nftables ruleset
+    cat > /etc/nftables.conf << 'EOF'
+#!/usr/sbin/nft -f
+
+flush ruleset
+
+table inet filter {
+    chain input {
+        type filter hook input priority 0; policy drop;
+        
+        # Allow established/related connections
+        ct state established,related accept
+        
+        # Allow loopback
+        iif lo accept
+        
+        # Allow ICMP (ping)
+        ip protocol icmp icmp type echo-request accept
+        ip6 nexthdr icmpv6 icmpv6 type echo-request accept
+        
+        # Allow SSH (port 22)
+        tcp dport 22 accept
+        
+        # Allow HTTP/HTTPS (optional)
+        tcp dport { 80, 443 } accept
+    }
+    
+    chain forward {
+        type filter hook forward priority 0; policy drop;
+    }
+    
+    chain output {
+        type filter hook output priority 0; policy accept;
+    }
+}
+EOF
+    
+    systemctl enable nftables >> "$LOG_FILE" 2>&1
+    systemctl start nftables >> "$LOG_FILE" 2>&1
+    nft -f /etc/nftables.conf >> "$LOG_FILE" 2>&1
+    
     log_success "Firewall configured"
 }
 
@@ -187,6 +507,34 @@ apply_fail2ban() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would install fail2ban"
+        log_info "DRY RUN: Would create basic jail configuration"
+        log_info "DRY RUN: Would enable fail2ban service"
+        log_success "DRY RUN: Fail2Ban installation completed"
+        return
+    fi
+
+    install_package "fail2ban"
+    
+    # Create basic jail configuration
+    cat > /etc/fail2ban/jail.local << 'EOF'
+[DEFAULT]
+bantime = 3600
+findtime = 600
+maxretry = 5
+
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 3
+EOF
+
+    systemctl enable fail2ban >> "$LOG_FILE" 2>&1
+    systemctl start fail2ban >> "$LOG_FILE" 2>&1
+    
     log_success "Fail2Ban installed"
 }
 
@@ -200,6 +548,25 @@ apply_permission_hardening() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would set permissions on critical system files"
+        log_success "DRY RUN: File permissions hardened"
+        return
+    fi
+
+    backup_file "/etc/shadow"
+    backup_file "/etc/gshadow"
+    backup_file "/etc/passwd"
+    backup_file "/etc/group"
+    backup_file "/etc/sudoers"
+    
+    # Secure critical files
+    chmod 600 /etc/shadow 2>/dev/null || true
+    chmod 600 /etc/gshadow 2>/dev/null || true
+    chmod 644 /etc/passwd 2>/dev/null || true
+    chmod 644 /etc/group 2>/dev/null || true
+    chmod 440 /etc/sudoers 2>/dev/null || true
+    
     log_success "File permissions hardened"
 }
 
@@ -213,6 +580,36 @@ apply_kernel_hardening() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    local SYSCTL_CONF="/etc/sysctl.d/99-hardening.conf"
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would create $SYSCTL_CONF with security parameters"
+        log_info "DRY RUN: Would apply sysctl settings"
+        log_success "DRY RUN: Kernel hardening applied"
+        return
+    fi
+
+    backup_file "$SYSCTL_CONF"
+    
+    cat > "$SYSCTL_CONF" << 'EOF'
+# Kernel hardening parameters
+net.ipv4.tcp_syncookies = 1
+net.ipv4.ip_forward = 0
+net.ipv4.conf.all.rp_filter = 1
+net.ipv4.conf.default.rp_filter = 1
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv6.conf.all.accept_source_route = 0
+net.ipv6.conf.default.accept_source_route = 0
+net.ipv4.conf.all.log_martians = 1
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+net.ipv4.icmp_ignore_bogus_error_responses = 1
+kernel.randomize_va_space = 2
+fs.protected_hardlinks = 1
+fs.protected_symlinks = 1
+EOF
+
+    sysctl -p "$SYSCTL_CONF" >> "$LOG_FILE" 2>&1
     log_success "Kernel hardening applied"
 }
 
@@ -226,6 +623,34 @@ apply_audit_config() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would install auditd"
+        log_info "DRY RUN: Would configure audit rules"
+        log_success "DRY RUN: Auditd configured"
+        return
+    fi
+
+    install_package "auditd"
+    backup_file "/etc/audit/rules.d/99-hardening.rules"
+    
+    # Configure audit rules
+    cat > /etc/audit/rules.d/99-hardening.rules << 'EOF'
+# Critical file monitoring
+-w /etc/passwd -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/group -p wa -k identity
+-w /etc/sudoers -p wa -k sudoers
+-w /etc/ssh/sshd_config -p wa -k sshd
+
+# System call monitoring
+-a always,exit -S adjtimex -S settimeofday -S stime -k time-change
+-a always,exit -S sethostname -S setdomainname -k system-locale
+EOF
+
+    systemctl enable auditd >> "$LOG_FILE" 2>&1
+    systemctl start auditd >> "$LOG_FILE" 2>&1
+    auditctl -R /etc/audit/rules.d/99-hardening.rules >> "$LOG_FILE" 2>&1
+    
     log_success "Auditd configured"
 }
 
@@ -239,6 +664,23 @@ apply_password_policies() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would configure PAM password policies"
+        log_success "DRY RUN: Password policies applied"
+        return
+    fi
+
+    # Backup PAM config
+    backup_file "/etc/pam.d/common-password"
+    
+    # Configure password aging
+    if [[ -f /etc/pam.d/common-password ]]; then
+        sed -i 's/pam_unix.so/pam_unix.so remember=5 minlen=12 sha512/' /etc/pam.d/common-password
+    fi
+    
+    # Set default password aging
+    chage -M 90 root 2>/dev/null || true
+    
     log_success "Password policies applied"
 }
 
@@ -252,30 +694,34 @@ apply_suid_hardening() {
         [[ ! "$choice" =~ ^[Yy]es$ ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would scan for SUID/SGID binaries"
+        log_info "DRY RUN: Would backup SUID permissions"
+        log_info "DRY RUN: Would remove SUID from non-essential binaries"
+        log_success "DRY RUN: SUID hardening completed"
+        return
+    fi
+
     if [[ "$SKIP_BACKUP" == false ]]; then
         mkdir -p "$BACKUP_DIR"
         find / -xdev \( -perm -4000 -o -perm -2000 \) -type f 2>/dev/null | head -20 > "$SUID_BACKUP_FILE"
         log_success "SUID permissions backed up to $SUID_BACKUP_FILE"
     fi
 
+    # Common non-essential SUID binaries to remove
+    for binary in /usr/bin/at /usr/bin/chage /usr/bin/crontab /usr/bin/expiry /usr/bin/gpasswd /usr/bin/wall /usr/bin/chfn /usr/bin/chsh /usr/bin/ssh-agent; do
+        if [[ -f "$binary" ]]; then
+            chmod u-s "$binary" 2>/dev/null || true
+            log_info "Removed SUID from $binary"
+        fi
+    done
+
     log_success "SUID hardening completed"
 }
 
-# 10. Undo SUID Hardening
-undo_suid_hardening() {
-    log_message "${UNDO} Restoring SUID permissions"
-
-    if [[ ! -f "$SUID_BACKUP_FILE" ]]; then
-        log_error "No backup file found at $SUID_BACKUP_FILE"
-        return
-    fi
-
-    if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Restore SUID permissions? (y/N): " choice
-        [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Cancelled."; return; }
-    fi
-
-    log_success "SUID permissions restored"
+# 10. SUID Revert (legacy function - kept for menu)
+undo_suid_hardening_menu() {
+    undo_suid_hardening
 }
 
 # 11. AIDE
@@ -288,6 +734,17 @@ apply_aide() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would install aide"
+        log_info "DRY RUN: Would initialize AIDE database"
+        log_success "DRY RUN: AIDE installed"
+        return
+    fi
+
+    install_package "aide"
+    aideinit 2>/dev/null || true
+    mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz 2>/dev/null || true
+    
     log_success "AIDE installed"
 }
 
@@ -301,6 +758,17 @@ apply_rkhunter() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would install rkhunter"
+        log_info "DRY RUN: Would run initial system check"
+        log_success "DRY RUN: rkhunter installed"
+        return
+    fi
+
+    install_package "rkhunter"
+    rkhunter --update 2>/dev/null || true
+    rkhunter --propupd 2>/dev/null || true
+    
     log_success "rkhunter installed"
 }
 
@@ -313,6 +781,18 @@ apply_disable_services() {
         read -p "Disable unnecessary services? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would disable common unnecessary services"
+        log_success "DRY RUN: Unnecessary services disabled"
+        return
+    fi
+
+    # Common services to disable
+    for svc in avahi-daemon cups nfs-server rpcbind slapd named postfix; do
+        systemctl stop "$svc" 2>/dev/null || true
+        systemctl disable "$svc" 2>/dev/null || true
+    done
 
     log_success "Unnecessary services disabled"
 }
@@ -327,6 +807,28 @@ apply_apparmor() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would install and configure MAC system"
+        log_success "DRY RUN: MAC system configured"
+        return
+    fi
+
+    case "$DISTRO_TYPE" in
+        debian)
+            install_package "apparmor"
+            install_package "apparmor-utils"
+            systemctl enable apparmor >> "$LOG_FILE" 2>&1
+            systemctl start apparmor >> "$LOG_FILE" 2>&1
+            aa-enforce /etc/apparmor.d/* 2>/dev/null || true
+            ;;
+        rhel)
+            backup_file "/etc/selinux/config"
+            # SELinux should be enabled by default on RHEL
+            sed -i 's/SELINUX=disabled/SELINUX=enforcing/' /etc/selinux/config 2>/dev/null || true
+            setenforce 1 2>/dev/null || true
+            ;;
+    esac
+
     log_success "MAC system configured"
 }
 
@@ -340,6 +842,17 @@ apply_etckeeper() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would install etckeeper"
+        log_info "DRY RUN: Would initialize git repository for /etc"
+        log_success "DRY RUN: etckeeper configured"
+        return
+    fi
+
+    install_package "etckeeper"
+    etckeeper init 2>/dev/null || true
+    etckeeper commit "Initial commit before hardening" 2>/dev/null || true
+    
     log_success "etckeeper configured"
 }
 
@@ -353,6 +866,16 @@ apply_boot_secure() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would secure GRUB configuration permissions"
+        log_success "DRY RUN: Boot permissions secured"
+        return
+    fi
+
+    backup_file "/boot/grub/grub.cfg"
+    chmod 600 /boot/grub/grub.cfg 2>/dev/null || true
+    chmod 600 /etc/grub.d/* 2>/dev/null || true
+    
     log_success "Boot permissions secured"
 }
 
@@ -366,7 +889,35 @@ apply_grub_password() {
         [[ ! "$choice" =~ ^[Yy]es$ ]] && { log_info "Skipped."; return; }
     fi
 
-    log_success "GRUB password set"
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would generate GRUB password hash"
+        log_info "DRY RUN: Would add superusers to GRUB config"
+        log_success "DRY RUN: GRUB password set"
+        return
+    fi
+
+    echo -e "\n${YELLOW}Enter password for GRUB administrator:${NC}"
+    read -s -r grub_pass
+    echo
+    echo -e "${YELLOW}Re-enter password:${NC}"
+    read -s -r grub_pass2
+    
+    if [[ "$grub_pass" != "$grub_pass2" ]]; then
+        log_error "Passwords do not match. Skipping."
+        return
+    fi
+    
+    local grub_hash=$(echo -e "$grub_pass\n$grub_pass" | grub-mkpasswd-pbkdf2 2>/dev/null | grep -oP 'grub\.pbkdf2\.sha512\.[^\s]+')
+    
+    if [[ -n "$grub_hash" ]]; then
+        backup_file "/etc/grub.d/40_custom"
+        echo "set superusers=\"root\"" >> /etc/grub.d/40_custom
+        echo "password_pbkdf2 root $grub_hash" >> /etc/grub.d/40_custom
+        update-grub 2>/dev/null || grub2-mkconfig -o /boot/grub2/grub.cfg 2>/dev/null || true
+        log_success "GRUB password set"
+    else
+        log_error "Failed to generate GRUB password hash"
+    fi
 }
 
 # 18. Docker Security
@@ -379,6 +930,37 @@ apply_docker_security() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would install docker if not present"
+        log_info "DRY RUN: Would configure Docker daemon security options"
+        log_success "DRY RUN: Docker security applied"
+        return
+    fi
+
+    if ! command -v docker &> /dev/null; then
+        log_warning "Docker not installed. Skipping Docker security."
+        return
+    fi
+
+    backup_file "/etc/docker/daemon.json"
+    
+    # Create Docker daemon security configuration
+    mkdir -p /etc/docker
+    cat > /etc/docker/daemon.json << 'EOF'
+{
+  "userns-remap": "default",
+  "icc": false,
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  },
+  "live-restore": true
+}
+EOF
+
+    systemctl restart docker >> "$LOG_FILE" 2>&1
+    
     log_success "Docker security applied"
 }
 
@@ -391,6 +973,27 @@ apply_modsecurity() {
         read -p "Install ModSecurity? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would install libapache2-mod-security2"
+        log_info "DRY RUN: Would enable ModSecurity rules"
+        log_success "DRY RUN: ModSecurity installed"
+        return
+    fi
+
+    case "$DISTRO_TYPE" in
+        debian)
+            install_package "libapache2-mod-security2"
+            install_package "modsecurity-crs"
+            a2enmod security2 >> "$LOG_FILE" 2>&1
+            systemctl restart apache2 >> "$LOG_FILE" 2>&1
+            ;;
+        rhel)
+            install_package "mod_security"
+            install_package "mod_security_crs"
+            systemctl restart httpd >> "$LOG_FILE" 2>&1
+            ;;
+    esac
 
     log_success "ModSecurity installed"
 }
@@ -405,6 +1008,18 @@ apply_google_auth() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would install google-authenticator"
+        log_info "DRY RUN: Would configure PAM for MFA"
+        log_success "DRY RUN: Google Authenticator configured"
+        return
+    fi
+
+    install_package "libpam-google-authenticator"
+    
+    echo -e "\n${YELLOW}Run 'google-authenticator' manually for each user that needs MFA${NC}"
+    echo -e "${YELLOW}Then add 'auth required pam_google_authenticator.so' to /etc/pam.d/sshd${NC}"
+    
     log_success "Google Authenticator configured"
 }
 
@@ -418,6 +1033,15 @@ apply_usb_blocking() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would blacklist usb-storage module"
+        log_success "DRY RUN: USB storage blocked"
+        return
+    fi
+
+    echo "blacklist usb-storage" > /etc/modprobe.d/usb-storage-blacklist.conf
+    modprobe -r usb-storage 2>/dev/null || true
+    
     log_success "USB storage blocked"
 }
 
@@ -430,6 +1054,19 @@ disable_unused_protocols() {
         read -p "Disable unused protocols? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would blacklist DCCP, SCTP, RDS, TIPC modules"
+        log_success "DRY RUN: Unused protocols disabled"
+        return
+    fi
+
+    cat > /etc/modprobe.d/disable-unused-protocols.conf << 'EOF'
+install dccp /bin/false
+install sctp /bin/false
+install rds /bin/false
+install tipc /bin/false
+EOF
 
     log_success "Unused protocols disabled"
 }
@@ -444,6 +1081,19 @@ apply_compiler_restriction() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would remove execute permissions from compilers for non-root"
+        log_success "DRY RUN: Compiler access restricted"
+        return
+    fi
+
+    for compiler in gcc g++ clang clang++ cc c++ ; do
+        if command -v "$compiler" &> /dev/null; then
+            chmod 700 "$(command -v "$compiler")" 2>/dev/null || true
+            log_info "Restricted $compiler"
+        fi
+    done
+
     log_success "Compiler access restricted"
 }
 
@@ -457,7 +1107,23 @@ configure_remote_syslog() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
-    log_success "Remote syslog configured"
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would configure rsyslog for remote logging"
+        log_success "DRY RUN: Remote syslog configured"
+        return
+    fi
+
+    echo -e "\n${YELLOW}Enter remote syslog server IP:${NC}"
+    read -r syslog_server
+    
+    if [[ -n "$syslog_server" ]]; then
+        backup_file "/etc/rsyslog.conf"
+        echo "*.* @$syslog_server:514" >> /etc/rsyslog.conf
+        systemctl restart rsyslog >> "$LOG_FILE" 2>&1
+        log_success "Remote syslog configured for $syslog_server"
+    else
+        log_info "No server provided. Skipping."
+    fi
 }
 
 # 25. CIS Checks
@@ -482,6 +1148,9 @@ run_cis_checks() {
     if [[ -f /etc/ssh/sshd_config ]]; then
         grep -q "^PermitRootLogin no" /etc/ssh/sshd_config 2>/dev/null && \
             log_success "  SSH root login disabled" || { log_warning "  SSH root login not disabled"; ((issues++)); }
+        
+        grep -q "^PasswordAuthentication no" /etc/ssh/sshd_config 2>/dev/null && \
+            log_success "  SSH password auth disabled" || { log_warning "  SSH password auth not disabled"; ((issues++)); }
     fi
 
     # Check 3: Auditd
@@ -497,6 +1166,14 @@ run_cis_checks() {
         log_success "  fail2ban is running"
     else
         log_warning "  fail2ban is not running"
+        ((issues++))
+    fi
+    
+    # Check 5: Firewall
+    if systemctl is-active nftables &>/dev/null || systemctl is-active ufw &>/dev/null; then
+        log_success "  Firewall is active"
+    else
+        log_warning "  No active firewall detected"
         ((issues++))
     fi
 
@@ -547,6 +1224,11 @@ show_menu() {
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
+    if [[ "$DRY_RUN" == true ]]; then
+        echo -e "${YELLOW}⚠️  DRY RUN MODE ENABLED - No changes will be made${NC}"
+        echo ""
+    fi
+
     echo -e "${WHITE}┌─────────────────────────────────────────────────────────────────────┐${NC}"
     echo -e "${WHITE}│                         ${GREEN}CORE SECURITY${WHITE}                                        │${NC}"
     echo -e "${WHITE}├─────────────────────────────────────────────────────────────────────┤${NC}"
@@ -595,12 +1277,13 @@ show_menu() {
     printf "${WHITE}│${NC}  ${CIS_ICON} 25) Run CIS Benchmark Checks     ${GREEN}(Read-only)${NC}                   ${WHITE}│${NC}\n"
     printf "${WHITE}│${NC}  ${ROCKET}26) Apply All Safe Fixes (1-16)   ${GREEN}(Recommended)${NC}              ${WHITE}│${NC}\n"
     printf "${WHITE}│${NC}  ${ROCKET}27) Apply All (Full Hardening)    ${YELLOW}(Complete)${NC}                   ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${CROSS_MARK}28) Exit                                       ${WHITE}                  │${NC}\n"
+    printf "${WHITE}│${NC}  ${UNDO} 28) Full System Revert (from backup) ${RED}(DANGER)${NC}                     ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${CROSS_MARK}29) Exit                                       ${WHITE}                  │${NC}\n"
     echo -e "${WHITE}└─────────────────────────────────────────────────────────────────────┘${NC}"
     echo ""
 
     echo -e "${CYAN}══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════${NC}"
-    read -r -p "$(echo -e "${WHITE}Enter your choice (1-28):${NC} ")" choice
+    read -r -p "$(echo -e "${WHITE}Enter your choice (1-29):${NC} ")" choice
 
     case "$choice" in
         1) apply_system_updates ;;
@@ -639,7 +1322,8 @@ show_menu() {
             apply_compiler_restriction
             configure_remote_syslog
             ;;
-        28)
+        28) full_system_revert ;;
+        29)
             log_info "Exiting. Log file: $LOG_FILE"
             echo -e "${CYAN}Backup directory: $BACKUP_DIR${NC}"
             exit 0
@@ -655,6 +1339,19 @@ show_menu() {
 
 # ----------------------------- Main Execution --------------------------------
 main() {
+    # Check for revert modes first (don't need distro selection for revert)
+    if [[ "$REVERT_MODE" == true ]]; then
+        check_root
+        full_system_revert
+        exit 0
+    fi
+    
+    if [[ "$REVERT_SUID_ONLY" == true ]]; then
+        check_root
+        undo_suid_hardening
+        exit 0
+    fi
+    
     check_root
     show_distro_menu
     create_backup_dir

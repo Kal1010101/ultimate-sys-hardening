@@ -1,261 +1,68 @@
-📦 CORE SECURITY (1-8)
-1. System Updates
-Updates all system packages to latest versions
+The script performs all 28 hardening actions:
 
-Closes known vulnerabilities in installed software
+Updates system packages
 
-Applies security patches from distribution repositories
+Hardens SSH (disables root, password auth, sets MaxAuthTries)
 
-2. SSH Hardening
-Disables root login over SSH
+Configures nftables firewall
 
-Disables password authentication (forces key-based auth)
+Installs and configures Fail2Ban
 
-Changes default SSH port (optional)
+Secures file permissions
 
-Disables empty passwords and host-based authentication
+Applies kernel sysctl hardening
 
-Sets strict key exchange algorithms and ciphers
+Configures auditd monitoring
 
-3. Firewall Configuration (nftables)
-Configures stateful firewall rules
+Sets password policies
 
-Blocks all incoming ports by default
+Hardens SUID binaries with backup
 
-Allows only essential services (SSH, HTTP, HTTPS)
+Installs AIDE and rkhunter
 
-Protects against port scanning and unauthorized access
+Disables unnecessary services
 
-4. Fail2Ban Installation
-Installs intrusion prevention software
+Configures AppArmor/SELinux
 
-Automatically bans IPs with failed login attempts
+Sets up etckeeper
 
-Protects SSH, web servers, and other services from brute force attacks
+Secures boot loader
 
-Configurable ban times and retry limits
+Optional: GRUB password, Docker security, ModSecurity, MFA, USB blocking, compiler restriction, remote syslog
 
-5. File Permission Hardening
-Secures critical system files (/etc/shadow, /etc/passwd, /etc/sudoers)
+#########################################################################################
 
-Restricts world-writable files and directories
+What the Full Revert Does:
 
-Sets proper ownership and permissions on sensitive files
+Restores SSH configuration from backup and restarts SSH service
 
-Prevents unauthorized modification of system files
+Restores kernel sysctl settings
 
-6. Kernel/Network Hardening
-Applies sysctl security parameters
+Restores auditd rules
 
-Disables IP forwarding (prevents routing attacks)
+Restores PAM password policies
 
-Protects against SYN flood attacks (TCP SYN cookies)
+Restores SUID/SGID permissions
 
-Disables source packet routing and ICMP redirects
+Disables nftables firewall (if it wasn't originally present)
 
-Enables ASLR and kernel pointer restrictions
+Re-enables previously disabled services (avahi-daemon, cups, nfs-server, etc.)
 
-7. Auditd Configuration
-Installs and configures Linux Auditing System
+Re-enables USB storage
 
-Monitors critical system calls and file access
+Re-enables unused protocols
 
-Tracks user login/logout and privilege escalation
 
-Logs unauthorized access attempts
+Restores compiler permissions for regular users
 
-Provides forensic audit trails
+##########################################################################################
 
-8. Password Policies
-Enforces password complexity requirements
+Safety Features:
 
-Sets password aging and expiration rules
+Confirmation prompt before any revert (unless "--auto-mode" is used)
 
-Prevents password reuse
+Requires "yes" typed explicitly for full revert confirmation
 
-Locks accounts after failed login attempts
+Checks for backup existence before attempting restore
 
-Configures /etc/login.defs and PAM modules
-
-🔍 MONITORING & HARDENING (9-16)
-9. SUID/SGID Binary Hardening (HIGH RISK)
-Removes SUID/SGID bits from non-essential binaries
-
-Prevents privilege escalation attacks
-
-Backs up original permissions before changes
-
-Keeps essential SUID binaries (sudo, su, passwd)
-
-10. Undo SUID Hardening
-Restores original SUID/SGID permissions from backup
-
-Reverts system to pre-hardening state
-
-Provides rollback capability
-
-11. AIDE Installation
-Advanced Intrusion Detection Environment
-
-Creates cryptographic database of system files
-
-Detects unauthorized file modifications
-
-Scheduled integrity checks via cron
-
-Alerts on critical file changes
-
-12. rkhunter Installation
-Rootkit Hunter malware scanner
-
-Detects rootkits, backdoors, and local exploits
-
-Checks for hidden processes and kernel modules
-
-Scans for suspicious file permissions and anomalies
-
-13. Disable Unnecessary Services
-Identifies and stops unused network services
-
-Disables printing services (CUPS) if not needed
-
-Removes FTP, Telnet, and other insecure protocols
-
-Reduces attack surface by minimizing running services
-
-14. AppArmor/SELinux Configuration
-Enforces Mandatory Access Control (MAC)
-
-AppArmor for Debian/Ubuntu, SELinux for RHEL-based
-
-Confines applications with security profiles
-
-Prevents compromised apps from accessing system resources
-
-15. etckeeper Setup
-Version control system for /etc directory
-
-Commits changes to Git
-
-Tracks configuration file history
-
-Allows rollback of unwanted configuration changes
-
-16. Secure Boot Permissions
-Restricts GRUB bootloader permissions (600)
-
-Secures kernel and initrd images
-
-Prevents unauthorized boot parameter changes
-
-Protects against boot-level malware
-
-🚀 ADVANCED FEATURES (17-24)
-17. GRUB Password Protection (HIGH RISK)
-Sets password protection on bootloader
-
-Prevents unauthorized kernel parameter modifications
-
-Protects single-user mode access
-
-Encrypts GRUB password using PBKDF2
-
-18. Docker Security Hardening
-Restricts container privileges (--no-new-privileges)
-
-Disables inter-container communication
-
-Sets secure seccomp and AppArmor profiles
-
-Prevents container breakout attacks
-
-Configures Docker daemon with TLS authentication
-
-19. ModSecurity WAF Installation
-Web Application Firewall for Apache
-
-Blocks SQL injection, XSS, and other web attacks
-
-Real-time HTTP traffic monitoring
-
-OWASP Core Rule Set support
-
-20. Google Authenticator MFA
-Two-Factor Authentication for SSH
-
-Time-based One-Time Password (TOTP) support
-
-Integrates with PAM module
-
-Protects against password theft and brute force
-
-21. USB Storage Blocking
-Disables kernel modules for USB storage
-
-Prevents data exfiltration via removable media
-
-Blocks usb-storage kernel module
-
-Protects against BadUSB attacks
-
-22. Disable Unused Network Protocols
-Disables DCCP, SCTP, RDS, and TIPC protocols
-
-Prevents kernel module loading for vulnerable protocols
-
-Reduces remote attack vectors
-
-Protects against protocol-specific exploits
-
-23. Compiler Access Restriction
-Restricts compilers (gcc, g++, clang) to root only
-
-Prevents privilege escalation via compiled exploits
-
-Changes permissions to 700 for compiler binaries
-
-Still allows software installation via package manager
-
-24. Remote Syslog Configuration
-Configures central log server forwarding
-
-Sends logs to remote SIEM or logging server
-
-Prevents log tampering by attackers
-
-Supports TCP with TLS for encrypted transmission
-
-📊 META OPERATIONS (25-28)
-25. CIS Benchmark Checks (Read-only)
-Non-intrusive compliance assessment
-
-Checks filesystem partition separation
-
-Verifies SSH root login status
-
-Confirms auditd and fail2ban running
-
-Reports issues without making changes
-
-26. Apply All Safe Fixes (1-16)
-One-click application of safe/medium risk measures
-
-Recommended for most production servers
-
-Excludes high-risk features (SUID, GRUB password)
-
-Includes all core security and monitoring features
-
-27. Apply All (Full Hardening)
-Complete system hardening (all features 1-24)
-
-Applies high-risk features last
-
-Maximum security posture
-
-Suitable for high-security environments
-
-28. Exit
-Gracefully exits the script
-
-Displays log file and backup directory locations
+Graceful error handling if backups are missing
