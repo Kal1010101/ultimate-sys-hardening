@@ -68,20 +68,13 @@ Hardens SUID binaries with backup
 This script disables services and removes packages. Test in a VM first.
 Author not liable for production outages. By using, you acknowledge this is **irreversible** without a full system backup.
 
+| Main Menu | Hardening Options |
+|-----------|-------------------|
+| ![Main Menu](images/menu-main.png) | ![Hardening Options](images/hardening-options.png) |
 
-<p align="center">
-  <img src="images/Screenshot%20from%202026-06-13%2020-42-22.png" width="600">
-</p>
-
-<p align="center">
-  <img src="images/Screenshot%20from%202026-06-13%2021-00-03.png" width="600">
-</p>
-
-<p align="center">
-  <img src="images/Screenshot%20from%202026-06-13%2021-01-51.png" width="600">
-  <br>
-  <em>CIS Benchmark Compliance Results</em>
-</p>
+| CIS Results |
+|-------------|
+| ![CIS Results](images/cis-results.png) |
 
 
 ## Quick Start
