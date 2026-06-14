@@ -1,5 +1,38 @@
 # 🛡️ Ultimate System Hardening Script
 
+
+## What this script hardens 
+
+| Security Area | Actions Taken |
+|---------------|----------------|
+| SSH | Disables root login, enforces key-only auth, changes port (optional) |
+| Firewall | Installs/configures UFW, denies all incoming except SSH/HTTP |
+| Fail2ban | Auto-blocks IPs after 5 failed login attempts |
+| Kernel | Disables IPv6, sets restrictive sysctl parameters |
+| Filesystem | Locks /tmp, /var/tmp with noexec,nosuid |
+| Auditing | Installs auditd, monitors sensitive file changes |
+| Packages | Removes telnet, rsh, talk, nfs-common, netcat |
+
+## Requirements
+- **Distributions:** Ubuntu 20.04+, Debian 11+, Rocky Linux 8+, RHEL 9+
+- **Root access required** (script uses `sudo`)
+- **Internet connection** for package installation
+- **Backup your system first** — this script makes irreversible changes
+
+## Before vs After
+**Before (default Ubuntu 22.04):**  
+✗ Root SSH login enabled  
+✗ Password auth allowed  
+✗ IPv6 listening on all ports  
+✗ /tmp mounted with exec  
+
+**After running script:**  
+✓ Root SSH disabled  
+✓ SSH key-only auth  
+✓ IPv6 disabled kernel-level  
+✓ /tmp mounted noexec,nosuid
+
+
 <p align="center">
   <img src="https://github.com/user-attachments/assets/ef9d54c1-25ca-43b7-a72c-428564da318b" width="600">
 </p>
@@ -17,3 +50,16 @@ cd ultimate-sys-hardening
 
 # Run the script as root
 sudo ./ultimate_hardening.sh
+
+# Revert changes
+sudo ./ultimate_hardening.sh --revert
+
+## Key hardening features (from features.txt)
+` ` `bash
+$ head -20 features.txt
+[contents here]
+` ` `
+
+## ⚠️ Disclaimer
+This script disables services and removes packages. Test in a VM first.  
+Author not liable for production outages. By using, you acknowledge this is **irreversible** without a full system backup.
