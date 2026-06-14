@@ -32,6 +32,31 @@
 ✓ IPv6 disabled kernel-level  
 ✓ /tmp mounted noexec,nosuid
 
+## Key hardening features (from features.txt)
+` ` `bash
+$ head -20 features.txt
+
+📦 CORE SECURITY (1-8)
+1. System Updates
+Updates all system packages to latest versions
+
+Closes known vulnerabilities in installed software
+
+Applies security patches from distribution repositories
+
+2. SSH Hardening
+Disables root login over SSH
+
+Disables password authentication (forces key-based auth)
+
+Changes default SSH port (optional)
+
+Disables empty passwords and host-based authentication
+
+Sets strict key exchange algorithms and ciphers
+
+3. Firewall Configuration (nftables)
+` ` `
 
 ## ⚠️ Disclaimer
 This script disables services and removes packages. Test in a VM first.  
@@ -59,9 +84,7 @@ sudo ./ultimate_hardening.sh
 # Revert changes
 sudo ./ultimate_hardening.sh --revert
 
-## Key hardening features (from features.txt)
-` ` `bash
-$ head -20 features.txt
-[contents here]
-` ` `
+
+
+
 
