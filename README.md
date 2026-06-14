@@ -61,7 +61,6 @@ Sets strict key exchange algorithms and ciphers
 ![ShellCheck](https://github.com/Kal1010101/ultimate-sys-hardening/actions/workflows/test.yml/badge.svg)
 
 
-
 ## ⚠️ Disclaimer
 This script disables services and removes packages. Test in a VM first.  
 Author not liable for production outages. By using, you acknowledge this is **irreversible** without a full system backup.
