@@ -1,7 +1,10 @@
 # 🛡️ Ultimate System Hardening Script
 
 
-## What this script hardens 
+![Status](https://img.shields.io/badge/status-production_ready-brightgreen)
+![Security](https://img.shields.io/badge/security-CIS_aligned-blue)
+
+## What this script hardens
 
 | Security Area | Actions Taken |
 |---------------|----------------|
@@ -20,59 +23,66 @@
 - **Backup your system first** — this script makes irreversible changes
 
 ## Before vs After
-**Before (default Ubuntu 22.04):**  
-✗ Root SSH login enabled  
-✗ Password auth allowed  
-✗ IPv6 listening on all ports  
-✗ /tmp mounted with exec  
+**Before (default Ubuntu 22.04):**
+✗ Root SSH login enabled
+✗ Password auth allowed
+✗ IPv6 listening on all ports
+✗ /tmp mounted with exec
 
-**After running script:**  
-✓ Root SSH disabled  
-✓ SSH key-only auth  
-✓ IPv6 disabled kernel-level  
+**After running script:**
+✓ Root SSH disabled
+✓ SSH key-only auth
+✓ IPv6 disabled kernel-level
 ✓ /tmp mounted noexec,nosuid
 
 ## Key hardening features (from features.txt)
 ` ` `bash
 $ head -20 features.txt
 
-📦 CORE SECURITY (1-8)
-1. System Updates
-Updates all system packages to latest versions
+The script performs all 28 hardening actions:
 
-Closes known vulnerabilities in installed software
+Updates system packages
 
-Applies security patches from distribution repositories
+Hardens SSH (disables root, password auth, sets MaxAuthTries)
 
-2. SSH Hardening
-Disables root login over SSH
+Configures nftables firewall
 
-Disables password authentication (forces key-based auth)
+Installs and configures Fail2Ban
 
-Changes default SSH port (optional)
+Secures file permissions
 
-Disables empty passwords and host-based authentication
+Applies kernel sysctl hardening
 
-Sets strict key exchange algorithms and ciphers
+Configures auditd monitoring
 
-3. Firewall Configuration (nftables)
+Sets password policies
+
+Hardens SUID binaries with backup
+
 ` ` `
 
 ![ShellCheck](https://github.com/Kal1010101/ultimate-sys-hardening/actions/workflows/test.yml/badge.svg)
 
 
 ## ⚠️ Disclaimer
-This script disables services and removes packages. Test in a VM first.  
+This script disables services and removes packages. Test in a VM first.
 Author not liable for production outages. By using, you acknowledge this is **irreversible** without a full system backup.
 
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/ef9d54c1-25ca-43b7-a72c-428564da318b" width="600">
+  <img src="images/Screenshot%20from%202026-06-13%2020-42-22.png" width="600">
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/8dac2d7c-c917-4753-9009-c9eb5fc1cb78" width="600">
+  <img src="images/Screenshot%20from%202026-06-13%2021-00-03.png" width="600">
 </p>
+
+<p align="center">
+  <img src="images/Screenshot%20from%202026-06-13%2021-01-51.png" width="600">
+  <br>
+  <em>CIS Benchmark Compliance Results</em>
+</p>
+
 
 ## Quick Start
 
@@ -108,7 +118,3 @@ sudo ./ultimate_hardening.sh --revert-suid
 # Interactive revert is also available via menu option #28
 sudo ./ultimate_hardening.sh
 # Then select option 28 from the menu
-
-
-
-
