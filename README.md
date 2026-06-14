@@ -81,12 +81,33 @@ Author not liable for production outages. By using, you acknowledge this is **ir
 git clone https://github.com/Kal1010101/ultimate-sys-hardening.git
 cd ultimate-sys-hardening
 
-# Run the script as root
+# Interactive mode (normal)
 sudo ./ultimate_hardening.sh
 
-# Revert changes
+# Dry-run to preview changes
+sudo ./ultimate_hardening.sh --dry-run
+
+# Automatic mode (no prompts)
+sudo ./ultimate_hardening.sh --auto-mode
+
+# Skip backups (faster, risky)
+sudo ./ultimate_hardening.sh --skip-backup
+
+# Combine flags
+sudo ./ultimate_hardening.sh --auto-mode --dry-run
+
+# Show help
+sudo ./ultimate_hardening.sh --help
+
+# Full system revert (restores everything from backup)
 sudo ./ultimate_hardening.sh --revert
 
+# Revert only SUID/SGID permissions
+sudo ./ultimate_hardening.sh --revert-suid
+
+# Interactive revert is also available via menu option #28
+sudo ./ultimate_hardening.sh
+# Then select option 28 from the menu
 
 
 
