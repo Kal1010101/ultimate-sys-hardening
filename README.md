@@ -33,6 +33,11 @@
 ✓ /tmp mounted noexec,nosuid
 
 
+## ⚠️ Disclaimer
+This script disables services and removes packages. Test in a VM first.  
+Author not liable for production outages. By using, you acknowledge this is **irreversible** without a full system backup.
+
+
 <p align="center">
   <img src="https://github.com/user-attachments/assets/ef9d54c1-25ca-43b7-a72c-428564da318b" width="600">
 </p>
@@ -60,6 +65,3 @@ $ head -20 features.txt
 [contents here]
 ` ` `
 
-## ⚠️ Disclaimer
-This script disables services and removes packages. Test in a VM first.  
-Author not liable for production outages. By using, you acknowledge this is **irreversible** without a full system backup.
