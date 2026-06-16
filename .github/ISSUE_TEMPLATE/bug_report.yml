@@ -59,7 +59,7 @@ body:
       description: How can I reproduce this issue?
       placeholder: |
         1. Clone the repository
-        2. Run `sudo ./sysdebug.sh`
+        2. Run `sudo ./ultimate_hardening.sh`
         3. See the error
     validations:
       required: true
