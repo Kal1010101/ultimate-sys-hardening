@@ -136,7 +136,7 @@ restore_file() {
 
 press_enter() {
     echo ""
-    read -p "Press Enter to return to menu..."
+    read -r -p "Press Enter to return to menu..."
 }
 
 # Package manager helpers
@@ -157,7 +157,8 @@ install_package() {
         return 0
     fi
     
-    local pm=$(get_package_manager)
+    local pm
+pm=$(get_package_manager)
     case "$pm" in
         apt-get)
             apt-get update -qq >> "$LOG_FILE" 2>&1
@@ -223,7 +224,7 @@ show_distro_menu() {
     echo -e "  ${GREEN}4)${NC} openSUSE / SUSE Linux Enterprise"
     echo -e "  ${GREEN}5)${NC} Auto-detect"
     echo ""
-    read -p "Enter choice (1-5): " distro_choice
+    read -r -p "Enter choice (1-5): " distro_choice
 
     case "$distro_choice" in
         1) DISTRO_TYPE="debian" ;;
@@ -246,7 +247,7 @@ full_system_revert() {
     echo -e "${RED}This may break your system if not done carefully.${NC}\n"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Are you absolutely sure you want to revert ALL changes? (yes/NO): " choice
+        read -r -p "Are you absolutely sure you want to revert ALL changes? (yes/NO): " choice
         [[ ! "$choice" =~ ^[Yy]es$ ]] && { log_info "Revert cancelled."; return; }
     fi
 
@@ -328,7 +329,7 @@ undo_suid_hardening() {
     fi
 
     if [[ "$AUTO_MODE" == false ]] && [[ "$REVERT_SUID_ONLY" == false ]]; then
-        read -p "Restore SUID permissions? (y/N): " choice
+        read -r -p "Restore SUID permissions? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Cancelled."; return; }
     fi
 
@@ -350,7 +351,7 @@ apply_system_updates() {
     echo -e "\n${GREEN}${INFO} This will update all system packages${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Apply system updates? (y/N): " choice
+        read -r -p "Apply system updates? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -360,7 +361,8 @@ apply_system_updates() {
         return
     fi
 
-    local pm=$(get_package_manager)
+    local pm
+pm=$(get_package_manager)
     case "$pm" in
         apt-get)
             apt-get update -qq >> "$LOG_FILE" 2>&1
@@ -385,7 +387,7 @@ apply_ssh_hardening() {
     echo -e "\n${YELLOW}${WARNING} This will harden SSH configuration${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Apply SSH hardening? (y/N): " choice
+        read -r -p "Apply SSH hardening? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -438,7 +440,7 @@ apply_firewall() {
     echo -e "\n${YELLOW}${WARNING} This will configure nftables firewall${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Configure firewall? (y/N): " choice
+        read -r -p "Configure firewall? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -503,7 +505,7 @@ apply_fail2ban() {
     echo -e "\n${GREEN}${INFO} This will install and configure Fail2Ban${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Install Fail2Ban? (y/N): " choice
+        read -r -p "Install Fail2Ban? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -544,7 +546,7 @@ apply_permission_hardening() {
     echo -e "\n${GREEN}${INFO} This will secure critical file permissions${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Harden file permissions? (y/N): " choice
+        read -r -p "Harden file permissions? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -576,7 +578,7 @@ apply_kernel_hardening() {
     echo -e "\n${GREEN}${INFO} This will apply kernel sysctl hardening${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Apply kernel hardening? (y/N): " choice
+        read -r -p "Apply kernel hardening? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -619,7 +621,7 @@ apply_audit_config() {
     echo -e "\n${GREEN}${INFO} This will configure system auditing${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Configure auditd? (y/N): " choice
+        read -r -p "Configure auditd? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -660,7 +662,7 @@ apply_password_policies() {
     echo -e "\n${GREEN}${INFO} This will set password policies${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Apply password policies? (y/N): " choice
+        read -r -p "Apply password policies? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -690,7 +692,7 @@ apply_suid_hardening() {
     echo -e "\n${RED}${WARNING} HIGH RISK: This removes SUID bits from non-essential binaries${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Proceed with SUID hardening? (yes/NO): " choice
+        read -r -p "Proceed with SUID hardening? (yes/NO): " choice
         [[ ! "$choice" =~ ^[Yy]es$ ]] && { log_info "Skipped."; return; }
     fi
 
@@ -730,7 +732,7 @@ apply_aide() {
     echo -e "\n${GREEN}${INFO} This installs file integrity monitoring${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Install AIDE? (y/N): " choice
+        read -r -p "Install AIDE? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -754,7 +756,7 @@ apply_rkhunter() {
     echo -e "\n${GREEN}${INFO} This installs rootkit hunter${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Install rkhunter? (y/N): " choice
+        read -r -p "Install rkhunter? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -778,7 +780,7 @@ apply_disable_services() {
     echo -e "\n${YELLOW}${WARNING} This disables unnecessary services${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Disable unnecessary services? (y/N): " choice
+        read -r -p "Disable unnecessary services? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -803,7 +805,7 @@ apply_apparmor() {
     echo -e "\n${GREEN}${INFO} This configures mandatory access control${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Configure AppArmor/SELinux? (y/N): " choice
+        read -r -p "Configure AppArmor/SELinux? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -838,7 +840,7 @@ apply_etckeeper() {
     echo -e "\n${GREEN}${INFO} This sets up version control for /etc${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Install etckeeper? (y/N): " choice
+        read -r -p "Install etckeeper? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -862,7 +864,7 @@ apply_boot_secure() {
     echo -e "\n${GREEN}${INFO} This secures boot loader permissions${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Secure boot permissions? (y/N): " choice
+        read -r -p "Secure boot permissions? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -885,7 +887,7 @@ apply_grub_password() {
     echo -e "\n${RED}${WARNING} HIGH RISK: This sets a GRUB password${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Set GRUB password? (yes/NO): " choice
+        read -r -p "Set GRUB password? (yes/NO): " choice
         [[ ! "$choice" =~ ^[Yy]es$ ]] && { log_info "Skipped."; return; }
     fi
 
@@ -907,7 +909,8 @@ apply_grub_password() {
         return
     fi
     
-    local grub_hash=$(echo -e "$grub_pass\n$grub_pass" | grub-mkpasswd-pbkdf2 2>/dev/null | grep -oP 'grub\.pbkdf2\.sha512\.[^\s]+')
+    local grub_hash
+grub_hash=$(echo -e "$grub_pass\n$grub_pass" | grub-mkpasswd-pbkdf2 2>/dev/null | grep -oP 'grub\.pbkdf2\.sha512\.[^\s]+')
     
     if [[ -n "$grub_hash" ]]; then
         backup_file "/etc/grub.d/40_custom"
@@ -926,7 +929,7 @@ apply_docker_security() {
     echo -e "\n${YELLOW}${WARNING} This hardens Docker configuration${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Apply Docker security? (y/N): " choice
+        read -r -p "Apply Docker security? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -970,7 +973,7 @@ apply_modsecurity() {
     echo -e "\n${YELLOW}${WARNING} This installs ModSecurity for Apache${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Install ModSecurity? (y/N): " choice
+        read -r -p "Install ModSecurity? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -1004,7 +1007,7 @@ apply_google_auth() {
     echo -e "\n${YELLOW}${WARNING} This enables MFA for SSH${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Setup Google Authenticator? (y/N): " choice
+        read -r -p "Setup Google Authenticator? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -1029,7 +1032,7 @@ apply_usb_blocking() {
     echo -e "\n${YELLOW}${WARNING} This disables USB storage${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Block USB storage? (y/N): " choice
+        read -r -p "Block USB storage? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -1051,7 +1054,7 @@ disable_unused_protocols() {
     echo -e "\n${YELLOW}${WARNING} This disables DCCP, SCTP, RDS, TIPC${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Disable unused protocols? (y/N): " choice
+        read -r -p "Disable unused protocols? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -1077,7 +1080,7 @@ apply_compiler_restriction() {
     echo -e "\n${YELLOW}${WARNING} This restricts compilers to root only${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Restrict compiler access? (y/N): " choice
+        read -r -p "Restrict compiler access? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -1103,7 +1106,7 @@ configure_remote_syslog() {
     echo -e "\n${YELLOW}${WARNING} This configures remote logging${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Configure remote syslog? (y/N): " choice
+        read -r -p "Configure remote syslog? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
     fi
 
@@ -1193,7 +1196,7 @@ apply_all_safe() {
     echo -e "\n${CYAN}This will apply options 1-16 (safe/medium risk only)${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
-        read -p "Continue? (y/N): " choice
+        read -r -p "Continue? (y/N): " choice
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Cancelled."; return; }
     fi
 
