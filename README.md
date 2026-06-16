@@ -4,6 +4,15 @@
 ![Status](https://img.shields.io/badge/status-production_ready-brightgreen)
 ![Security](https://img.shields.io/badge/security-CIS_aligned-blue)
 
+
+## 🔍 Also Check Out
+[System Debug & Security Audit Script](https://github.com/Kal1010101/sysdebug) - Diagnose issues and detect anomalies on your system
+
+## ⭐ Support This Project
+If this script helped you, please consider starring this repository!
+It helps others find it and motivates continued development.
+
+
 ## What this script hardens
 
 | Security Area | Actions Taken |
