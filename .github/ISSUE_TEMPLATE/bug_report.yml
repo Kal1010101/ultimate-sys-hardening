@@ -1,0 +1,92 @@
+name: Bug Report
+description: Report a problem with the script
+title: "[Bug]: "
+labels: ["bug"]
+assignees:
+  - Kal1010101
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this bug! Please fill out the information below.
+  - type: input
+    id: script_version
+    attributes:
+      label: Script Version
+      description: What version are you using? (Check the top of the script file)
+      placeholder: "e.g., 1.0"
+    validations:
+      required: false
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: What OS were you running the script on?
+      options:
+        - Ubuntu 20.04
+        - Ubuntu 22.04
+        - Ubuntu 24.04
+        - Debian 11
+        - Debian 12
+        - Rocky Linux 8
+        - Rocky Linux 9
+        - RHEL 8
+        - RHEL 9
+        - Arch Linux
+        - Other (please specify)
+    validations:
+      required: true
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: Describe the bug you encountered
+      placeholder: When I ran the script, it failed with an error...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      description: What should have happened instead?
+      placeholder: The script should have completed successfully...
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can I reproduce this issue?
+      placeholder: |
+        1. Clone the repository
+        2. Run `sudo ./sysdebug.sh`
+        3. See the error
+    validations:
+      required: true
+  - type: textarea
+    id: log_output
+    attributes:
+      label: Log Output
+      description: Please paste any relevant error messages or log output
+      render: bash
+      placeholder: |
+        [2026-06-15 10:30:00] ERROR: Something went wrong
+    validations:
+      required: false
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other information that might be helpful
+      placeholder: This only happens on fresh installations...
+    validations:
+      required: false
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have tested this on a clean system (fresh VM or container)
+          required: false
+        - label: I have searched existing issues to see if this has already been reported
+          required: true
