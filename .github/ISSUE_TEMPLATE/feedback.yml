@@ -1,34 +1,8 @@
-name: "📝 Feedback"
-description: "Tell me how you're using this script"
-title: "[Feedback] "
-labels: ["feedback"]
-body:
-  - type: markdown
-    attributes:
-      value: "Thanks for taking time to share your thoughts!"
-  - type: input
-    id: use_case
-    attributes:
-      label: "What are you using this script for?"
-      placeholder: "e.g., hardening my homelab, production servers, etc."
-  - type: textarea
-    id: experience
-    attributes:
-      label: "What was your experience?"
-      description: "What worked well? What could be improved?"
-      placeholder: "I ran it on Ubuntu 22.04 and it worked perfectly..."
-  - type: dropdown
-    id: helpful
-    attributes:
-      label: "Was this script helpful?"
-      options:
-        - "Very helpful"
-        - "Somewhat helpful"
-        - "Not helpful"
-  - type: checkboxes
-    id: disclose
-    attributes:
-      label: "I acknowledge that this is a security tool"
-      options:
-        - label: "I understand this tool modifies system configuration and I tested it in a non-production environment first"
-          required: true
+## 📝 Feedback & Support
+
+Found a bug or have a suggestion?
+
+- [Report a Bug](https://github.com/Kal1010101/sysdebug/issues/new/choose)
+- [Give Feedback](https://github.com/Kal1010101/sysdebug/issues/new/choose)
+
+Please check [existing issues](https://github.com/Kal1010101/sysdebug/issues) before creating a new one.
