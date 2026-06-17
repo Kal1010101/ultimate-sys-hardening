@@ -28,7 +28,7 @@ for arg in "$@"; do
         --dry-run) DRY_RUN=true ;;
         --revert) REVERT_MODE=true ;;
         --revert-suid) REVERT_SUID_ONLY=true ;;
-        --help|-h) 
+        --help|-h)
             cat << EOF
 Usage: sudo ./ultimate_hardening.sh [OPTIONS]
 
@@ -123,7 +123,7 @@ restore_file() {
     local safe_name="${file#/}"
     safe_name="${safe_name//'/'/_}"
     local backup_name="$BACKUP_DIR/${safe_name}.backup"
-    
+
     if [[ -f "$backup_name" ]]; then
         cp -p "$backup_name" "$file"
         log_success "Restored $file"
@@ -156,7 +156,7 @@ install_package() {
         log_info "DRY RUN: Would install package: $pkg"
         return 0
     fi
-    
+
     local pm
 pm=$(get_package_manager)
     case "$pm" in
@@ -210,7 +210,7 @@ show_distro_menu() {
         log_success "Auto-detected: $DISTRO_TYPE"
         return
     fi
-    
+
     clear
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║                    SELECT YOUR DISTRIBUTION                      ║${NC}"
@@ -269,10 +269,10 @@ full_system_revert() {
 
     # Restore audit rules
     restore_file "/etc/audit/rules.d/99-hardening.rules"
-    
+
     # Restore PAM configs
     restore_file "/etc/pam.d/common-password"
-    
+
     # Restore SUID permissions
     undo_suid_hardening
 
@@ -347,6 +347,7 @@ undo_suid_hardening() {
 
 # 1. System Updates
 apply_system_updates() {
+    create_backup_dir
     log_message "${GEAR} System Updates"
     echo -e "\n${GREEN}${INFO} This will update all system packages${NC}"
 
@@ -383,6 +384,7 @@ pm=$(get_package_manager)
 
 # 2. SSH Hardening
 apply_ssh_hardening() {
+    create_backup_dir
     log_message "${LOCK} SSH Hardening"
     echo -e "\n${YELLOW}${WARNING} This will harden SSH configuration${NC}"
 
@@ -410,7 +412,7 @@ apply_ssh_hardening() {
     fi
 
     backup_file "$SSH_CONFIG"
-    
+
     # Apply SSH hardening
     sed -i 's/^#PermitRootLogin .*/PermitRootLogin no/' "$SSH_CONFIG"
     sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' "$SSH_CONFIG"
@@ -422,20 +424,21 @@ apply_ssh_hardening() {
     sed -i 's/^PermitEmptyPasswords .*/PermitEmptyPasswords no/' "$SSH_CONFIG"
     sed -i 's/^#MaxAuthTries .*/MaxAuthTries 3/' "$SSH_CONFIG"
     sed -i 's/^MaxAuthTries .*/MaxAuthTries 3/' "$SSH_CONFIG"
-    
+
     # Ensure lines exist if they weren't there
     grep -q "^PermitRootLogin" "$SSH_CONFIG" || echo "PermitRootLogin no" >> "$SSH_CONFIG"
     grep -q "^PasswordAuthentication" "$SSH_CONFIG" || echo "PasswordAuthentication no" >> "$SSH_CONFIG"
     grep -q "^ChallengeResponseAuthentication" "$SSH_CONFIG" || echo "ChallengeResponseAuthentication no" >> "$SSH_CONFIG"
     grep -q "^PermitEmptyPasswords" "$SSH_CONFIG" || echo "PermitEmptyPasswords no" >> "$SSH_CONFIG"
     grep -q "^MaxAuthTries" "$SSH_CONFIG" || echo "MaxAuthTries 3" >> "$SSH_CONFIG"
-    
+
     systemctl restart sshd >> "$LOG_FILE" 2>&1 || systemctl restart ssh >> "$LOG_FILE" 2>&1
     log_success "SSH hardening completed"
 }
 
 # 3. Firewall Configuration (nftables)
 apply_firewall() {
+    create_backup_dir
     log_message "${SHIELD} Firewall Configuration"
     echo -e "\n${YELLOW}${WARNING} This will configure nftables firewall${NC}"
 
@@ -454,7 +457,7 @@ apply_firewall() {
 
     backup_file "/etc/nftables.conf"
     install_package "nftables"
-    
+
     # Create basic nftables ruleset
     cat > /etc/nftables.conf << 'EOF'
 #!/usr/sbin/nft -f
@@ -464,43 +467,44 @@ flush ruleset
 table inet filter {
     chain input {
         type filter hook input priority 0; policy drop;
-        
+
         # Allow established/related connections
         ct state established,related accept
-        
+
         # Allow loopback
         iif lo accept
-        
+
         # Allow ICMP (ping)
         ip protocol icmp icmp type echo-request accept
         ip6 nexthdr icmpv6 icmpv6 type echo-request accept
-        
+
         # Allow SSH (port 22)
         tcp dport 22 accept
-        
+
         # Allow HTTP/HTTPS (optional)
         tcp dport { 80, 443 } accept
     }
-    
+
     chain forward {
         type filter hook forward priority 0; policy drop;
     }
-    
+
     chain output {
         type filter hook output priority 0; policy accept;
     }
 }
 EOF
-    
+
     systemctl enable nftables >> "$LOG_FILE" 2>&1
     systemctl start nftables >> "$LOG_FILE" 2>&1
     nft -f /etc/nftables.conf >> "$LOG_FILE" 2>&1
-    
+
     log_success "Firewall configured"
 }
 
 # 4. Fail2Ban
 apply_fail2ban() {
+    create_backup_dir
     log_message "${SHIELD} Fail2Ban Installation"
     echo -e "\n${GREEN}${INFO} This will install and configure Fail2Ban${NC}"
 
@@ -518,7 +522,7 @@ apply_fail2ban() {
     fi
 
     install_package "fail2ban"
-    
+
     # Create basic jail configuration
     cat > /etc/fail2ban/jail.local << 'EOF'
 [DEFAULT]
@@ -536,12 +540,13 @@ EOF
 
     systemctl enable fail2ban >> "$LOG_FILE" 2>&1
     systemctl start fail2ban >> "$LOG_FILE" 2>&1
-    
+
     log_success "Fail2Ban installed"
 }
 
 # 5. File Permissions
 apply_permission_hardening() {
+    create_backup_dir
     log_message "${LOCK} File Permission Hardening"
     echo -e "\n${GREEN}${INFO} This will secure critical file permissions${NC}"
 
@@ -561,19 +566,20 @@ apply_permission_hardening() {
     backup_file "/etc/passwd"
     backup_file "/etc/group"
     backup_file "/etc/sudoers"
-    
+
     # Secure critical files
     chmod 600 /etc/shadow 2>/dev/null || true
     chmod 600 /etc/gshadow 2>/dev/null || true
     chmod 644 /etc/passwd 2>/dev/null || true
     chmod 644 /etc/group 2>/dev/null || true
     chmod 440 /etc/sudoers 2>/dev/null || true
-    
+
     log_success "File permissions hardened"
 }
 
 # 6. Kernel Hardening
 apply_kernel_hardening() {
+    create_backup_dir
     log_message "${GEAR} Kernel Hardening"
     echo -e "\n${GREEN}${INFO} This will apply kernel sysctl hardening${NC}"
 
@@ -583,7 +589,7 @@ apply_kernel_hardening() {
     fi
 
     local SYSCTL_CONF="/etc/sysctl.d/99-hardening.conf"
-    
+
     if [[ "$DRY_RUN" == true ]]; then
         log_info "DRY RUN: Would create $SYSCTL_CONF with security parameters"
         log_info "DRY RUN: Would apply sysctl settings"
@@ -592,7 +598,7 @@ apply_kernel_hardening() {
     fi
 
     backup_file "$SYSCTL_CONF"
-    
+
     cat > "$SYSCTL_CONF" << 'EOF'
 # Kernel hardening parameters
 net.ipv4.tcp_syncookies = 1
@@ -617,6 +623,7 @@ EOF
 
 # 7. Auditd Configuration
 apply_audit_config() {
+    create_backup_dir
     log_message "${SHIELD} Auditd Configuration"
     echo -e "\n${GREEN}${INFO} This will configure system auditing${NC}"
 
@@ -634,7 +641,7 @@ apply_audit_config() {
 
     install_package "auditd"
     backup_file "/etc/audit/rules.d/99-hardening.rules"
-    
+
     # Configure audit rules
     cat > /etc/audit/rules.d/99-hardening.rules << 'EOF'
 # Critical file monitoring
@@ -652,12 +659,13 @@ EOF
     systemctl enable auditd >> "$LOG_FILE" 2>&1
     systemctl start auditd >> "$LOG_FILE" 2>&1
     auditctl -R /etc/audit/rules.d/99-hardening.rules >> "$LOG_FILE" 2>&1
-    
+
     log_success "Auditd configured"
 }
 
 # 8. Password Policies
 apply_password_policies() {
+    create_backup_dir
     log_message "${LOCK} Password Policies"
     echo -e "\n${GREEN}${INFO} This will set password policies${NC}"
 
@@ -674,20 +682,21 @@ apply_password_policies() {
 
     # Backup PAM config
     backup_file "/etc/pam.d/common-password"
-    
+
     # Configure password aging
     if [[ -f /etc/pam.d/common-password ]]; then
         sed -i 's/pam_unix.so/pam_unix.so remember=5 minlen=12 sha512/' /etc/pam.d/common-password
     fi
-    
+
     # Set default password aging
     chage -M 90 root 2>/dev/null || true
-    
+
     log_success "Password policies applied"
 }
 
 # 9. SUID Hardening
 apply_suid_hardening() {
+    create_backup_dir
     log_message "${FIRE} SUID/SGID Hardening"
     echo -e "\n${RED}${WARNING} HIGH RISK: This removes SUID bits from non-essential binaries${NC}"
 
@@ -728,6 +737,7 @@ undo_suid_hardening_menu() {
 
 # 11. AIDE
 apply_aide() {
+    create_backup_dir
     log_message "${SHIELD} AIDE Installation"
     echo -e "\n${GREEN}${INFO} This installs file integrity monitoring${NC}"
 
@@ -746,12 +756,13 @@ apply_aide() {
     install_package "aide"
     aideinit 2>/dev/null || true
     mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz 2>/dev/null || true
-    
+
     log_success "AIDE installed"
 }
 
 # 12. rkhunter
 apply_rkhunter() {
+    create_backup_dir
     log_message "${SHIELD} rkhunter Installation"
     echo -e "\n${GREEN}${INFO} This installs rootkit hunter${NC}"
 
@@ -770,12 +781,13 @@ apply_rkhunter() {
     install_package "rkhunter"
     rkhunter --update 2>/dev/null || true
     rkhunter --propupd 2>/dev/null || true
-    
+
     log_success "rkhunter installed"
 }
 
 # 13. Disable Services
 apply_disable_services() {
+    create_backup_dir
     log_message "${GEAR} Disabling Unnecessary Services"
     echo -e "\n${YELLOW}${WARNING} This disables unnecessary services${NC}"
 
@@ -801,6 +813,7 @@ apply_disable_services() {
 
 # 14. AppArmor/SELinux
 apply_apparmor() {
+    create_backup_dir
     log_message "${SHIELD} AppArmor/SELinux Configuration"
     echo -e "\n${GREEN}${INFO} This configures mandatory access control${NC}"
 
@@ -836,6 +849,7 @@ apply_apparmor() {
 
 # 15. etckeeper
 apply_etckeeper() {
+    create_backup_dir
     log_message "${GEAR} etckeeper Setup"
     echo -e "\n${GREEN}${INFO} This sets up version control for /etc${NC}"
 
@@ -854,12 +868,13 @@ apply_etckeeper() {
     install_package "etckeeper"
     etckeeper init 2>/dev/null || true
     etckeeper commit "Initial commit before hardening" 2>/dev/null || true
-    
+
     log_success "etckeeper configured"
 }
 
 # 16. Boot Security
 apply_boot_secure() {
+    create_backup_dir
     log_message "${LOCK} Boot Security"
     echo -e "\n${GREEN}${INFO} This secures boot loader permissions${NC}"
 
@@ -877,12 +892,13 @@ apply_boot_secure() {
     backup_file "/boot/grub/grub.cfg"
     chmod 600 /boot/grub/grub.cfg 2>/dev/null || true
     chmod 600 /etc/grub.d/* 2>/dev/null || true
-    
+
     log_success "Boot permissions secured"
 }
 
 # 17. GRUB Password
 apply_grub_password() {
+    create_backup_dir
     log_message "${LOCK} GRUB Password"
     echo -e "\n${RED}${WARNING} HIGH RISK: This sets a GRUB password${NC}"
 
@@ -903,15 +919,15 @@ apply_grub_password() {
     echo
     echo -e "${YELLOW}Re-enter password:${NC}"
     read -s -r grub_pass2
-    
+
     if [[ "$grub_pass" != "$grub_pass2" ]]; then
         log_error "Passwords do not match. Skipping."
         return
     fi
-    
+
     local grub_hash
 grub_hash=$(echo -e "$grub_pass\n$grub_pass" | grub-mkpasswd-pbkdf2 2>/dev/null | grep -oP 'grub\.pbkdf2\.sha512\.[^\s]+')
-    
+
     if [[ -n "$grub_hash" ]]; then
         backup_file "/etc/grub.d/40_custom"
         echo "set superusers=\"root\"" >> /etc/grub.d/40_custom
@@ -925,6 +941,7 @@ grub_hash=$(echo -e "$grub_pass\n$grub_pass" | grub-mkpasswd-pbkdf2 2>/dev/null 
 
 # 18. Docker Security
 apply_docker_security() {
+    create_backup_dir
     log_message "${DOCKER_ICON} Docker Security"
     echo -e "\n${YELLOW}${WARNING} This hardens Docker configuration${NC}"
 
@@ -946,7 +963,7 @@ apply_docker_security() {
     fi
 
     backup_file "/etc/docker/daemon.json"
-    
+
     # Create Docker daemon security configuration
     mkdir -p /etc/docker
     cat > /etc/docker/daemon.json << 'EOF'
@@ -963,12 +980,13 @@ apply_docker_security() {
 EOF
 
     systemctl restart docker >> "$LOG_FILE" 2>&1
-    
+
     log_success "Docker security applied"
 }
 
 # 19. ModSecurity
 apply_modsecurity() {
+    create_backup_dir
     log_message "${SHIELD} ModSecurity WAF"
     echo -e "\n${YELLOW}${WARNING} This installs ModSecurity for Apache${NC}"
 
@@ -1003,6 +1021,7 @@ apply_modsecurity() {
 
 # 20. Google Authenticator
 apply_google_auth() {
+    create_backup_dir
     log_message "${LOCK} Google Authenticator MFA"
     echo -e "\n${YELLOW}${WARNING} This enables MFA for SSH${NC}"
 
@@ -1019,15 +1038,16 @@ apply_google_auth() {
     fi
 
     install_package "libpam-google-authenticator"
-    
+
     echo -e "\n${YELLOW}Run 'google-authenticator' manually for each user that needs MFA${NC}"
     echo -e "${YELLOW}Then add 'auth required pam_google_authenticator.so' to /etc/pam.d/sshd${NC}"
-    
+
     log_success "Google Authenticator configured"
 }
 
 # 21. USB Blocking
 apply_usb_blocking() {
+    create_backup_dir
     log_message "${FIRE} USB Storage Blocking"
     echo -e "\n${YELLOW}${WARNING} This disables USB storage${NC}"
 
@@ -1044,12 +1064,13 @@ apply_usb_blocking() {
 
     echo "blacklist usb-storage" > /etc/modprobe.d/usb-storage-blacklist.conf
     modprobe -r usb-storage 2>/dev/null || true
-    
+
     log_success "USB storage blocked"
 }
 
 # 22. Disable Unused Protocols
 disable_unused_protocols() {
+    create_backup_dir
     log_message "${GEAR} Disabling Unused Protocols"
     echo -e "\n${YELLOW}${WARNING} This disables DCCP, SCTP, RDS, TIPC${NC}"
 
@@ -1076,6 +1097,7 @@ EOF
 
 # 23. Compiler Restriction
 apply_compiler_restriction() {
+    create_backup_dir
     log_message "${GEAR} Compiler Restriction"
     echo -e "\n${YELLOW}${WARNING} This restricts compilers to root only${NC}"
 
@@ -1102,6 +1124,7 @@ apply_compiler_restriction() {
 
 # 24. Remote Syslog
 configure_remote_syslog() {
+    create_backup_dir
     log_message "${INFO} Remote Syslog"
     echo -e "\n${YELLOW}${WARNING} This configures remote logging${NC}"
 
@@ -1118,7 +1141,7 @@ configure_remote_syslog() {
 
     echo -e "\n${YELLOW}Enter remote syslog server IP:${NC}"
     read -r syslog_server
-    
+
     if [[ -n "$syslog_server" ]]; then
         backup_file "/etc/rsyslog.conf"
         echo "*.* @$syslog_server:514" >> /etc/rsyslog.conf
@@ -1151,7 +1174,7 @@ run_cis_checks() {
     if [[ -f /etc/ssh/sshd_config ]]; then
         grep -q "^PermitRootLogin no" /etc/ssh/sshd_config 2>/dev/null && \
             log_success "  SSH root login disabled" || { log_warning "  SSH root login not disabled"; ((issues++)); }
-        
+
         grep -q "^PasswordAuthentication no" /etc/ssh/sshd_config 2>/dev/null && \
             log_success "  SSH password auth disabled" || { log_warning "  SSH password auth not disabled"; ((issues++)); }
     fi
@@ -1171,7 +1194,7 @@ run_cis_checks() {
         log_warning "  fail2ban is not running"
         ((issues++))
     fi
-    
+
     # Check 5: Firewall
     if systemctl is-active nftables &>/dev/null || systemctl is-active ufw &>/dev/null; then
         log_success "  Firewall is active"
@@ -1192,6 +1215,7 @@ run_cis_checks() {
 
 # 26. All Safe Fixes
 apply_all_safe() {
+    create_backup_dir
     log_message "${ROCKET} Applying all safe fixes (1-16)..."
     echo -e "\n${CYAN}This will apply options 1-16 (safe/medium risk only)${NC}"
 
@@ -1348,16 +1372,16 @@ main() {
         full_system_revert
         exit 0
     fi
-    
+
     if [[ "$REVERT_SUID_ONLY" == true ]]; then
         check_root
         undo_suid_hardening
         exit 0
     fi
-    
+
     check_root
     show_distro_menu
-    create_backup_dir
+    # create_backup_dir   # <-- REMOVED: Backup now created only when needed
 
     trap 'echo -e "\n${RED}Script interrupted. Exiting.${NC}"; exit 1' INT TERM
 
