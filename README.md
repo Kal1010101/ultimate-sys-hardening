@@ -12,6 +12,8 @@
 If this script helped you, please consider starring this repository!
 It helps others find it and motivates continued development.
 
+**113 sysadmins have already cloned this script in the last 14 days.** Join them!
+
 
 ## What this script hardens
 
