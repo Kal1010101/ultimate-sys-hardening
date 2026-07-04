@@ -11,6 +11,7 @@
 #    - Total options reduced from 29 to 28
 # =============================================================================
 # Usage: sudo ./ultimate_hardening.sh [--skip-backup] [--auto-mode] [--dry-run] [--revert] [--revert-suid] [--help]
+  --skip-flatpak     Skip Flatpak-related hardening (preserves fusermount, FUSE, /var/crash)
 # =============================================================================
 
 set -euo pipefail
@@ -22,6 +23,7 @@ BACKUP_DIR="/root/hardening_backup_$(date +%Y%m%d_%H%M%S)"
 SUID_BACKUP_FILE="$BACKUP_DIR/suid_sgid_original_perms.txt"
 AUTO_MODE=false
 SKIP_BACKUP=false
+SKIP_FLATPAK=false
 DRY_RUN=false
 REVERT_MODE=false
 REVERT_SUID_ONLY=false
@@ -32,6 +34,8 @@ for arg in "$@"; do
     case $arg in
         --auto-mode) AUTO_MODE=true ;;
         --skip-backup) SKIP_BACKUP=true ;;
+  --skip-flatpak     Skip Flatpak-related hardening (preserves fusermount, FUSE, /var/crash)
+        --skip-flatpak) SKIP_FLATPAK=true ;;
         --dry-run) DRY_RUN=true ;;
         --revert) REVERT_MODE=true ;;
         --revert-suid) REVERT_SUID_ONLY=true ;;
@@ -42,6 +46,7 @@ Usage: sudo ./ultimate_hardening.sh [OPTIONS]
 Options:
   --auto-mode      Run without interactive prompts (use defaults)
   --skip-backup    Skip creating backup directory
+  --skip-flatpak     Skip Flatpak-related hardening (preserves fusermount, FUSE, /var/crash)
   --dry-run        Show what would be changed without applying
   --revert         Revert ALL hardening changes (restores from backup)
   --revert-suid    Revert only SUID/SGID permissions
@@ -101,6 +106,7 @@ check_root() {
 create_backup_dir() {
     if [[ "$SKIP_BACKUP" == true ]]; then
         log_info "Backup skipped (--skip-backup flag)"
+  --skip-flatpak     Skip Flatpak-related hardening (preserves fusermount, FUSE, /var/crash)
         return
     fi
     if [[ "$DRY_RUN" == true ]]; then
