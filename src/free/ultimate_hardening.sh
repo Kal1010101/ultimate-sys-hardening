@@ -11,7 +11,6 @@
 #    - Total options reduced from 29 to 28
 # =============================================================================
 # Usage: sudo ./ultimate_hardening.sh [--skip-backup] [--auto-mode] [--dry-run] [--revert] [--revert-suid] [--help]
-  --skip-flatpak     Skip Flatpak-related hardening (preserves fusermount, FUSE, /var/crash)
 # =============================================================================
 
 set -euo pipefail
@@ -23,7 +22,6 @@ BACKUP_DIR="/root/hardening_backup_$(date +%Y%m%d_%H%M%S)"
 SUID_BACKUP_FILE="$BACKUP_DIR/suid_sgid_original_perms.txt"
 AUTO_MODE=false
 SKIP_BACKUP=false
-SKIP_FLATPAK=false
 DRY_RUN=false
 REVERT_MODE=false
 REVERT_SUID_ONLY=false
@@ -34,8 +32,6 @@ for arg in "$@"; do
     case $arg in
         --auto-mode) AUTO_MODE=true ;;
         --skip-backup) SKIP_BACKUP=true ;;
-  --skip-flatpak     Skip Flatpak-related hardening (preserves fusermount, FUSE, /var/crash)
-        --skip-flatpak) SKIP_FLATPAK=true ;;
         --dry-run) DRY_RUN=true ;;
         --revert) REVERT_MODE=true ;;
         --revert-suid) REVERT_SUID_ONLY=true ;;
@@ -46,7 +42,6 @@ Usage: sudo ./ultimate_hardening.sh [OPTIONS]
 Options:
   --auto-mode      Run without interactive prompts (use defaults)
   --skip-backup    Skip creating backup directory
-  --skip-flatpak     Skip Flatpak-related hardening (preserves fusermount, FUSE, /var/crash)
   --dry-run        Show what would be changed without applying
   --revert         Revert ALL hardening changes (restores from backup)
   --revert-suid    Revert only SUID/SGID permissions
@@ -106,7 +101,6 @@ check_root() {
 create_backup_dir() {
     if [[ "$SKIP_BACKUP" == true ]]; then
         log_info "Backup skipped (--skip-backup flag)"
-  --skip-flatpak     Skip Flatpak-related hardening (preserves fusermount, FUSE, /var/crash)
         return
     fi
     if [[ "$DRY_RUN" == true ]]; then
@@ -282,9 +276,6 @@ full_system_revert() {
 
     # Restore audit rules
     restore_file "/etc/audit/rules.d/99-hardening.rules"
-
-    # Restore PAM configs
-    restore_file "/etc/pam.d/common-password"
 
     # Restore SUID permissions
     undo_suid_hardening
@@ -707,7 +698,15 @@ apply_suid_hardening() {
     fi
 
     # Common non-essential SUID binaries to remove
-    for binary in /usr/bin/at /usr/bin/chage /usr/bin/crontab /usr/bin/expiry /usr/bin/gpasswd /usr/bin/wall /usr/bin/chfn /usr/bin/chsh /usr/bin/ssh-agent; do
+    local -a suid_targets=(
+        /usr/bin/at /usr/bin/chage /usr/bin/crontab /usr/bin/expiry
+        /usr/bin/gpasswd /usr/bin/wall /usr/bin/chfn /usr/bin/chsh
+        /usr/bin/ssh-agent
+    )
+
+    suid_targets+=( /usr/bin/fusermount /usr/bin/fusermount3 )
+
+    for binary in "${suid_targets[@]}"; do
         if [[ -f "$binary" ]]; then
             chmod u-s "$binary" 2>/dev/null || true
             log_info "Removed SUID from $binary"
@@ -1019,17 +1018,16 @@ apply_google_auth() {
 
     if [[ "$DRY_RUN" == true ]]; then
         log_info "DRY RUN: Would install google-authenticator"
-        log_info "DRY RUN: Would configure PAM for MFA"
+        log_info "DRY RUN: Would provide Google Authenticator setup guidance"
         log_success "DRY RUN: Google Authenticator configured"
         return
     fi
 
-    install_package "libpam-google-authenticator"
+    log_warning "Google Authenticator requires manual PAM configuration."
+    echo -e "\n${YELLOW}Install libpam-google-authenticator manually, then run 'google-authenticator'${NC}"
+    echo -e "${YELLOW}Do NOT modify /etc/pam.d files — this can cause login lockouts on ecryptfs systems${NC}"
 
-    echo -e "\n${YELLOW}Run 'google-authenticator' manually for each user that needs MFA${NC}"
-    echo -e "${YELLOW}Then add 'auth required pam_google_authenticator.so' to /etc/pam.d/sshd${NC}"
-
-    log_success "Google Authenticator configured"
+    log_success "Google Authenticator guidance provided (no PAM files modified)"
 }
 
 # --- 21. USB Blocking (renumbered to 20) -------------------------------------
@@ -1239,7 +1237,7 @@ show_menu() {
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║                         ${SHIELD}  ULTIMATE SYSTEM HARDENING v${VERSION}  ${SHIELD}                                          ║${NC}"
     echo -e "${CYAN}║                    Multi-Distribution Security Configuration (${WHITE}${DISTRO_TYPE^^}${CYAN})                                   ║${NC}"
-    echo -e "${CYAN}║                   ${YELLOW}PAM-SAFE: Password Policies Removed for ecryptfs Compatibility${CYAN}                   ║${NC}"
+    echo -e "${CYAN}║                   ${GREEN}ecryptfs-Compatible: PAM modules not modified${CYAN}                                   ║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
