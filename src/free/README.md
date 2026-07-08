@@ -4,11 +4,6 @@
 [![Multi-Distro Test](https://github.com/Kal1010101/ultimate-sys-hardening/actions/workflows/test-matrix.yml/badge.svg)](https://github.com/Kal1010101/ultimate-sys-hardening/actions/workflows/test-matrix.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A comprehensive Linux system hardening solution with **Free**, **Pro**, and **Enterprise** tiers.
-
-- **Free**: 15 CIS-aligned hardening modules, interactive menu
-- **Pro**: Auto-fix, HTML reports, AI data leak prevention, scheduling, email notifications
-- **Enterprise**: Multi-server dashboard, YAML policy-as-code, drift detection, remote deployment, JSON/CSV export
 
 ## Quick Start
 
@@ -114,6 +109,7 @@ Author not liable for production outages. By using, you acknowledge this is **ir
 
 </details>
 
+- **Free**: 15 CIS-aligned hardening modules, interactive menu
 
 ## Quick Start
 
