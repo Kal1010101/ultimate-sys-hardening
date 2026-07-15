@@ -696,13 +696,10 @@ apply_suid_hardening() {
         return
     fi
 
-    # Common non-essential SUID binaries to remove
-    local suid_targets=(/usr/bin/at /usr/bin/chage /usr/bin/crontab /usr/bin/expiry /usr/bin/gpasswd /usr/bin/wall /usr/bin/chfn /usr/bin/chsh /usr/bin/ssh-agent)
-
     if [[ "$SKIP_BACKUP" == false ]]; then
         mkdir -p "$BACKUP_DIR"
         : > "$SUID_BACKUP_FILE"
-        for binary in "${suid_targets[@]}"; do
+        for binary in /usr/bin/at /usr/bin/chage /usr/bin/crontab /usr/bin/expiry /usr/bin/gpasswd /usr/bin/wall /usr/bin/chfn /usr/bin/chsh /usr/bin/ssh-agent /usr/bin/fusermount /usr/bin/fusermount3; do
             if [[ -f "$binary" ]]; then
                 stat -c '%a %n' "$binary" >> "$SUID_BACKUP_FILE"
             fi
@@ -710,19 +707,8 @@ apply_suid_hardening() {
         log_success "SUID permissions backed up to $SUID_BACKUP_FILE"
     fi
 
-<<<<<<< HEAD
     # Common non-essential SUID binaries to remove
-    local -a suid_targets=(
-        /usr/bin/at /usr/bin/chage /usr/bin/crontab /usr/bin/expiry
-        /usr/bin/gpasswd /usr/bin/wall /usr/bin/chfn /usr/bin/chsh
-        /usr/bin/ssh-agent
-    )
-
-    suid_targets+=( /usr/bin/fusermount /usr/bin/fusermount3 )
-
-=======
->>>>>>> 1e9e22e (Fix pipefail crash, incomplete SUID backup, auto-mode hangs, and firewall revert bugs)
-    for binary in "${suid_targets[@]}"; do
+    for binary in /usr/bin/at /usr/bin/chage /usr/bin/crontab /usr/bin/expiry /usr/bin/gpasswd /usr/bin/wall /usr/bin/chfn /usr/bin/chsh /usr/bin/ssh-agent /usr/bin/fusermount /usr/bin/fusermount3; do
         if [[ -f "$binary" ]]; then
             chmod u-s "$binary" 2>/dev/null || true
             log_info "Removed SUID from $binary"
