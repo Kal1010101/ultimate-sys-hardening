@@ -280,8 +280,13 @@ full_system_revert() {
     # Restore SUID permissions
     undo_suid_hardening
 
-    # Restore firewall (disable nftables if it wasn't there before)
-    if [[ -f /etc/nftables.conf.backup ]] || [[ ! -f /etc/nftables.conf.original ]]; then
+    # Restore firewall: if a pre-hardening nftables.conf was backed up, restore it;
+    # otherwise nftables was introduced by hardening, so disable it.
+    if [[ -f "$BACKUP_DIR/etc_nftables.conf.backup" ]]; then
+        restore_file "/etc/nftables.conf"
+        systemctl restart nftables 2>/dev/null || true
+        log_info "Firewall configuration restored from backup"
+    else
         systemctl stop nftables 2>/dev/null || true
         systemctl disable nftables 2>/dev/null || true
         log_info "Firewall reverted to disabled state"
@@ -337,10 +342,10 @@ undo_suid_hardening() {
         [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Cancelled."; return; }
     fi
 
-    while IFS= read -r binary; do
-        if [[ -f "$binary" ]]; then
-            chmod u+s "$binary" 2>/dev/null || true
-            log_info "Restored SUID to $binary"
+    while IFS=' ' read -r mode binary; do
+        if [[ -n "$mode" ]] && [[ -f "$binary" ]]; then
+            chmod "$mode" "$binary" 2>/dev/null || true
+            log_info "Restored permissions ($mode) to $binary"
         fi
     done < "$SUID_BACKUP_FILE"
 
@@ -691,12 +696,21 @@ apply_suid_hardening() {
         return
     fi
 
+    # Common non-essential SUID binaries to remove
+    local suid_targets=(/usr/bin/at /usr/bin/chage /usr/bin/crontab /usr/bin/expiry /usr/bin/gpasswd /usr/bin/wall /usr/bin/chfn /usr/bin/chsh /usr/bin/ssh-agent)
+
     if [[ "$SKIP_BACKUP" == false ]]; then
         mkdir -p "$BACKUP_DIR"
-        find / -xdev \( -perm -4000 -o -perm -2000 \) -type f 2>/dev/null | head -20 > "$SUID_BACKUP_FILE"
+        : > "$SUID_BACKUP_FILE"
+        for binary in "${suid_targets[@]}"; do
+            if [[ -f "$binary" ]]; then
+                stat -c '%a %n' "$binary" >> "$SUID_BACKUP_FILE"
+            fi
+        done
         log_success "SUID permissions backed up to $SUID_BACKUP_FILE"
     fi
 
+<<<<<<< HEAD
     # Common non-essential SUID binaries to remove
     local -a suid_targets=(
         /usr/bin/at /usr/bin/chage /usr/bin/crontab /usr/bin/expiry
@@ -706,6 +720,8 @@ apply_suid_hardening() {
 
     suid_targets+=( /usr/bin/fusermount /usr/bin/fusermount3 )
 
+=======
+>>>>>>> 1e9e22e (Fix pipefail crash, incomplete SUID backup, auto-mode hangs, and firewall revert bugs)
     for binary in "${suid_targets[@]}"; do
         if [[ -f "$binary" ]]; then
             chmod u-s "$binary" 2>/dev/null || true
@@ -888,10 +904,13 @@ apply_grub_password() {
     log_message "${LOCK} [16/15] GRUB Password"
     echo -e "\n${RED}${WARNING} HIGH RISK: This sets a GRUB password${NC}"
 
-    if [[ "$AUTO_MODE" == false ]]; then
-        read -r -p "Set GRUB password? (yes/NO): " choice
-        [[ ! "$choice" =~ ^[Yy]es$ ]] && { log_info "Skipped."; return; }
+    if [[ "$AUTO_MODE" == true ]]; then
+        log_warning "GRUB password requires interactive input; skipping in auto-mode."
+        return
     fi
+
+    read -r -p "Set GRUB password? (yes/NO): " choice
+    [[ ! "$choice" =~ ^[Yy]es$ ]] && { log_info "Skipped."; return; }
 
     if [[ "$DRY_RUN" == true ]]; then
         log_info "DRY RUN: Would generate GRUB password hash"
@@ -912,7 +931,7 @@ apply_grub_password() {
     fi
 
     local grub_hash
-grub_hash=$(echo -e "$grub_pass\n$grub_pass" | grub-mkpasswd-pbkdf2 2>/dev/null | grep -oP 'grub\.pbkdf2\.sha512\.[^\s]+')
+grub_hash=$(printf '%s\n%s\n' "$grub_pass" "$grub_pass" | grub-mkpasswd-pbkdf2 2>/dev/null | grep -oP 'grub\.pbkdf2\.sha512\.\S+' || true)
 
     if [[ -n "$grub_hash" ]]; then
         backup_file "/etc/grub.d/40_custom"
@@ -1113,10 +1132,13 @@ configure_remote_syslog() {
     log_message "${INFO} [23/15] Remote Syslog"
     echo -e "\n${YELLOW}${WARNING} This configures remote logging${NC}"
 
-    if [[ "$AUTO_MODE" == false ]]; then
-        read -r -p "Configure remote syslog? (y/N): " choice
-        [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
+    if [[ "$AUTO_MODE" == true ]]; then
+        log_warning "Remote syslog requires interactive input; skipping in auto-mode."
+        return
     fi
+
+    read -r -p "Configure remote syslog? (y/N): " choice
+    [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
 
     if [[ "$DRY_RUN" == true ]]; then
         log_info "DRY RUN: Would configure rsyslog for remote logging"
@@ -1189,8 +1211,6 @@ run_cis_checks() {
     fi
 
     echo ""
-    echo -e "${CYAN}══════════════════════════════════════════════════════════════════${NC}"
-    return 0
     if [[ $issues -eq 0 ]]; then
         echo -e "${GREEN}${CHECK_MARK} CIS Compliance: PERFECT SCORE! (0 issues)${NC}"
     else
