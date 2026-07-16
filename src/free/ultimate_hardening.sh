@@ -1345,6 +1345,53 @@ apply_all_safe() {
     log_success "All safe fixes processed"
 }
 
+# --- 29. Check for Updates ----------------------------------------------------
+check_for_updates() {
+    log_message "${INFO} Checking for updates from GitHub..."
+    echo ""
+    echo -e "${CYAN}Installed version:${NC} $VERSION"
+    echo ""
+
+    if ! command -v curl &>/dev/null; then
+        log_warning "curl is required to check for updates. Install curl and try again."
+        return
+    fi
+
+    local repo="Kal1010101/ultimate-sys-hardening"
+    local api_url="https://api.github.com/repos/${repo}/commits?path=src/free/ultimate_hardening.sh&per_page=1"
+
+    local response
+    response=$(curl -fsSL --max-time 10 "$api_url" 2>/dev/null) || true
+
+    if [[ -z "$response" ]]; then
+        log_warning "Could not reach GitHub. Check your network connection."
+        return
+    fi
+
+    local sha message date
+    if command -v jq &>/dev/null; then
+        sha=$(echo "$response" | jq -r '.[0].sha // empty') || true
+        message=$(echo "$response" | jq -r '.[0].commit.message // empty' | head -1) || true
+        date=$(echo "$response" | jq -r '.[0].commit.committer.date // empty') || true
+    else
+        sha=$(echo "$response" | grep -m1 '"sha"' | sed -E 's/.*"sha": *"([^"]+)".*/\1/') || true
+        message=$(echo "$response" | grep -m1 '"message"' | sed -E 's/.*"message": *"([^"]*)".*/\1/') || true
+        date=$(echo "$response" | grep -m1 '"date"' | sed -E 's/.*"date": *"([^"]+)".*/\1/') || true
+    fi
+
+    if [[ -z "$sha" ]]; then
+        log_warning "Could not parse update information from GitHub (rate-limited or unexpected response)."
+        return
+    fi
+
+    echo -e "${CYAN}Latest commit on GitHub (this file):${NC}"
+    echo -e "  ${WHITE}${sha:0:7}${NC} - $message"
+    echo -e "  ${WHITE}Date:${NC} $date"
+    echo ""
+    echo -e "${YELLOW}Compare the date/message above with your local copy to see if an update is available.${NC}"
+    echo -e "${YELLOW}To update: git -C <repo-dir> pull   (or re-download the script)${NC}"
+}
+
 # ----------------------------- Live Status Checks ----------------------------
 # Fast, read-only checks used to show whether each module already appears to
 # be applied on this system. "N/A" means the option is an action rather than
@@ -1533,12 +1580,13 @@ show_menu() {
     printf "${WHITE}│${NC}  ${ROCKET}26) Apply All Safe Fixes (1-7,9-16,24) ${GREEN}(Recommended)${NC}           ${WHITE}│${NC}\n"
     printf "${WHITE}│${NC}  ${ROCKET}27) Apply All (Full Hardening)    ${YELLOW}(Complete)${NC}                   ${WHITE}│${NC}\n"
     printf "${WHITE}│${NC}  ${UNDO} 28) Full System Revert (from backup) ${RED}(DANGER)${NC}                     ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${CROSS_MARK}29) Exit                                       ${WHITE}                  │${NC}\n"
+    printf "${WHITE}│${NC}  ${INFO} 29) Check for Updates              ${GREEN}(Read-only)${NC}                   ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${CROSS_MARK}30) Exit                                       ${WHITE}                  │${NC}\n"
     echo -e "${WHITE}└─────────────────────────────────────────────────────────────────────┘${NC}"
     echo ""
 
     echo -e "${CYAN}══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════${NC}"
-    read -r -p "$(echo -e "${WHITE}Enter your choice (1-29):${NC} ")" choice
+    read -r -p "$(echo -e "${WHITE}Enter your choice (1-30):${NC} ")" choice
 
     case "$choice" in
         1) apply_system_updates ;;
@@ -1579,7 +1627,8 @@ show_menu() {
             configure_remote_syslog
             ;;
         28) full_system_revert ;;
-        29)
+        29) check_for_updates ;;
+        30)
             log_info "Exiting. Log file: $LOG_FILE"
             echo -e "${CYAN}Backup directory: $BACKUP_DIR${NC}"
             exit 0
