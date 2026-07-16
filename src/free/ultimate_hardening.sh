@@ -269,9 +269,20 @@ full_system_revert() {
     fi
 
     if [[ ! -d "$BACKUP_DIR" ]]; then
-        log_error "No backup directory found at $BACKUP_DIR"
-        log_info "Cannot perform revert without backups."
-        return
+        # This invocation's backup dir is timestamped fresh at script start,
+        # so it won't exist yet if hardening was applied in an earlier run.
+        # Fall back to the most recent backup on disk before giving up.
+        local found_dir
+        found_dir=$(find /root -maxdepth 1 -type d -name "hardening_backup_*" 2>/dev/null | sort | tail -1)
+        if [[ -n "$found_dir" ]]; then
+            BACKUP_DIR="$found_dir"
+            SUID_BACKUP_FILE="$BACKUP_DIR/suid_sgid_original_perms.txt"
+            log_info "Using most recent backup found: $BACKUP_DIR"
+        else
+            log_error "No backup directory found at $BACKUP_DIR"
+            log_info "Cannot perform revert without backups."
+            return
+        fi
     fi
 
     # Restore SSH config
@@ -343,8 +354,18 @@ undo_suid_hardening() {
     fi
 
     if [[ ! -f "$SUID_BACKUP_FILE" ]]; then
-        log_error "No backup file found at $SUID_BACKUP_FILE"
-        return
+        # This invocation's backup dir is timestamped fresh at script start,
+        # so it won't exist yet if hardening was applied in an earlier run.
+        # Fall back to the most recent backup on disk before giving up.
+        local found_backup
+        found_backup=$(find /root -maxdepth 2 -name "suid_sgid_original_perms.txt" -type f 2>/dev/null | sort | tail -1)
+        if [[ -n "$found_backup" ]]; then
+            SUID_BACKUP_FILE="$found_backup"
+            log_info "Using most recent backup found: $SUID_BACKUP_FILE"
+        else
+            log_error "No backup file found at $SUID_BACKUP_FILE"
+            return
+        fi
     fi
 
     if [[ "$AUTO_MODE" == false ]] && [[ "$REVERT_SUID_ONLY" == false ]]; then
