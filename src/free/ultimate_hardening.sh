@@ -1,22 +1,32 @@
 #!/bin/bash
 # =============================================================================
 #  ULTIMATE SYSTEM HARDENING SCRIPT (PAM-SAFE VERSION)
-#  Version: 2.0.1  |  Multi-distribution support with interactive distro selection
-#  27 Security Features - CIS Benchmark Aligned
+#  Version: 2.1.0  |  Multi-distribution support with interactive distro selection
+#  28 Security Features - CIS Benchmark Aligned
 # =============================================================================
-#  CHANGES FROM v2.0.0:
-#    - REMOVED: Password Policies module (#8) - caused login loops on ecryptfs
-#    - Updated: apply_all_safe() now only applies modules 1-7 and 9-16
-#    - Updated: Menu now shows 15 modules instead of 16
-#    - Total options reduced from 29 to 28
+#  CHANGES FROM v2.0.1:
+#    - RE-ADDED: Password Policies as option 24 ("Password Policies (Safe)").
+#      Only writes /etc/security/pwquality.conf — never touches any
+#      /etc/pam.d/* file, so it can't repeat the ecryptfs/KDE-Plasma login
+#      breakage that got the original version pulled. See the comment above
+#      the old option-8 slot for the root-cause writeup.
+#    - apply_all_safe() now also applies the new option 24.
+#    - Total options increased from 28 to 29.
 # =============================================================================
 # Usage: sudo ./ultimate_hardening.sh [--skip-backup] [--auto-mode] [--dry-run] [--revert] [--revert-suid] [--help]
 # =============================================================================
+# shellcheck disable=SC2059
+# SC2059 fires throughout the menu printf calls below because they embed
+# ${COLOR}/${ICON} variables directly in the format string. Every one of
+# those variables is a fixed literal defined in this file (never user input,
+# args, or file content), so there's no format-string injection risk here —
+# rewriting ~30 hand-aligned menu lines to printf '%s' form would only risk
+# breaking their spacing for no real safety gain.
 
 set -euo pipefail
 
 # ----------------------------- Configuration ---------------------------------
-VERSION="2.0.1"
+VERSION="2.1.0"
 LOG_FILE="/var/log/ultimate_hardening_$(date +%Y%m%d_%H%M%S).log"
 BACKUP_DIR="/root/hardening_backup_$(date +%Y%m%d_%H%M%S)"
 SUID_BACKUP_FILE="$BACKUP_DIR/suid_sgid_original_perms.txt"
@@ -357,7 +367,7 @@ undo_suid_hardening() {
 # --- 1. System Updates -------------------------------------------------------
 apply_system_updates() {
     create_backup_dir
-    log_message "${GEAR} [1/15] System Updates"
+    log_message "${GEAR} [1/24] System Updates"
     echo -e "\n${GREEN}${INFO} This will update all system packages${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -394,7 +404,7 @@ pm=$(get_package_manager)
 # --- 2. SSH Hardening --------------------------------------------------------
 apply_ssh_hardening() {
     create_backup_dir
-    log_message "${LOCK} [2/15] SSH Hardening"
+    log_message "${LOCK} [2/24] SSH Hardening"
     echo -e "\n${YELLOW}${WARNING} This will harden SSH configuration${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -448,7 +458,7 @@ apply_ssh_hardening() {
 # --- 3. Firewall Configuration (nftables) -------------------------------------
 apply_firewall() {
     create_backup_dir
-    log_message "${SHIELD} [3/15] Firewall Configuration"
+    log_message "${SHIELD} [3/24] Firewall Configuration"
     echo -e "\n${YELLOW}${WARNING} This will configure nftables firewall${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -504,9 +514,11 @@ table inet filter {
 }
 EOF
 
-    systemctl enable nftables >> "$LOG_FILE" 2>&1
-    systemctl start nftables >> "$LOG_FILE" 2>&1
-    nft -f /etc/nftables.conf >> "$LOG_FILE" 2>&1
+    {
+        systemctl enable nftables
+        systemctl start nftables
+        nft -f /etc/nftables.conf
+    } >> "$LOG_FILE" 2>&1
 
     log_success "Firewall configured"
 }
@@ -514,7 +526,7 @@ EOF
 # --- 4. Fail2Ban -------------------------------------------------------------
 apply_fail2ban() {
     create_backup_dir
-    log_message "${SHIELD} [4/15] Fail2Ban Installation"
+    log_message "${SHIELD} [4/24] Fail2Ban Installation"
     echo -e "\n${GREEN}${INFO} This will install and configure Fail2Ban${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -556,7 +568,7 @@ EOF
 # --- 5. File Permissions -----------------------------------------------------
 apply_permission_hardening() {
     create_backup_dir
-    log_message "${LOCK} [5/15] File Permission Hardening"
+    log_message "${LOCK} [5/24] File Permission Hardening"
     echo -e "\n${GREEN}${INFO} This will secure critical file permissions${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -589,7 +601,7 @@ apply_permission_hardening() {
 # --- 6. Kernel Hardening -----------------------------------------------------
 apply_kernel_hardening() {
     create_backup_dir
-    log_message "${GEAR} [6/15] Kernel Hardening"
+    log_message "${GEAR} [6/24] Kernel Hardening"
     echo -e "\n${GREEN}${INFO} This will apply kernel sysctl hardening${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -633,7 +645,7 @@ EOF
 # --- 7. Auditd Configuration -------------------------------------------------
 apply_audit_config() {
     create_backup_dir
-    log_message "${SHIELD} [7/15] Auditd Configuration"
+    log_message "${SHIELD} [7/24] Auditd Configuration"
     echo -e "\n${GREEN}${INFO} This will configure system auditing${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -665,22 +677,34 @@ apply_audit_config() {
 -a always,exit -S sethostname -S setdomainname -k system-locale
 EOF
 
-    systemctl enable auditd >> "$LOG_FILE" 2>&1
-    systemctl start auditd >> "$LOG_FILE" 2>&1
-    auditctl -R /etc/audit/rules.d/99-hardening.rules >> "$LOG_FILE" 2>&1
+    {
+        systemctl enable auditd
+        systemctl start auditd
+        auditctl -R /etc/audit/rules.d/99-hardening.rules
+    } >> "$LOG_FILE" 2>&1
 
     log_success "Auditd configured"
 }
 
-# --- 8. Password Policies (REMOVED - causes issues with ecryptfs)
-# This module has been removed to prevent login loops on systems with
-# encrypted home directories. The PAM modifications in this module
-# were found to break authentication on ecryptfs systems.
+# --- 8. Password Policies (REMOVED from its original slot - see option 24) --
+# The original version of this module hand-edited /etc/pam.d/common-password
+# with sed. On Debian/Ubuntu/Mint that file is machine-managed by
+# pam-auth-update from /usr/share/pam-configs/* profiles (including
+# ecryptfs's own profile, which inserts pam_ecryptfs.so to re-wrap the
+# encrypted-home mount passphrase on password change). The sed edit sat
+# outside pam-auth-update's tracking markers, so installing a second desktop
+# environment (e.g. KDE Plasma/SDDM) later re-triggered pam-auth-update and
+# desynced the login password from the ecryptfs-wrapped mount passphrase,
+# breaking login under SDDM specifically.
+#
+# A safe replacement is available as option 24 ("Password Policies (Safe)"):
+# it only writes /etc/security/pwquality.conf and never touches any
+# /etc/pam.d/* file, so it can't repeat this failure mode.
 
 # --- 9. SUID Hardening (renumbered to 8) -------------------------------------
 apply_suid_hardening() {
     create_backup_dir
-    log_message "${FIRE} [8/15] SUID/SGID Hardening"
+    log_message "${FIRE} [8/24] SUID/SGID Hardening"
     echo -e "\n${RED}${WARNING} HIGH RISK: This removes SUID bits from non-essential binaries${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -726,7 +750,7 @@ undo_suid_hardening_menu() {
 # --- 11. AIDE (renumbered to 10) --------------------------------------------
 apply_aide() {
     create_backup_dir
-    log_message "${SHIELD} [10/15] AIDE Installation"
+    log_message "${SHIELD} [10/24] AIDE Installation"
     echo -e "\n${GREEN}${INFO} This installs file integrity monitoring${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -751,7 +775,7 @@ apply_aide() {
 # --- 12. rkhunter (renumbered to 11) -----------------------------------------
 apply_rkhunter() {
     create_backup_dir
-    log_message "${SHIELD} [11/15] rkhunter Installation"
+    log_message "${SHIELD} [11/24] rkhunter Installation"
     echo -e "\n${GREEN}${INFO} This installs rootkit hunter${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -776,7 +800,7 @@ apply_rkhunter() {
 # --- 13. Disable Services (renumbered to 12) ---------------------------------
 apply_disable_services() {
     create_backup_dir
-    log_message "${GEAR} [12/15] Disabling Unnecessary Services"
+    log_message "${GEAR} [12/24] Disabling Unnecessary Services"
     echo -e "\n${YELLOW}${WARNING} This disables unnecessary services${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -802,7 +826,7 @@ apply_disable_services() {
 # --- 14. AppArmor/SELinux (renumbered to 13) --------------------------------
 apply_apparmor() {
     create_backup_dir
-    log_message "${SHIELD} [13/15] AppArmor/SELinux Configuration"
+    log_message "${SHIELD} [13/24] AppArmor/SELinux Configuration"
     echo -e "\n${GREEN}${INFO} This configures mandatory access control${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -838,7 +862,7 @@ apply_apparmor() {
 # --- 15. etckeeper (renumbered to 14) ----------------------------------------
 apply_etckeeper() {
     create_backup_dir
-    log_message "${GEAR} [14/15] etckeeper Setup"
+    log_message "${GEAR} [14/24] etckeeper Setup"
     echo -e "\n${GREEN}${INFO} This sets up version control for /etc${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -863,7 +887,7 @@ apply_etckeeper() {
 # --- 16. Boot Security (renumbered to 15) ------------------------------------
 apply_boot_secure() {
     create_backup_dir
-    log_message "${LOCK} [15/15] Boot Security"
+    log_message "${LOCK} [15/24] Boot Security"
     echo -e "\n${GREEN}${INFO} This secures boot loader permissions${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -887,7 +911,7 @@ apply_boot_secure() {
 # --- 17. GRUB Password (renumbered to 16) ------------------------------------
 apply_grub_password() {
     create_backup_dir
-    log_message "${LOCK} [16/15] GRUB Password"
+    log_message "${LOCK} [16/24] GRUB Password"
     echo -e "\n${RED}${WARNING} HIGH RISK: This sets a GRUB password${NC}"
 
     if [[ "$AUTO_MODE" == true ]]; then
@@ -933,7 +957,7 @@ grub_hash=$(printf '%s\n%s\n' "$grub_pass" "$grub_pass" | grub-mkpasswd-pbkdf2 2
 # --- 18. Docker Security (renumbered to 17) ----------------------------------
 apply_docker_security() {
     create_backup_dir
-    log_message "${DOCKER_ICON} [17/15] Docker Security"
+    log_message "${DOCKER_ICON} [17/24] Docker Security"
     echo -e "\n${YELLOW}${WARNING} This hardens Docker configuration${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -978,7 +1002,7 @@ EOF
 # --- 19. ModSecurity (renumbered to 18) --------------------------------------
 apply_modsecurity() {
     create_backup_dir
-    log_message "${SHIELD} [18/15] ModSecurity WAF"
+    log_message "${SHIELD} [18/24] ModSecurity WAF"
     echo -e "\n${YELLOW}${WARNING} This installs ModSecurity for Apache${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -1013,7 +1037,7 @@ apply_modsecurity() {
 # --- 20. Google Authenticator (renumbered to 19) -----------------------------
 apply_google_auth() {
     create_backup_dir
-    log_message "${LOCK} [19/15] Google Authenticator MFA"
+    log_message "${LOCK} [19/24] Google Authenticator MFA"
     echo -e "\n${YELLOW}${WARNING} This enables MFA for SSH${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -1038,7 +1062,7 @@ apply_google_auth() {
 # --- 21. USB Blocking (renumbered to 20) -------------------------------------
 apply_usb_blocking() {
     create_backup_dir
-    log_message "${FIRE} [20/15] USB Storage Blocking"
+    log_message "${FIRE} [20/24] USB Storage Blocking"
     echo -e "\n${YELLOW}${WARNING} This disables USB storage${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -1061,7 +1085,7 @@ apply_usb_blocking() {
 # --- 22. Disable Unused Protocols (renumbered to 21) -------------------------
 disable_unused_protocols() {
     create_backup_dir
-    log_message "${GEAR} [21/15] Disabling Unused Protocols"
+    log_message "${GEAR} [21/24] Disabling Unused Protocols"
     echo -e "\n${YELLOW}${WARNING} This disables DCCP, SCTP, RDS, TIPC${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -1088,7 +1112,7 @@ EOF
 # --- 23. Compiler Restriction (renumbered to 22) -----------------------------
 apply_compiler_restriction() {
     create_backup_dir
-    log_message "${GEAR} [22/15] Compiler Restriction"
+    log_message "${GEAR} [22/24] Compiler Restriction"
     echo -e "\n${YELLOW}${WARNING} This restricts compilers to root only${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
@@ -1115,7 +1139,7 @@ apply_compiler_restriction() {
 # --- 24. Remote Syslog (renumbered to 23) ------------------------------------
 configure_remote_syslog() {
     create_backup_dir
-    log_message "${INFO} [23/15] Remote Syslog"
+    log_message "${INFO} [23/24] Remote Syslog"
     echo -e "\n${YELLOW}${WARNING} This configures remote logging${NC}"
 
     if [[ "$AUTO_MODE" == true ]]; then
@@ -1145,6 +1169,62 @@ configure_remote_syslog() {
     fi
 }
 
+# --- 24. Password Policies (Safe) --------------------------------------------
+apply_password_policies() {
+    create_backup_dir
+    log_message "${LOCK} [24/24] Password Policies (Safe)"
+    echo -e "\n${GREEN}${INFO} This sets password complexity requirements via pwquality.conf${NC}"
+    echo -e "${CYAN}${INFO} No PAM stack files (common-password/common-auth/etc.) are touched.${NC}"
+
+    if [[ "$AUTO_MODE" == false ]]; then
+        read -r -p "Apply password policies? (y/N): " choice
+        [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
+    fi
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would install pwquality and set complexity rules in /etc/security/pwquality.conf"
+        log_success "DRY RUN: Password policies applied"
+        return
+    fi
+
+    # Skip if more than one display manager's PAM profile is present — a sign
+    # of a layered desktop environment (e.g. KDE Plasma/SDDM added on top of a
+    # different base DE). See the comment above the old option-8 slot for why.
+    local dm_count=0
+    for dm_pam in /etc/pam.d/sddm /etc/pam.d/gdm /etc/pam.d/gdm3 /etc/pam.d/lightdm /etc/pam.d/lxdm; do
+        [[ -f "$dm_pam" ]] && dm_count=$((dm_count + 1))
+    done
+    if [[ $dm_count -gt 1 ]]; then
+        log_warning "Multiple display manager PAM profiles detected (possible layered desktop environment). Skipping to avoid login issues."
+        return
+    fi
+
+    case "$DISTRO_TYPE" in
+        debian) install_package "libpam-pwquality" ;;
+        rhel)   install_package "pam" ;;
+        arch)   install_package "libpwquality" ;;
+        suse)   install_package "pam" ;;
+    esac
+
+    local PWQUALITY_CONF="/etc/security/pwquality.conf"
+    backup_file "$PWQUALITY_CONF"
+    [[ -f "$PWQUALITY_CONF" ]] || touch "$PWQUALITY_CONF"
+
+    # Idempotent: strip any prior values for these keys before appending fresh ones
+    sed -i '/^\s*minlen\s*=/d;/^\s*dcredit\s*=/d;/^\s*ucredit\s*=/d;/^\s*ocredit\s*=/d;/^\s*lcredit\s*=/d' "$PWQUALITY_CONF"
+
+    cat >> "$PWQUALITY_CONF" << 'EOF'
+minlen = 12
+dcredit = -1
+ucredit = -1
+ocredit = -1
+lcredit = -1
+EOF
+
+    log_success "Password complexity policy applied (minlen=12, requires upper/lower/digit/special)"
+    log_info "Note: on Arch, pam_pwquality isn't wired into the default PAM stack — this config takes effect only if pam_pwquality.so is already referenced in your PAM profile."
+}
+
 # --- 25. CIS Checks ----------------------------------------------------------
 run_cis_checks() {
     log_cis "Running CIS benchmark compliance checks..."
@@ -1165,11 +1245,19 @@ run_cis_checks() {
 
     # Check 2: SSH settings
     if [[ -f /etc/ssh/sshd_config ]]; then
-        grep -q "^PermitRootLogin no" /etc/ssh/sshd_config 2>/dev/null && \
-            log_success "  SSH root login disabled" || { log_warning "  SSH root login not disabled"; issues=$((issues + 1)); }
+        if grep -q "^PermitRootLogin no" /etc/ssh/sshd_config 2>/dev/null; then
+            log_success "  SSH root login disabled"
+        else
+            log_warning "  SSH root login not disabled"
+            issues=$((issues + 1))
+        fi
 
-        grep -q "^PasswordAuthentication no" /etc/ssh/sshd_config 2>/dev/null && \
-            log_success "  SSH password auth disabled" || { log_warning "  SSH password auth not disabled"; issues=$((issues + 1)); }
+        if grep -q "^PasswordAuthentication no" /etc/ssh/sshd_config 2>/dev/null; then
+            log_success "  SSH password auth disabled"
+        else
+            log_warning "  SSH password auth not disabled"
+            issues=$((issues + 1))
+        fi
     fi
 
     # Check 3: Auditd
@@ -1209,9 +1297,8 @@ run_cis_checks() {
 # --- 26. All Safe Fixes (renumbered to 24) -----------------------------------
 apply_all_safe() {
     create_backup_dir
-    log_message "${ROCKET} [24/15] Applying all safe fixes (1-7, 9-16)..."
-    echo -e "\n${CYAN}This will apply options 1-7 and 9-16${NC}"
-    echo -e "${YELLOW}NOTE: Password Policies (option 8) has been removed for safety on ecryptfs systems.${NC}"
+    log_message "${ROCKET} Applying all safe fixes (1-7, 9-16, 24)..."
+    echo -e "\n${CYAN}This will apply options 1-7, 9-16, and 24 (Password Policies - Safe)${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
         read -r -p "Continue? (y/N): " choice
@@ -1225,7 +1312,6 @@ apply_all_safe() {
     apply_permission_hardening
     apply_kernel_hardening
     apply_audit_config
-    # Password Policies (option 8) REMOVED - safe for ecryptfs
     apply_suid_hardening
     apply_aide
     apply_rkhunter
@@ -1233,8 +1319,133 @@ apply_all_safe() {
     apply_apparmor
     apply_etckeeper
     apply_boot_secure
+    apply_password_policies
 
     log_success "All safe fixes processed"
+}
+
+# ----------------------------- Live Status Checks ----------------------------
+# Fast, read-only checks used to show whether each module already appears to
+# be applied on this system. "N/A" means the option is an action rather than
+# a persistent on/off state (e.g. System Updates, Undo SUID, Exit).
+get_status() {
+    case "$1" in
+        1) # System Updates: ON = system is up to date, OFF = updates pending
+            local pending=0
+            case "$DISTRO_TYPE" in
+                debian) pending=$(apt list --upgradable 2>/dev/null | tail -n +2 | wc -l) || pending=0 ;;
+                rhel)   pending=$( { yum check-update 2>/dev/null || true; } | grep -cE '^[a-zA-Z0-9]') || pending=0 ;;
+                arch)   pending=$(pacman -Qu 2>/dev/null | wc -l) || pending=0 ;;
+                suse)   pending=$(zypper lu 2>/dev/null | grep -cE '^v \|') || pending=0 ;;
+            esac
+            pending="${pending:-0}"
+            [[ "$pending" -eq 0 ]] && echo "ON" || echo "OFF" ;;
+        2) # SSH Hardening
+            if grep -q "^PermitRootLogin no" /etc/ssh/sshd_config 2>/dev/null && \
+               grep -q "^PasswordAuthentication no" /etc/ssh/sshd_config 2>/dev/null; then
+                echo "ON"
+            else
+                echo "OFF"
+            fi ;;
+        3) # Firewall
+            systemctl is-active --quiet nftables 2>/dev/null && echo "ON" || echo "OFF" ;;
+        4) # Fail2Ban
+            systemctl is-active --quiet fail2ban 2>/dev/null && echo "ON" || echo "OFF" ;;
+        5) # File Permission Hardening
+            [[ "$(stat -c '%a' /etc/shadow 2>/dev/null)" == "600" ]] && echo "ON" || echo "OFF" ;;
+        6) # Kernel/Network Hardening
+            [[ -f /etc/sysctl.d/99-hardening.conf ]] && echo "ON" || echo "OFF" ;;
+        7) # Auditd
+            systemctl is-active --quiet auditd 2>/dev/null && echo "ON" || echo "OFF" ;;
+        8) # SUID/SGID Hardening (checks every binary apply_suid_hardening touches)
+            local suid_bins=(/usr/bin/at /usr/bin/chage /usr/bin/crontab /usr/bin/expiry /usr/bin/gpasswd /usr/bin/wall /usr/bin/chfn /usr/bin/chsh /usr/bin/ssh-agent)
+            local suid_found=false suid_any_set=false
+            for b in "${suid_bins[@]}"; do
+                if [[ -f "$b" ]]; then
+                    suid_found=true
+                    [[ -u "$b" ]] && suid_any_set=true
+                fi
+            done
+            if [[ "$suid_found" == false ]]; then
+                echo "N/A"
+            elif [[ "$suid_any_set" == true ]]; then
+                echo "OFF"
+            else
+                echo "ON"
+            fi ;;
+        10) # AIDE
+            command -v aide &>/dev/null && [[ -f /var/lib/aide/aide.db.gz ]] && echo "ON" || echo "OFF" ;;
+        11) # rkhunter
+            command -v rkhunter &>/dev/null && echo "ON" || echo "OFF" ;;
+        12) # Disable Unnecessary Services (checks every service apply_disable_services touches)
+            local svcs=(avahi-daemon cups nfs-server rpcbind slapd named postfix)
+            local svc_found=false svc_any_enabled=false
+            for s in "${svcs[@]}"; do
+                local svc_state
+                svc_state=$(systemctl is-enabled "$s" 2>/dev/null || true)
+                case "$svc_state" in
+                    enabled|enabled-runtime|static)
+                        svc_found=true
+                        svc_any_enabled=true
+                        ;;
+                    disabled|masked)
+                        svc_found=true
+                        ;;
+                esac
+            done
+            if [[ "$svc_found" == false ]]; then
+                echo "N/A"
+            elif [[ "$svc_any_enabled" == true ]]; then
+                echo "OFF"
+            else
+                echo "ON"
+            fi ;;
+        13) # AppArmor/SELinux
+            if systemctl is-active --quiet apparmor 2>/dev/null; then
+                echo "ON"
+            elif [[ "$(getenforce 2>/dev/null)" == "Enforcing" ]]; then
+                echo "ON"
+            else
+                echo "OFF"
+            fi ;;
+        14) # etckeeper
+            [[ -d /etc/.git ]] && echo "ON" || echo "OFF" ;;
+        15) # Secure Boot Permissions
+            [[ "$(stat -c '%a' /boot/grub/grub.cfg 2>/dev/null)" == "600" ]] && echo "ON" || echo "OFF" ;;
+        16) # GRUB Password
+            grep -q "password_pbkdf2" /etc/grub.d/40_custom 2>/dev/null && echo "ON" || echo "OFF" ;;
+        17) # Docker Security
+            grep -q "userns-remap" /etc/docker/daemon.json 2>/dev/null && echo "ON" || echo "OFF" ;;
+        18) # ModSecurity
+            [[ -e /etc/apache2/mods-enabled/security2.load ]] && echo "ON" || echo "OFF" ;;
+        19) # Google Authenticator MFA
+            grep -q "pam_google_authenticator" /etc/pam.d/sshd 2>/dev/null && echo "ON" || echo "OFF" ;;
+        20) # Block USB Storage
+            [[ -f /etc/modprobe.d/usb-storage-blacklist.conf ]] && echo "ON" || echo "OFF" ;;
+        21) # Disable Unused Protocols
+            [[ -f /etc/modprobe.d/disable-unused-protocols.conf ]] && echo "ON" || echo "OFF" ;;
+        22) # Restrict Compiler Access
+            local gcc_path; gcc_path=$(command -v gcc 2>/dev/null)
+            if [[ -n "$gcc_path" ]]; then
+                [[ "$(stat -c '%a' "$gcc_path" 2>/dev/null)" == "700" ]] && echo "ON" || echo "OFF"
+            else
+                echo "N/A"
+            fi ;;
+        23) # Remote Syslog
+            grep -qE '^\*\.\* @' /etc/rsyslog.conf 2>/dev/null && echo "ON" || echo "OFF" ;;
+        24) # Password Policies (Safe)
+            grep -q "^minlen = 12" /etc/security/pwquality.conf 2>/dev/null && echo "ON" || echo "OFF" ;;
+        *) echo "N/A" ;;
+    esac
+}
+
+# Fixed-width colored badge so menu alignment stays consistent regardless of value
+status_tag() {
+    case "$1" in
+        ON)  printf '%s' "${GREEN}[ON] ${NC}" ;;
+        OFF) printf '%s' "${YELLOW}[OFF]${NC}" ;;
+        *)   printf '%s' "${CYAN}[N/A]${NC}" ;;
+    esac
 }
 
 # ----------------------------- Main Menu -------------------------------------
@@ -1255,57 +1466,58 @@ show_menu() {
     echo -e "${WHITE}┌─────────────────────────────────────────────────────────────────────┐${NC}"
     echo -e "${WHITE}│                         ${GREEN}CORE SECURITY (1-7)${WHITE}                                   │${NC}"
     echo -e "${WHITE}├─────────────────────────────────────────────────────────────────────┤${NC}"
-    printf "${WHITE}│${NC}  ${ROCKET} 1) System Updates                   ${GREEN}(Safe)${NC}                     ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${LOCK}  2) Harden SSH Configuration       ${YELLOW}(Medium)${NC}                    ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${FIRE}  3) Configure Firewall             ${YELLOW}(Medium)${NC}                    ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${SHIELD} 4) Install Fail2Ban               ${GREEN}(Safe)${NC}                     ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${LOCK}  5) File Permission Hardening      ${GREEN}(Safe)${NC}                     ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${GEAR}  6) Kernel/Network Hardening       ${GREEN}(Safe)${NC}                     ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${SHIELD} 7) Configure Auditd               ${GREEN}(Safe)${NC}                     ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${ROCKET} 1) System Updates                   ${GREEN}(Safe)${NC} $(status_tag "$(get_status 1)")               ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${LOCK}  2) Harden SSH Configuration       ${YELLOW}(Medium)${NC} $(status_tag "$(get_status 2)")              ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${FIRE}  3) Configure Firewall             ${YELLOW}(Medium)${NC} $(status_tag "$(get_status 3)")              ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${SHIELD} 4) Install Fail2Ban               ${GREEN}(Safe)${NC} $(status_tag "$(get_status 4)")               ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${LOCK}  5) File Permission Hardening      ${GREEN}(Safe)${NC} $(status_tag "$(get_status 5)")               ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${GEAR}  6) Kernel/Network Hardening       ${GREEN}(Safe)${NC} $(status_tag "$(get_status 6)")               ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${SHIELD} 7) Configure Auditd               ${GREEN}(Safe)${NC} $(status_tag "$(get_status 7)")               ${WHITE}│${NC}\n"
     echo -e "${WHITE}└─────────────────────────────────────────────────────────────────────┘${NC}"
     echo ""
 
     echo -e "${WHITE}┌─────────────────────────────────────────────────────────────────────┐${NC}"
     echo -e "${WHITE}│                         ${YELLOW}MONITORING & HARDENING (8-15)${WHITE}                        │${NC}"
     echo -e "${WHITE}├─────────────────────────────────────────────────────────────────────┤${NC}"
-    printf "${WHITE}│${NC}  ${FIRE}  8) Harden SUID/SGID Binaries      ${RED}(HIGH RISK)${NC}                  ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${UNDO}  9) Undo SUID Hardening            ${GREEN}(Restore)${NC}                  ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${SHIELD}10) Install AIDE                  ${GREEN}(Safe)${NC}                     ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${SHIELD}11) Install rkhunter              ${GREEN}(Safe)${NC}                     ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${GEAR} 12) Disable Unnecessary Services   ${GREEN}(Safe)${NC}                     ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${SHIELD}13) Configure AppArmor/SELinux    ${GREEN}(Safe)${NC}                     ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${GEAR} 14) Setup etckeeper                ${GREEN}(Safe)${NC}                     ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${LOCK} 15) Secure Boot Permissions        ${GREEN}(Safe)${NC}                     ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${FIRE}  8) Harden SUID/SGID Binaries      ${RED}(HIGH RISK)${NC} $(status_tag "$(get_status 8)")            ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${UNDO}  9) Undo SUID Hardening            ${GREEN}(Restore)${NC} $(status_tag "$(get_status 9)")            ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${SHIELD}10) Install AIDE                  ${GREEN}(Safe)${NC} $(status_tag "$(get_status 10)")               ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${SHIELD}11) Install rkhunter              ${GREEN}(Safe)${NC} $(status_tag "$(get_status 11)")               ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${GEAR} 12) Disable Unnecessary Services   ${GREEN}(Safe)${NC} $(status_tag "$(get_status 12)")               ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${SHIELD}13) Configure AppArmor/SELinux    ${GREEN}(Safe)${NC} $(status_tag "$(get_status 13)")               ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${GEAR} 14) Setup etckeeper                ${GREEN}(Safe)${NC} $(status_tag "$(get_status 14)")               ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${LOCK} 15) Secure Boot Permissions        ${GREEN}(Safe)${NC} $(status_tag "$(get_status 15)")               ${WHITE}│${NC}\n"
     echo -e "${WHITE}└─────────────────────────────────────────────────────────────────────┘${NC}"
     echo ""
 
     echo -e "${WHITE}┌─────────────────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${WHITE}│                         ${MAGENTA}ADVANCED FEATURES (16-23)${WHITE}                           │${NC}"
+    echo -e "${WHITE}│                         ${MAGENTA}ADVANCED FEATURES (16-24)${WHITE}                           │${NC}"
     echo -e "${WHITE}├─────────────────────────────────────────────────────────────────────┤${NC}"
-    printf "${WHITE}│${NC}  ${LOCK} 16) Set GRUB Password              ${RED}(HIGH RISK)${NC}                  ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${DOCKER_ICON}17) Docker Security           ${YELLOW}(Medium)${NC}                    ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${SHIELD}18) Install ModSecurity           ${YELLOW}(Medium)${NC}                    ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${LOCK} 19) Google Authenticator MFA       ${YELLOW}(Medium)${NC}                    ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${FIRE} 20) Block USB Storage              ${YELLOW}(Medium)${NC}                    ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${GEAR} 21) Disable Unused Protocols       ${GREEN}(Safe)${NC}                     ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${GEAR} 22) Restrict Compiler Access       ${GREEN}(Safe)${NC}                     ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${INFO} 23) Configure Remote Syslog        ${YELLOW}(Medium)${NC}                    ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${LOCK} 16) Set GRUB Password              ${RED}(HIGH RISK)${NC} $(status_tag "$(get_status 16)")            ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${DOCKER_ICON}17) Docker Security           ${YELLOW}(Medium)${NC} $(status_tag "$(get_status 17)")              ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${SHIELD}18) Install ModSecurity           ${YELLOW}(Medium)${NC} $(status_tag "$(get_status 18)")              ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${LOCK} 19) Google Authenticator MFA       ${YELLOW}(Medium)${NC} $(status_tag "$(get_status 19)")              ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${FIRE} 20) Block USB Storage              ${YELLOW}(Medium)${NC} $(status_tag "$(get_status 20)")              ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${GEAR} 21) Disable Unused Protocols       ${GREEN}(Safe)${NC} $(status_tag "$(get_status 21)")               ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${GEAR} 22) Restrict Compiler Access       ${GREEN}(Safe)${NC} $(status_tag "$(get_status 22)")               ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${INFO} 23) Configure Remote Syslog        ${YELLOW}(Medium)${NC} $(status_tag "$(get_status 23)")              ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${LOCK} 24) Password Policies (Safe)       ${GREEN}(Safe)${NC} $(status_tag "$(get_status 24)")               ${WHITE}│${NC}\n"
     echo -e "${WHITE}└─────────────────────────────────────────────────────────────────────┘${NC}"
     echo ""
 
     echo -e "${WHITE}┌─────────────────────────────────────────────────────────────────────┐${NC}"
     echo -e "${WHITE}│                         ${CYAN}META OPERATIONS${WHITE}                                      │${NC}"
     echo -e "${WHITE}├─────────────────────────────────────────────────────────────────────┤${NC}"
-    printf "${WHITE}│${NC}  ${CIS_ICON} 24) Run CIS Benchmark Checks     ${GREEN}(Read-only)${NC}                   ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${ROCKET}25) Apply All Safe Fixes (1-7,9-15) ${GREEN}(Recommended)${NC}              ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${ROCKET}26) Apply All (Full Hardening)    ${YELLOW}(Complete)${NC}                   ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${UNDO} 27) Full System Revert (from backup) ${RED}(DANGER)${NC}                     ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${CROSS_MARK}28) Exit                                       ${WHITE}                  │${NC}\n"
+    printf "${WHITE}│${NC}  ${CIS_ICON} 25) Run CIS Benchmark Checks     ${GREEN}(Read-only)${NC}                   ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${ROCKET}26) Apply All Safe Fixes (1-7,9-16,24) ${GREEN}(Recommended)${NC}           ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${ROCKET}27) Apply All (Full Hardening)    ${YELLOW}(Complete)${NC}                   ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${UNDO} 28) Full System Revert (from backup) ${RED}(DANGER)${NC}                     ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${CROSS_MARK}29) Exit                                       ${WHITE}                  │${NC}\n"
     echo -e "${WHITE}└─────────────────────────────────────────────────────────────────────┘${NC}"
     echo ""
 
     echo -e "${CYAN}══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════${NC}"
-    read -r -p "$(echo -e "${WHITE}Enter your choice (1-28):${NC} ")" choice
+    read -r -p "$(echo -e "${WHITE}Enter your choice (1-29):${NC} ")" choice
 
     case "$choice" in
         1) apply_system_updates ;;
@@ -1331,9 +1543,10 @@ show_menu() {
         21) disable_unused_protocols ;;
         22) apply_compiler_restriction ;;
         23) configure_remote_syslog ;;
-        24) run_cis_checks ;;
-        25) apply_all_safe ;;
-        26)
+        24) apply_password_policies ;;
+        25) run_cis_checks ;;
+        26) apply_all_safe ;;
+        27)
             apply_all_safe
             apply_grub_password
             apply_docker_security
@@ -1344,8 +1557,8 @@ show_menu() {
             apply_compiler_restriction
             configure_remote_syslog
             ;;
-        27) full_system_revert ;;
-        28)
+        28) full_system_revert ;;
+        29)
             log_info "Exiting. Log file: $LOG_FILE"
             echo -e "${CYAN}Backup directory: $BACKUP_DIR${NC}"
             exit 0
