@@ -1,17 +1,26 @@
 #!/bin/bash
 # =============================================================================
 #  ULTIMATE SYSTEM HARDENING SCRIPT (PAM-SAFE VERSION)
-#  Version: 2.1.0  |  Multi-distribution support with interactive distro selection
-#  28 Security Features - CIS Benchmark Aligned
+#  Version: 2.2.0  |  Multi-distribution support with interactive distro selection
+#  30 Security Features - CIS Benchmark Aligned
 # =============================================================================
-#  CHANGES FROM v2.0.1:
+#  CHANGES FROM v2.1.0:
+#    - ADDED: option 25 ("UMASK Hardening") - sets a restrictive default
+#      umask (027) via /etc/login.defs, /etc/profile.d/, and /etc/bash.bashrc.
+#      apply_all_safe() now also applies it.
+#    - Renumbered Meta Operations: CIS Checks 26, Apply Safe 27, Apply Full
+#      28, Revert 29, Check for Updates 30, Exit 31.
+#
+#  CHANGES FROM v2.0.1 (still current):
 #    - RE-ADDED: Password Policies as option 24 ("Password Policies (Safe)").
 #      Only writes /etc/security/pwquality.conf — never touches any
 #      /etc/pam.d/* file, so it can't repeat the ecryptfs/KDE-Plasma login
 #      breakage that got the original version pulled. See the comment above
 #      the old option-8 slot for the root-cause writeup.
-#    - apply_all_safe() now also applies the new option 24.
-#    - Total options increased from 28 to 29.
+#    - ADDED: option 30 ("Check for Updates") - queries GitHub for the latest
+#      commit touching this file and compares against the installed version.
+#    - ADDED: live [ON]/[OFF]/[N/A] status badges on every toggleable menu
+#      option, reflecting whether it already appears applied on this system.
 # =============================================================================
 # Usage: sudo ./ultimate_hardening.sh [--skip-backup] [--auto-mode] [--dry-run] [--revert] [--revert-suid] [--help]
 # =============================================================================
@@ -26,7 +35,7 @@
 set -euo pipefail
 
 # ----------------------------- Configuration ---------------------------------
-VERSION="2.1.0"
+VERSION="2.2.0"
 LOG_FILE="/var/log/ultimate_hardening_$(date +%Y%m%d_%H%M%S).log"
 BACKUP_DIR="/root/hardening_backup_$(date +%Y%m%d_%H%M%S)"
 SUID_BACKUP_FILE="$BACKUP_DIR/suid_sgid_original_perms.txt"
@@ -1246,7 +1255,48 @@ EOF
     log_info "Note: on Arch, pam_pwquality isn't wired into the default PAM stack — this config takes effect only if pam_pwquality.so is already referenced in your PAM profile."
 }
 
-# --- 25. CIS Checks ----------------------------------------------------------
+# --- 25. UMASK Hardening ------------------------------------------------------
+apply_umask_hardening() {
+    create_backup_dir
+    log_message "${LOCK} [25/25] UMASK Hardening"
+    echo -e "\n${GREEN}${INFO} This sets a restrictive default umask (027) for new files/directories${NC}"
+
+    if [[ "$AUTO_MODE" == false ]]; then
+        read -r -p "Apply UMASK hardening? (y/N): " choice
+        [[ ! "$choice" =~ ^[Yy] ]] && { log_info "Skipped."; return; }
+    fi
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "DRY RUN: Would set UMASK 027 in /etc/login.defs and /etc/profile.d/"
+        log_success "DRY RUN: UMASK hardening applied"
+        return
+    fi
+
+    backup_file "/etc/login.defs"
+    if [[ -f /etc/login.defs ]]; then
+        if grep -q "^UMASK" /etc/login.defs; then
+            sed -i 's/^UMASK.*/UMASK           027/' /etc/login.defs
+        else
+            echo "UMASK           027" >> /etc/login.defs
+        fi
+    fi
+
+    backup_file "/etc/profile.d/hardening-umask.sh"
+    cat > /etc/profile.d/hardening-umask.sh << 'EOF'
+# Restrictive default umask (hardening)
+umask 027
+EOF
+    chmod 644 /etc/profile.d/hardening-umask.sh
+
+    if [[ -f /etc/bash.bashrc ]]; then
+        backup_file "/etc/bash.bashrc"
+        grep -q "^umask 027" /etc/bash.bashrc || echo "umask 027" >> /etc/bash.bashrc
+    fi
+
+    log_success "UMASK hardening applied (027: owner rwx, group rx, others none)"
+}
+
+# --- 26. CIS Checks ----------------------------------------------------------
 run_cis_checks() {
     log_cis "Running CIS benchmark compliance checks..."
     echo -e "\n${MAGENTA}${CIS_ICON} CIS BENCHMARK COMPLIANCE CHECK${NC}"
@@ -1318,8 +1368,8 @@ run_cis_checks() {
 # --- 26. All Safe Fixes (renumbered to 24) -----------------------------------
 apply_all_safe() {
     create_backup_dir
-    log_message "${ROCKET} Applying all safe fixes (1-7, 9-16, 24)..."
-    echo -e "\n${CYAN}This will apply options 1-7, 9-16, and 24 (Password Policies - Safe)${NC}"
+    log_message "${ROCKET} Applying all safe fixes (1-7, 9-16, 24-25)..."
+    echo -e "\n${CYAN}This will apply options 1-7, 9-16, 24 (Password Policies - Safe), and 25 (UMASK Hardening)${NC}"
 
     if [[ "$AUTO_MODE" == false ]]; then
         read -r -p "Continue? (y/N): " choice
@@ -1341,6 +1391,7 @@ apply_all_safe() {
     apply_etckeeper
     apply_boot_secure
     apply_password_policies
+    apply_umask_hardening
 
     log_success "All safe fixes processed"
 }
@@ -1503,6 +1554,8 @@ get_status() {
             grep -qE '^\*\.\* @' /etc/rsyslog.conf 2>/dev/null && echo "ON" || echo "OFF" ;;
         24) # Password Policies (Safe)
             grep -q "^minlen = 12" /etc/security/pwquality.conf 2>/dev/null && echo "ON" || echo "OFF" ;;
+        25) # UMASK Hardening
+            grep -q "^UMASK[[:space:]]\+027" /etc/login.defs 2>/dev/null && echo "ON" || echo "OFF" ;;
         *) echo "N/A" ;;
     esac
 }
@@ -1559,7 +1612,7 @@ show_menu() {
     echo ""
 
     echo -e "${WHITE}┌─────────────────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${WHITE}│                         ${MAGENTA}ADVANCED FEATURES (16-24)${WHITE}                           │${NC}"
+    echo -e "${WHITE}│                         ${MAGENTA}ADVANCED FEATURES (16-25)${WHITE}                           │${NC}"
     echo -e "${WHITE}├─────────────────────────────────────────────────────────────────────┤${NC}"
     printf "${WHITE}│${NC}  ${LOCK} 16) Set GRUB Password              ${RED}(HIGH RISK)${NC} $(status_tag "$(get_status 16)")            ${WHITE}│${NC}\n"
     printf "${WHITE}│${NC}  ${DOCKER_ICON}17) Docker Security           ${YELLOW}(Medium)${NC} $(status_tag "$(get_status 17)")              ${WHITE}│${NC}\n"
@@ -1570,23 +1623,24 @@ show_menu() {
     printf "${WHITE}│${NC}  ${GEAR} 22) Restrict Compiler Access       ${GREEN}(Safe)${NC} $(status_tag "$(get_status 22)")               ${WHITE}│${NC}\n"
     printf "${WHITE}│${NC}  ${INFO} 23) Configure Remote Syslog        ${YELLOW}(Medium)${NC} $(status_tag "$(get_status 23)")              ${WHITE}│${NC}\n"
     printf "${WHITE}│${NC}  ${LOCK} 24) Password Policies (Safe)       ${GREEN}(Safe)${NC} $(status_tag "$(get_status 24)")               ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${LOCK} 25) UMASK Hardening                ${GREEN}(Safe)${NC} $(status_tag "$(get_status 25)")               ${WHITE}│${NC}\n"
     echo -e "${WHITE}└─────────────────────────────────────────────────────────────────────┘${NC}"
     echo ""
 
     echo -e "${WHITE}┌─────────────────────────────────────────────────────────────────────┐${NC}"
     echo -e "${WHITE}│                         ${CYAN}META OPERATIONS${WHITE}                                      │${NC}"
     echo -e "${WHITE}├─────────────────────────────────────────────────────────────────────┤${NC}"
-    printf "${WHITE}│${NC}  ${CIS_ICON} 25) Run CIS Benchmark Checks     ${GREEN}(Read-only)${NC}                   ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${ROCKET}26) Apply All Safe Fixes (1-7,9-16,24) ${GREEN}(Recommended)${NC}           ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${ROCKET}27) Apply All (Full Hardening)    ${YELLOW}(Complete)${NC}                   ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${UNDO} 28) Full System Revert (from backup) ${RED}(DANGER)${NC}                     ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${INFO} 29) Check for Updates              ${GREEN}(Read-only)${NC}                   ${WHITE}│${NC}\n"
-    printf "${WHITE}│${NC}  ${CROSS_MARK}30) Exit                                       ${WHITE}                  │${NC}\n"
+    printf "${WHITE}│${NC}  ${CIS_ICON} 26) Run CIS Benchmark Checks     ${GREEN}(Read-only)${NC}                   ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${ROCKET}27) Apply All Safe Fixes (1-7,9-16,24-25) ${GREEN}(Recommended)${NC}        ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${ROCKET}28) Apply All (Full Hardening)    ${YELLOW}(Complete)${NC}                   ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${UNDO} 29) Full System Revert (from backup) ${RED}(DANGER)${NC}                     ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${INFO} 30) Check for Updates              ${GREEN}(Read-only)${NC}                   ${WHITE}│${NC}\n"
+    printf "${WHITE}│${NC}  ${CROSS_MARK}31) Exit                                       ${WHITE}                  │${NC}\n"
     echo -e "${WHITE}└─────────────────────────────────────────────────────────────────────┘${NC}"
     echo ""
 
     echo -e "${CYAN}══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════${NC}"
-    read -r -p "$(echo -e "${WHITE}Enter your choice (1-30):${NC} ")" choice
+    read -r -p "$(echo -e "${WHITE}Enter your choice (1-31):${NC} ")" choice
 
     case "$choice" in
         1) apply_system_updates ;;
@@ -1613,9 +1667,10 @@ show_menu() {
         22) apply_compiler_restriction ;;
         23) configure_remote_syslog ;;
         24) apply_password_policies ;;
-        25) run_cis_checks ;;
-        26) apply_all_safe ;;
-        27)
+        25) apply_umask_hardening ;;
+        26) run_cis_checks ;;
+        27) apply_all_safe ;;
+        28)
             apply_all_safe
             apply_grub_password
             apply_docker_security
@@ -1626,9 +1681,9 @@ show_menu() {
             apply_compiler_restriction
             configure_remote_syslog
             ;;
-        28) full_system_revert ;;
-        29) check_for_updates ;;
-        30)
+        29) full_system_revert ;;
+        30) check_for_updates ;;
+        31)
             log_info "Exiting. Log file: $LOG_FILE"
             echo -e "${CYAN}Backup directory: $BACKUP_DIR${NC}"
             exit 0
