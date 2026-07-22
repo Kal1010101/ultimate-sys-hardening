@@ -1,0 +1,85 @@
+name: Multi-Distro Test Matrix
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * 0'
+
+jobs:
+  test:
+    name: Test on ${{ matrix.distro }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro:
+          - ubuntu:22.04
+          - ubuntu:24.04
+          - debian:11
+          - debian:12
+          - rockylinux:8
+          - rockylinux:9
+          - almalinux:8
+          - almalinux:9
+          - fedora:40
+          - archlinux:latest
+          - alpine:latest
+
+    container:
+      image: ${{ matrix.distro }}
+      options: --privileged
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Debian/Ubuntu)
+        if: contains(matrix.distro, 'ubuntu') || contains(matrix.distro, 'debian')
+        run: |
+          apt-get update
+          apt-get install -y sudo bash curl wget git shellcheck \
+            systemd systemd-sysv openssh-server auditd fail2ban \
+            nftables ufw aide rkhunter etckeeper sqlite3 python3
+
+      - name: Install dependencies (RHEL/Rocky/Alma/Fedora)
+        if: contains(matrix.distro, 'rocky') || contains(matrix.distro, 'almalinux') || contains(matrix.distro, 'fedora')
+        run: |
+          dnf install -y sudo bash curl wget git shellcheck \
+            systemd openssh-server auditd fail2ban nftables \
+            aide rkhunter etckeeper sqlite3 python3
+
+      - name: Install dependencies (Arch)
+        if: contains(matrix.distro, 'arch')
+        run: |
+          pacman -Sy --noconfirm sudo bash curl wget git shellcheck \
+            systemd openssh audit fail2ban nftables aide \
+            rkhunter etckeeper sqlite3 python
+
+      - name: Install dependencies (Alpine)
+        if: contains(matrix.distro, 'alpine')
+        run: |
+          apk add sudo bash curl wget git shellcheck \
+            openssh auditd fail2ban nftables aide \
+            rkhunter etckeeper sqlite3 python3
+
+      - name: Make scripts executable
+        run: |
+          chmod +x src/free/ultimate_hardening.sh
+
+      - name: Test Free tier (syntax)
+        run: |
+          bash -n src/free/ultimate_hardening.sh
+
+      - name: Test Free tier (dry-run)
+        run: |
+          ./src/free/ultimate_hardening.sh --dry-run --auto-mode
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.distro }}
+          path: /var/log/ultimate_hardening_*.log
