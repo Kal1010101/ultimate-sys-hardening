@@ -1441,6 +1441,37 @@ check_for_updates() {
     echo ""
     echo -e "${YELLOW}Compare the date/message above with your local copy to see if an update is available.${NC}"
     echo -e "${YELLOW}To update: git -C <repo-dir> pull   (or re-download the script)${NC}"
+
+    # If this script is running from inside a git checkout, offer to pull
+    # directly. Always explicit/opt-in: the commit being fetched is shown
+    # up front and nothing happens without a clear (y/N) confirmation - never
+    # a silent/automatic update.
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)" || return
+    if ! command -v git &>/dev/null || ! git -C "$script_dir" rev-parse --is-inside-work-tree &>/dev/null; then
+        return
+    fi
+
+    echo ""
+    if [[ "$AUTO_MODE" == true ]]; then
+        log_info "Running from a git checkout at $script_dir — skipping the pull prompt in auto-mode."
+        return
+    fi
+
+    echo -e "${CYAN}This script is running from a git checkout at:${NC} $script_dir"
+    echo -e "${CYAN}Pulling now would fetch:${NC} ${WHITE}${sha:0:7}${NC} - $message"
+    read -r -p "Pull the latest changes now? (y/N): " pull_choice
+    if [[ ! "$pull_choice" =~ ^[Yy] ]]; then
+        log_info "Skipped."
+        return
+    fi
+
+    log_info "Pulling latest changes..."
+    if git -C "$script_dir" pull; then
+        log_success "Updated. Re-run the script to use the latest version."
+    else
+        log_error "git pull failed — resolve manually (local changes or a diverged history may need attention, e.g. via 'git status' or a fresh clone)."
+    fi
 }
 
 # ----------------------------- Live Status Checks ----------------------------
