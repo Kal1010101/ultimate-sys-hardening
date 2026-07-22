@@ -17,4 +17,4 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
       - name: Run ShellCheck on Free tier
-        run: shellcheck src/free/ultimate_hardening.sh
+        run: shellcheck -x src/free/ultimate_hardening.sh
