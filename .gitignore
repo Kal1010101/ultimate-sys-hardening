@@ -1,2 +1,30 @@
 backup/
-backup/
+.env
+*.env.local
+__pycache__/
+*.pyc
+
+# ---------------------------------------------------------------------------
+# COMMERCIAL SOURCE — MUST NOT BE PUBLISHED
+#
+# This repository's remote is the PUBLIC github.com/Kal1010101/ultimate-sys-
+# hardening, and its LICENSE is MIT. Anything committed here is published
+# under an MIT grant. The Pro and Enterprise tiers are commercial and belong
+# in a separate private repository.
+#
+# A commit that tracked these files was staged and reverted on 2026-08-27
+# (preserved locally as tag local-only/refactor-4376c91). These rules exist
+# so `git add -A` cannot re-stage them by accident.
+# ---------------------------------------------------------------------------
+src/pro/
+src/enterprise/
+LICENSE-PRO.md
+PRICING.md
+
+# Internal working notes — not for the public repo.
+HANDOFF.md
+VM-TEST-PLAN.md
+
+# Session scratch/quarantine — never publish.
+_to_delete/
+SHOTLIST.md

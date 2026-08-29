@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main ]
 
+# This repository is the FREE tier only. Pro and Enterprise live in a separate
+# private repository and are deliberately not referenced by any job here — a
+# step that lints src/pro/* would fail on a clean clone of this repo. The
+# private repo runs the equivalent checks against lib/ from here plus its own
+# tier scripts.
 jobs:
   shellcheck:
     name: ShellCheck
@@ -16,5 +21,43 @@ jobs:
       - name: Install ShellCheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
-      - name: Run ShellCheck on Free tier
-        run: shellcheck -x src/free/ultimate_hardening.sh
+      - name: ShellCheck — lib/ (shared by all tiers)
+        run: shellcheck --severity=warning -x -e SC2034 -e SC1091 -e SC2154 lib/*.sh
+
+      - name: ShellCheck — Free tier
+        run: shellcheck --severity=warning -x -e SC2034 -e SC1091 -e SC2154 src/free/ultimate_hardening.sh
+
+      - name: ShellCheck — helper scripts
+        run: shellcheck --severity=warning -x -e SC2034 -e SC1091 -e SC2154 scripts/*.sh tests/*.sh tests/lib/*.sh tests/cases/*.sh
+
+  # The old "Tier test suite" job here called tests/test_free.sh,
+  # tests/test_pro.sh, tests/test_enterprise.sh — unit-style checks against a
+  # module set (apply_grub_password, run_deep_scan, ...) that predates the
+  # lib/ refactor and no longer exists. Those files were removed as stale;
+  # the real integration suite lives in tests/cases/ and runs below via
+  # tests/run.sh in Docker (ubuntu-latest ships Docker preinstalled).
+  integration-tests:
+    name: Integration tests (tests/run.sh)
+    runs-on: ubuntu-latest
+    # A single distro's 11 cases each apply real hardening (package installs
+    # included), so this comfortably clears an hour on a cold apt cache —
+    # 30 min is a sane backstop against a genuine hang, not the expected time.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run integration suite in Docker (debian:12)
+        run: ./tests/run.sh --distro debian:12
+        # tests/run.sh exits with the failed-case count, so a non-zero exit
+        # here fails the job naturally — no extra assertion needed.
+        # The full 5-distro matrix (--all-distros) is deliberately not run on
+        # every push/PR — 5x the Docker pulls and package installs would make
+        # this job the slowest thing in CI for marginal per-PR signal. Run it
+        # by hand (`./tests/run.sh --all-distros`) before a release, or wire
+        # it to a schedule/workflow_dispatch trigger if broader per-PR
+        # coverage becomes worth the wait.
+
+  # The "python" job that lived here byte-compiled and pyflakes'd
+  # src/enterprise/modules/*.py. Those files moved to the private commercial
+  # repository, which runs that job instead. Keeping it here would fail every
+  # build against a clean clone of this repo.
