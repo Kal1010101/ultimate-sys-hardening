@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ultimate Hardening — CIS-aligned Linux security automation</title>
+<meta name="description" content="Open-source Linux hardening automation for Ubuntu, RHEL, Arch and SUSE. 22 security modules, dry-run preview, full revert, PAM-safe. Pro and Enterprise tiers add reporting, scheduling, OpenSCAP CIS/STIG scanning and multi-host compliance.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>">
+<style>
+  :root{
+    --bg:#0d1117; --bg-alt:#111823; --bg-card:#161b22; --line:#232c38;
+    --fg:#e6edf3; --fg-dim:#9aa7b4; --fg-faint:#6e7d8d;
+    --green:#3fb950; --green-dim:#1f6f36; --cyan:#39c5cf; --amber:#d29922; --red:#f85149;
+    --radius:10px; --maxw:1120px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--bg);color:var(--fg);
+    font-family:var(--sans);font-size:16px;line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+  a{color:var(--cyan);text-decoration:none}
+  a:hover{text-decoration:underline}
+  h1,h2,h3{line-height:1.25;margin:0 0 .5em}
+  h2{font-size:1.75rem;letter-spacing:-.01em}
+  h3{font-size:1.05rem}
+  section{padding:64px 0;border-top:1px solid var(--line)}
+  .eyebrow{
+    font-family:var(--mono);font-size:.75rem;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--green);margin-bottom:10px;
+  }
+  .lede{color:var(--fg-dim);max-width:62ch}
+
+  /* ---------- header ---------- */
+  header{border-bottom:1px solid var(--line);background:rgba(13,17,23,.85);
+    backdrop-filter:blur(8px);position:sticky;top:0;z-index:20}
+  .nav{display:flex;align-items:center;gap:24px;height:58px}
+  .brand{font-family:var(--mono);font-weight:600;color:var(--fg);white-space:nowrap}
+  .nav-links{margin-left:auto;display:flex;gap:22px;font-size:.9rem}
+  .nav-links a{color:var(--fg-dim)}
+  .nav-links a:hover{color:var(--fg);text-decoration:none}
+  @media(max-width:720px){.nav-links a:not(.gh){display:none}}
+
+  /* ---------- hero ---------- */
+  .hero{padding:80px 0 64px}
+  .hero h1{font-size:clamp(2rem,5vw,3.1rem);letter-spacing:-.02em;margin-bottom:16px}
+  .hero h1 .accent{color:var(--green)}
+  .hero p.sub{font-size:1.15rem;color:var(--fg-dim);max-width:60ch;margin:0 0 28px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:28px}
+  .badge{
+    font-family:var(--mono);font-size:.72rem;padding:4px 10px;border-radius:999px;
+    border:1px solid var(--line);color:var(--fg-dim);background:var(--bg-card);
+  }
+  .badge.ok{color:var(--green);border-color:var(--green-dim)}
+  .cta{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:36px}
+  .btn{
+    display:inline-block;padding:11px 20px;border-radius:8px;font-weight:600;
+    font-size:.94rem;border:1px solid transparent;cursor:pointer;
+  }
+  .btn-primary{background:var(--green);color:#06210d}
+  .btn-primary:hover{background:#4ac75c;text-decoration:none}
+  .btn-ghost{border-color:var(--line);color:var(--fg);background:var(--bg-card)}
+  .btn-ghost:hover{border-color:var(--fg-faint);text-decoration:none}
+
+  /* ---------- terminal ---------- */
+  .term{
+    background:#0b0f14;border:1px solid var(--line);border-radius:var(--radius);
+    overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.4);
+  }
+  .term-bar{
+    display:flex;align-items:center;gap:7px;padding:10px 14px;
+    background:var(--bg-card);border-bottom:1px solid var(--line);
+  }
+  .dot{width:11px;height:11px;border-radius:50%}
+  .term-title{margin-left:8px;font-family:var(--mono);font-size:.75rem;color:var(--fg-faint)}
+  .term-body{
+    padding:18px;font-family:var(--mono);font-size:.82rem;line-height:1.75;
+    overflow-x:auto;white-space:pre;color:var(--fg-dim);
+  }
+  .term-body .c-g{color:var(--green)}
+  .term-body .c-c{color:var(--cyan)}
+  .term-body .c-a{color:var(--amber)}
+  .term-body .c-w{color:var(--fg)}
+  .term-body .c-f{color:var(--fg-faint)}
+
+  /* ---------- generic grid ---------- */
+  .grid{display:grid;gap:18px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+  .card{
+    background:var(--bg-card);border:1px solid var(--line);
+    border-radius:var(--radius);padding:20px;
+  }
+  .card h3{color:var(--fg);display:flex;align-items:center;gap:9px;margin-bottom:6px}
+  .card p{margin:0;color:var(--fg-dim);font-size:.92rem}
+  .ico{font-size:1.1rem;line-height:1}
+
+  /* ---------- trust ---------- */
+  .trust{background:var(--bg-alt)}
+  .trust .card{background:var(--bg)}
+
+  /* ---------- pricing ---------- */
+  .tiers{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));align-items:start}
+  .tier{
+    background:var(--bg-card);border:1px solid var(--line);
+    border-radius:var(--radius);padding:26px;display:flex;flex-direction:column;height:100%;
+  }
+  .tier.feature{border-color:var(--green-dim);box-shadow:0 0 0 1px var(--green-dim)}
+  .tier-tag{
+    font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--green);margin-bottom:10px;height:1em;
+  }
+  .tier h3{font-size:1.3rem;margin-bottom:4px}
+  .price{font-size:2.1rem;font-weight:700;letter-spacing:-.02em;margin:10px 0 2px}
+  .price span{font-size:.9rem;font-weight:400;color:var(--fg-faint)}
+  .price-note{font-size:.82rem;color:var(--fg-faint);margin-bottom:18px;min-height:2.4em}
+  .tier ul{list-style:none;padding:0;margin:0 0 22px;font-size:.9rem}
+  .tier li{padding:6px 0 6px 24px;position:relative;color:var(--fg-dim)}
+  .tier li::before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:700}
+  .tier li.inherit{color:var(--fg);font-weight:600}
+  .tier li.inherit::before{content:"↗";color:var(--cyan)}
+  .tier .btn{margin-top:auto;text-align:center}
+
+  /* ---------- table ---------- */
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius)}
+  table{border-collapse:collapse;width:100%;font-size:.88rem;min-width:620px}
+  th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line)}
+  thead th{background:var(--bg-card);font-family:var(--mono);font-size:.75rem;
+    letter-spacing:.06em;text-transform:uppercase;color:var(--fg-dim)}
+  tbody tr:last-child td{border-bottom:none}
+  td.y{color:var(--green);font-weight:600}
+  td.n{color:var(--fg-faint)}
+  td.feat{color:var(--fg)}
+
+  /* ---------- faq ---------- */
+  details{
+    background:var(--bg-card);border:1px solid var(--line);
+    border-radius:var(--radius);padding:16px 20px;margin-bottom:10px;
+  }
+  details summary{cursor:pointer;font-weight:600;color:var(--fg);list-style:none}
+  details summary::-webkit-details-marker{display:none}
+  details summary::before{content:"+ ";color:var(--green);font-family:var(--mono)}
+  details[open] summary::before{content:"− "}
+  details p{color:var(--fg-dim);margin:12px 0 0;font-size:.93rem}
+
+  .callout{
+    border-left:3px solid var(--amber);background:rgba(210,153,34,.07);
+    padding:14px 18px;border-radius:0 8px 8px 0;font-size:.9rem;color:var(--fg-dim);
+  }
+  .callout strong{color:var(--fg)}
+
+  code.inline{
+    font-family:var(--mono);font-size:.86em;background:var(--bg-card);
+    border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--cyan);
+  }
+
+  footer{border-top:1px solid var(--line);padding:36px 0;color:var(--fg-faint);font-size:.86rem}
+  .footer-in{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+  .footer-in .sp{margin-left:auto}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <span class="brand">🔒 ultimate-sys-hardening</span>
+    <nav class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#compliance">Compliance</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+      <a class="gh" href="https://github.com/Kal1010101/ultimate-sys-hardening">GitHub →</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap hero">
+  <h1>Harden a Linux box in minutes.<br><span class="accent">Undo it in seconds.</span></h1>
+  <p class="sub">
+    CIS-aligned security automation for Ubuntu, Debian, RHEL, Arch and SUSE.
+    22 hardening modules, a preview mode that shows every change before it happens,
+    and a full revert path for when something goes wrong.
+  </p>
+
+  <div class="badges">
+    <span class="badge ok">v2.3.0</span>
+    <span class="badge ok">ShellCheck clean</span>
+    <span class="badge">22 modules</span>
+    <span class="badge">4 distro families</span>
+    <span class="badge">MIT licensed</span>
+    <span class="badge ok">No telemetry</span>
+  </div>
+
+  <div class="cta">
+    <a class="btn btn-primary" href="#pricing">Compare tiers</a>
+    <a class="btn btn-ghost" href="https://github.com/Kal1010101/ultimate-sys-hardening">View source on GitHub</a>
+  </div>
+
+  <div class="term">
+    <div class="term-bar">
+      <span class="dot" style="background:#f85149"></span>
+      <span class="dot" style="background:#d29922"></span>
+      <span class="dot" style="background:#3fb950"></span>
+      <span class="term-title">root@server — ultimate_hardening.sh --dry-run</span>
+    </div>
+<div class="term-body"><span class="c-f">$</span> <span class="c-w">git clone https://github.com/Kal1010101/ultimate-sys-hardening.git</span>
+<span class="c-f">$</span> <span class="c-w">cd ultimate-sys-hardening/src/free</span>
+<span class="c-f">$</span> <span class="c-w">sudo ./ultimate_hardening.sh --dry-run</span>
+
+<span class="c-c">╔══════════════════════════════════════════════════════════╗</span>
+<span class="c-c">║           🛡️  ULTIMATE HARDENING v2.3.0 — FREE TIER  🛡️          ║</span>
+<span class="c-c">╚══════════════════════════════════════════════════════════╝</span>
+
+<span class="c-a">⚠️  DRY RUN — nothing will be modified</span>
+
+  <span class="c-w">[enable ]</span> = already in place   <span class="c-w">[disable]</span> = not applied yet
+
+   1) System updates                   <span class="c-g">(Safe)  </span>  <span class="c-a">[disable]</span>
+   2) SSH hardening                    <span class="c-a">(Medium)</span>  <span class="c-a">[disable]</span>
+   3) Firewall                         <span class="c-a">(Medium)</span>  <span class="c-g">[enable ]</span>
+   4) Fail2Ban                         <span class="c-g">(Safe)  </span>  <span class="c-a">[disable]</span>
+   5) File permissions                 <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
+   6) Kernel &amp; network                 <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
+   <span class="c-c">…</span>
+   9) SUID/SGID hardening              <span class="c-f">(High)  </span>  <span class="c-a">[disable]</span>
+
+  16) Apply all Safe/Medium modules (skip High risk)
+   C) Run compliance checks (read-only)
+
+<span class="c-f">ℹ</span> DRY RUN: would set PermitRootLogin no
+<span class="c-f">ℹ</span> DRY RUN: would set PasswordAuthentication no
+<span class="c-f">ℹ</span> DRY RUN: would back up /etc/ssh/sshd_config → /root/hardening_backup_.../
+<span class="c-g">✅ DRY RUN complete — 0 files modified</span>
+</div>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <div class="eyebrow">What it does</div>
+    <h2>Twenty-two modules, one menu</h2>
+    <p class="lede" style="margin-bottom:32px">
+      Every module is individually selectable, risk-labelled, and shows a live
+      <code class="inline">[enable ]</code> / <code class="inline">[disable]</code> status
+      derived from the compliance checks, so you can see what is already in place
+      before you touch anything.
+    </p>
+
+    <div class="grid g3">
+      <div class="card"><h3><span class="ico">🔒</span> SSH &amp; access</h3>
+        <p>Root login, password auth, MaxAuthTries, MFA via Google Authenticator, GRUB password protection.</p></div>
+      <div class="card"><h3><span class="ico">🔥</span> Network</h3>
+        <p>nftables/UFW firewall, Fail2Ban, sysctl network hardening, unused protocol blacklisting, remote syslog.</p></div>
+      <div class="card"><h3><span class="ico">📋</span> Auditing</h3>
+        <p>auditd rule sets, AIDE file integrity, rkhunter rootkit scanning, etckeeper change tracking.</p></div>
+      <div class="card"><h3><span class="ico">⚙️</span> Kernel &amp; filesystem</h3>
+        <p>ASLR, hardlink/symlink protection, SUID/SGID reduction with per-binary backup, UMASK 027 defaults.</p></div>
+      <div class="card"><h3><span class="ico">🛡️</span> Mandatory access control</h3>
+        <p>AppArmor profile enforcement on Debian family, SELinux enforcing mode on RHEL family.</p></div>
+      <div class="card"><h3><span class="ico">🐳</span> Workloads</h3>
+        <p>Docker daemon hardening, ModSecurity WAF, USB storage blocking, compiler access restriction.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="trust">
+  <div class="wrap">
+    <div class="eyebrow">Why you can run this as root</div>
+    <h2>Built to be undone</h2>
+    <p class="lede" style="margin-bottom:32px">
+      This script rewrites SSH config, firewall rules and file permissions on your machine.
+      That is a lot of trust to ask for, so every destructive action has a way back.
+    </p>
+
+    <div class="grid g2">
+      <div class="card"><h3><span class="ico">👁️</span> Preview before you commit</h3>
+        <p><code class="inline">--dry-run</code> prints every change the script would make and modifies nothing. Run it first, every time.</p></div>
+      <div class="card"><h3><span class="ico">💾</span> Automatic backups</h3>
+        <p>Modified files are copied to a timestamped <code class="inline">/root/hardening_backup_*</code> directory before any edit, including original SUID/SGID permission modes.</p></div>
+      <div class="card"><h3><span class="ico">↩️</span> Full revert</h3>
+        <p><code class="inline">--revert</code> restores from backup; <code class="inline">--revert-suid</code> rolls back only permission changes. Revert auto-finds the most recent backup.</p></div>
+      <div class="card"><h3><span class="ico">🧬</span> PAM-safe by design</h3>
+        <p>Password policy is written to <code class="inline">/etc/security/pwquality.conf</code> — never by hand-editing <code class="inline">/etc/pam.d/*</code>. It also skips when multiple display-manager PAM profiles are detected.</p></div>
+      <div class="card"><h3><span class="ico">📡</span> No telemetry, no network calls</h3>
+        <p>Nothing phones home. The only outbound request is the optional, explicitly-invoked update check against the GitHub API.</p></div>
+      <div class="card"><h3><span class="ico">🔍</span> Readable and reviewed</h3>
+        <p>Plain Bash, MIT licensed, ShellCheck-clean in CI on every push, tested across Debian, RHEL, Arch and SUSE families.</p></div>
+    </div>
+
+    <div class="callout" style="margin-top:26px">
+      <strong>The PAM-safety guarantee exists because it once went wrong.</strong>
+      An earlier version edited <code class="inline">/etc/pam.d/common-password</code> directly. On a Mint box
+      running KDE Plasma, a later <code class="inline">pam-auth-update</code> run reconciled around that
+      untracked edit and broke the SDDM login. The fix — never hand-edit machine-managed PAM files —
+      is why the current release does it the way it does.
+    </div>
+  </div>
+</section>
+
+<section id="compliance">
+  <div class="wrap">
+    <div class="eyebrow">Standards</div>
+    <h2>Aligned, mapped, and independently assessable</h2>
+    <p class="lede" style="margin-bottom:28px">
+      Being precise here matters more than sounding impressive, so here is exactly what each
+      claim means.
+    </p>
+
+    <div class="grid g3" style="margin-bottom:26px">
+      <div class="card"><h3><span class="ico">📊</span> CIS-aligned</h3>
+        <p>Built-in checks follow CIS Benchmark guidance for Linux. This is alignment, not a CIS certification, and the built-in scorer is not an accredited assessment.</p></div>
+      <div class="card"><h3><span class="ico">🎯</span> OpenSCAP scanning <span class="badge ok" style="margin-left:4px">Enterprise</span></h3>
+        <p>Runs <code class="inline">oscap</code> against the official SCAP Security Guide, so you get a real, assessable result under a CIS <em>or</em> DISA STIG profile — not our interpretation of one.</p></div>
+      <div class="card"><h3><span class="ico">🗺️</span> NIST 800-53 crosswalk <span class="badge ok" style="margin-left:4px">Enterprise</span></h3>
+        <p>Maps each hardening module to the NIST SP 800-53 Rev. 5 controls it contributes to, for audit evidence and control-narrative work.</p></div>
+    </div>
+
+    <div class="callout">
+      <strong>What this is not.</strong> The crosswalk explains which controls a module contributes to;
+      it is not an assessment result and not a certification. For an auditable CIS or STIG score, use the
+      OpenSCAP scan against official SCAP content — that is what assessors recognise.
+    </div>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap">
+    <div class="eyebrow">Pricing</div>
+    <h2>The hardening is free. The fleet management isn't.</h2>
+    <p class="lede" style="margin-bottom:34px">
+      Every hardening module is in the free, open-source tier and always will be.
+      Paid tiers add the operational layer: reporting, scheduling, drift detection and
+      multi-host compliance.
+    </p>
+
+    <div class="tiers">
+
+      <div class="tier">
+        <div class="tier-tag">Open source</div>
+        <h3>Free</h3>
+        <div class="price">$0</div>
+        <div class="price-note">MIT licensed. No account, no signup, no limits.</div>
+        <ul>
+          <li>All 22 hardening modules</li>
+          <li>Interactive menu with live status</li>
+          <li>Built-in CIS benchmark checks</li>
+          <li>Dry-run preview mode</li>
+          <li>Automatic backup &amp; full revert</li>
+          <li>Debian, RHEL, Arch, SUSE</li>
+          <li>Community support via GitHub</li>
+        </ul>
+        <a class="btn btn-ghost" href="https://github.com/Kal1010101/ultimate-sys-hardening">Get it on GitHub</a>
+      </div>
+
+      <div class="tier feature">
+        <div class="tier-tag">Most popular</div>
+        <h3>Pro</h3>
+        <div class="price">$9<span> /month</span></div>
+        <div class="price-note">or $79/year (save 27%). Single admin, unlimited personal &amp; client servers.</div>
+        <ul>
+          <li class="inherit">Everything in Free</li>
+          <li>One-command auto-fix of CIS findings</li>
+          <li>HTML compliance reports</li>
+          <li>Security posture: open ports, failed logins, active services</li>
+          <li>Scheduled runs (daily/weekly/monthly)</li>
+          <li>Email &amp; SMTP alerting</li>
+          <li>Deep security scan (Lynis)</li>
+          <li>Service account &amp; UEFI Secure Boot audit</li>
+          <li>Config-file driven runs</li>
+          <li>Email support</li>
+        </ul>
+        <a class="btn btn-primary" href="mailto:ultimate-sys-hardening@protonmail.com?subject=Ultimate%20Hardening%20Pro">Get Pro</a>
+      </div>
+
+      <div class="tier">
+        <div class="tier-tag">Fleets &amp; compliance</div>
+        <h3>Enterprise</h3>
+        <div class="price">$49<span> /month</span></div>
+        <div class="price-note">Up to 10 hosts, then $3/host/month. Flat $149/month up to 50 hosts.</div>
+        <ul>
+          <li class="inherit">Everything in Pro</li>
+          <li>Multi-host compliance dashboard</li>
+          <li>OpenSCAP scanning — CIS &amp; DISA STIG profiles</li>
+          <li>NIST SP 800-53 Rev. 5 crosswalk</li>
+          <li>YAML policy-as-code &amp; drift detection</li>
+          <li>Remote deployment over SSH</li>
+          <li>JSON / CSV audit export</li>
+          <li>SQLite state history &amp; trend tracking</li>
+          <li>Active Directory / SSSD integration</li>
+          <li>Centralized logging</li>
+          <li>Priority support</li>
+        </ul>
+        <a class="btn btn-ghost" href="mailto:ultimate-sys-hardening@protonmail.com?subject=Ultimate%20Hardening%20Enterprise">Talk to us</a>
+      </div>
+
+    </div>
+
+    <h3 style="margin:44px 0 14px;font-size:1.1rem">Full comparison</h3>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Capability</th><th>Free</th><th>Pro</th><th>Enterprise</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="feat">Hardening modules</td><td class="y">15</td><td class="y">15</td><td class="y">15</td></tr>
+          <tr><td class="feat">Dry-run &amp; full revert</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="feat">Built-in CIS checks</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="feat">Automated CIS auto-fix</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="feat">HTML compliance report</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="feat">Posture: ports, logins, services</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="feat">Scheduled runs &amp; email alerts</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="feat">Deep scan (Lynis)</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="feat">OpenSCAP CIS / STIG scan</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
+          <tr><td class="feat">NIST 800-53 crosswalk</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
+          <tr><td class="feat">Policy-as-code &amp; drift detection</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
+          <tr><td class="feat">Multi-host dashboard</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
+          <tr><td class="feat">Remote SSH deployment</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
+          <tr><td class="feat">JSON / CSV export</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
+          <tr><td class="feat">AD / SSSD &amp; centralized logging</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
+          <tr><td class="feat">Support</td><td class="n">Community</td><td class="y">Email</td><td class="y">Priority</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="eyebrow">Questions</div>
+    <h2>FAQ</h2>
+
+    <details><summary>Will this break my server?</summary>
+      <p>It can — any real hardening tool can, which is why the safety design matters.
+      Run <code class="inline">--dry-run</code> first to see every change, keep the automatic backups,
+      and use <code class="inline">--revert</code> if something misbehaves. High-risk modules
+      (SUID stripping, GRUB password) are labelled and require explicit confirmation rather than
+      running as part of the safe defaults.</p></details>
+
+    <details><summary>Does it work over SSH without locking me out?</summary>
+      <p>SSH hardening disables root login and password authentication. If you connect as root with a
+      password and no key, you will lock yourself out. Set up key-based access for a non-root sudo user
+      first, and preview with <code class="inline">--dry-run</code> before applying.</p></details>
+
+    <details><summary>Is this CIS certified?</summary>
+      <p>No, and anything claiming otherwise deserves scrutiny. The built-in checks are CIS-<em>aligned</em>.
+      For an assessable, auditor-recognised CIS or DISA STIG result, the Enterprise tier runs OpenSCAP
+      against the official SCAP Security Guide content.</p></details>
+
+    <details><summary>What distributions are supported?</summary>
+      <p>Debian and Ubuntu, RHEL/CentOS/Fedora/Rocky/AlmaLinux, Arch and Manjaro, and openSUSE/SLES.
+      The script detects your distro or lets you select it, and adapts package manager and service
+      names accordingly.</p></details>
+
+    <details><summary>Does it send any data anywhere?</summary>
+      <p>No. There is no telemetry, analytics or licence phone-home. The only outbound request is the
+      optional update check you invoke yourself from the menu, which queries the public GitHub API.
+      Everything else is local, and the source is there to verify that.</p></details>
+
+    <details><summary>How does Enterprise host counting work?</summary>
+      <p>A host is any machine you scan, harden or track in the dashboard. The base tier covers 10 hosts,
+      additional hosts are $3/month each, and the flat $149/month plan covers up to 50. Above that,
+      get in touch and we will size it.</p></details>
+
+    <details><summary>Can I try Pro or Enterprise before buying?</summary>
+      <p>Yes — get in touch and we will set up a trial. The free tier is also a genuine product rather
+      than a crippled demo, so you can validate the hardening itself before paying for the
+      automation layer.</p></details>
+  </div>
+</section>
+
+<section>
+  <div class="wrap" style="text-align:center">
+    <h2>Start with a dry run</h2>
+    <p class="lede" style="margin:0 auto 26px">
+      Clone it, preview every change it would make, and decide from there. It costs you one command.
+    </p>
+    <div class="term" style="text-align:left;max-width:720px;margin:0 auto 26px">
+      <div class="term-bar">
+        <span class="dot" style="background:#f85149"></span>
+        <span class="dot" style="background:#d29922"></span>
+        <span class="dot" style="background:#3fb950"></span>
+        <span class="term-title">quick start</span>
+      </div>
+<div class="term-body"><span class="c-f">$</span> <span class="c-w">git clone https://github.com/Kal1010101/ultimate-sys-hardening.git</span>
+<span class="c-f">$</span> <span class="c-w">cd ultimate-sys-hardening/src/free</span>
+<span class="c-f">$</span> <span class="c-w">sudo ./ultimate_hardening.sh --dry-run</span>
+</div>
+    </div>
+    <div class="cta" style="justify-content:center">
+      <a class="btn btn-primary" href="https://github.com/Kal1010101/ultimate-sys-hardening">Get started free</a>
+      <a class="btn btn-ghost" href="#pricing">See pricing</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap footer-in">
+    <span>🔒 ultimate-sys-hardening — MIT licensed</span>
+    <span class="sp"></span>
+    <a href="https://github.com/Kal1010101/ultimate-sys-hardening">GitHub</a>
+    <a href="https://github.com/Kal1010101/ultimate-sys-hardening/issues">Issues</a>
+    <a href="https://github.com/Kal1010101/ultimate-sys-hardening/blob/main/SECURITY.md">Security</a>
+  </div>
+</footer>
+
+</body>
+</html>

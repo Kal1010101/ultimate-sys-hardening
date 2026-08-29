@@ -1,0 +1,146 @@
+name: Multi-Distro Test Matrix
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * 0'
+
+jobs:
+  test:
+    name: Test on ${{ matrix.distro }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro:
+          - ubuntu:22.04
+          - ubuntu:24.04
+          - debian:11
+          - debian:12
+          - rockylinux:8
+          - rockylinux:9
+          - almalinux:8
+          - almalinux:9
+          - fedora:40
+          - archlinux:latest
+          - alpine:latest
+
+    container:
+      image: ${{ matrix.distro }}
+      options: --privileged
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Debian/Ubuntu)
+        if: contains(matrix.distro, 'ubuntu') || contains(matrix.distro, 'debian')
+        run: |
+          apt-get update
+          apt-get install -y sudo bash curl wget git shellcheck \
+            systemd systemd-sysv openssh-server auditd fail2ban \
+            nftables ufw aide rkhunter etckeeper sqlite3 python3
+
+      - name: Install dependencies (RHEL/Rocky/Alma/Fedora)
+        if: contains(matrix.distro, 'rocky') || contains(matrix.distro, 'almalinux') || contains(matrix.distro, 'fedora')
+        run: |
+          dnf install -y sudo bash curl wget git shellcheck \
+            systemd openssh-server auditd fail2ban nftables \
+            aide rkhunter etckeeper sqlite3 python3
+
+      - name: Install dependencies (Arch)
+        if: contains(matrix.distro, 'arch')
+        run: |
+          pacman -Sy --noconfirm sudo bash curl wget git shellcheck \
+            systemd openssh audit fail2ban nftables aide \
+            rkhunter etckeeper sqlite3 python
+
+      - name: Install dependencies (Alpine)
+        if: contains(matrix.distro, 'alpine')
+        run: |
+          apk add sudo bash curl wget git shellcheck \
+            openssh auditd fail2ban nftables aide \
+            rkhunter etckeeper sqlite3 python3
+
+      # This repository is the FREE tier only. Pro and Enterprise live in a
+      # separate private repository and are deliberately not referenced here —
+      # a step that chmod'd or ran src/pro/* would fail the whole matrix on a
+      # clean clone of this repo.
+      - name: Make scripts executable
+        run: |
+          chmod +x src/free/ultimate_hardening.sh
+          chmod +x lib/*.sh
+          chmod +x tests/cases/*.sh tests/lib/*.sh
+
+      - name: Syntax check
+        run: |
+          bash -n src/free/ultimate_hardening.sh
+          for f in lib/*.sh; do bash -n "$f"; done
+
+      # tests/test_free.sh / test_pro.sh / test_enterprise.sh (unit-style
+      # checks against a module set that predated the lib/ refactor) no
+      # longer exist. The real integration suite is tests/cases/ — run it
+      # directly against this container rather than through tests/run.sh,
+      # since this job already runs *as* the target distro's container
+      # (Docker-in-Docker would be redundant here).
+      - name: Integration test suite (this distro)
+        run: |
+          export REPO_ROOT="$GITHUB_WORKSPACE"
+          export UH_TEST=1
+          fail=0
+          for case in tests/cases/test_*.sh; do
+            echo "::group::$case"
+            bash "$case" || fail=$((fail+1))
+            echo "::endgroup::"
+          done
+          exit "$fail"
+
+      # --auto-mode exits without ever reaching the interactive menu (see
+      # main() in the free script), so this is genuinely non-interactive.
+      #
+      # The 'Q' on stdin and the timeout are both deliberate belt-and-braces.
+      # In v2.2.0 --auto-mode did NOT bypass the menu, and show_menu recurses
+      # on invalid input — under CI's empty stdin that was an infinite
+      # recursion, not a clean exit. If that regression ever returns, 'Q'
+      # quits cleanly and the timeout caps the damage at 5 minutes instead of
+      # GitHub's 6-hour default across every distro in the matrix.
+      #
+      # Do not "simplify" this to </dev/null: EOF on a menu read is exactly
+      # what triggers the recursion.
+      - name: Test Free tier (dry-run as root)
+        run: |
+          printf 'Q\n' | timeout 300 ./src/free/ultimate_hardening.sh --dry-run --auto-mode
+
+      - name: Assert dry-run modified nothing
+        run: |
+          # A dry run must never write hardening config. Fail loudly if it did.
+          #
+          # Every path here must be one a REAL run actually creates, or the
+          # assertion passes vacuously and guards nothing. Two of these were
+          # dead for exactly that reason (their modules had been dropped from
+          # lib/ and were restored in v2.3.0), and the USB one named a file
+          # the code never writes — apply_boot_secure writes
+          # 99-hardening-usb.conf, not usb-storage-blacklist.conf, so the real
+          # artifact was unguarded. Cross-check this list against the module
+          # implementations whenever a module is added or renamed.
+          for f in /etc/sysctl.d/99-hardening.conf \
+                   /etc/audit/rules.d/99-hardening.rules \
+                   /etc/modprobe.d/disable-unused-protocols.conf \
+                   /etc/modprobe.d/99-hardening-usb.conf \
+                   /etc/profile.d/hardening-umask.sh; do
+            if [ -e "$f" ]; then
+              echo "::error::dry-run created $f — it must not modify the system"
+              exit 1
+            fi
+          done
+          echo "✅ dry-run left the filesystem untouched"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.distro }}
+          path: /var/log/ultimate_hardening_*.log

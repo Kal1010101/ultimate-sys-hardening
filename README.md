@@ -1,159 +1,200 @@
-# 🔒 Ultimate System Hardening Script
-**CIS Benchmark Aligned Linux Security Automation for Ubuntu, RHEL, Arch, and SUSE**
+<div align="center">
 
-[![Status](https://img.shields.io/badge/status-production_ready-brightgreen)](https://github.com/Kal1010101/ultimate-sys-hardening)
-[![Security](https://img.shields.io/badge/security-CIS_aligned-blue)](https://github.com/Kal1010101/ultimate-sys-hardening)
-[![Version](https://img.shields.io/badge/version-2.2.0-orange)](https://github.com/Kal1010101/ultimate-sys-hardening)
-[![ShellCheck](https://github.com/Kal1010101/ultimate-sys-hardening/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/Kal1010101/ultimate-sys-hardening/actions)
+# Ultimate Hardening
 
-> **Keywords:** Linux hardening · security automation · CIS benchmark · PAM-safe · system hardening · bash script · 30 security features · multi-distribution · Ubuntu · RHEL · Arch · SUSE · sysctl · auditd · fail2ban
+**CIS-aligned Linux hardening that fixes what it finds — with backup, dry-run, and full revert.**
 
----
+[![Shell Lint](https://github.com/Kal1010101/ultimate-sys-hardening/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/Kal1010101/ultimate-sys-hardening/actions/workflows/shellcheck.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-E8A33D.svg)](LICENSE)
+[![ShellCheck](https://img.shields.io/badge/shellcheck-clean-5FB88F.svg)](https://www.shellcheck.net/)
+[![Platforms](https://img.shields.io/badge/platforms-17%20distros-5FB88F.svg)](#supported-systems)
 
-## 🔍 Also Check Out
-[System Debug & Security Audit Script](https://github.com/Kal1010101/sysdebug) – Diagnose issues and detect anomalies on your system
+[Website](https://Kal1010101.github.io/ultimate-sys-hardening/) ·
+[Security policy](SECURITY.md) ·
+[Packer example](examples/packer/) ·
+[Releases](https://github.com/Kal1010101/ultimate-sys-hardening/releases)
 
----
-
-## ⭐ Support This Project
-If this script helped you, please consider **starring** this repository! ⭐
-
-It helps others find it and motivates continued development.
+</div>
 
 ---
 
-## 🚀 What's New in v2.2.0
-
-| Feature | Description |
-|---------|-------------|
-| **Option 25: UMASK Hardening** | Sets restrictive default umask (027) via `/etc/login.defs`, `/etc/profile.d/`, and `/etc/bash.bashrc` |
-| **Option 30: Check for Updates** | Queries GitHub for the latest commit – check if you're running the latest version! |
-| **Live Status Badges** | [ON]/[OFF]/[N/A] indicators show what's already applied on your system |
-| **Improved Revert** | Auto-finds latest backup if the current one doesn't exist |
-| **30 Security Features** | CIS Benchmark aligned – now with UMASK hardening |
-
-### 🔧 v2.1.0 Highlights (Still Current)
-- ✅ **PAM-Safe** – Never touches `/etc/pam.d/*` files (no more ecryptfs/KDE-Plasma login breakage!)
-- ✅ **Multi-distribution** support (Debian, RHEL, Arch, SUSE)
-- ✅ **29 security features** aligned with CIS benchmarks
-- ✅ **Dry-run mode** and **full revert** capabilities
-
----
-
-## 📋 What This Script Hardens (30 Security Features)
-
-| # | Security Area | Actions Taken | Risk Level |
-|---|---------------|----------------|------------|
-| 1 | **System Updates**| Updates all packages to latest versions                                 | ✅ Safe |
-| 2 | **SSH Hardening** | Disables root login, enforces key-only auth, MaxAuthTries 3             | ⚠️ Medium |
-| 3 | **Firewall**      | Configures nftables, denies all except SSH/HTTP/HTTPS                   | ⚠️ Medium |
-| 4 | **Fail2Ban**      | Auto-blocks IPs after 3 failed SSH attempts                             | ✅ Safe |
-| 5 | **File Permissions** | Secures /etc/shadow, /etc/gshadow, /etc/sudoers                      | ✅ Safe |
-| 6 | **Kernel Hardening** | Applies restrictive sysctl parameters (rp_filter, syncookies, ASLR)  | ✅ Safe |
-| 7 | **Auditd**           | Configures system auditing, monitors sensitive file changes          | ✅ Safe |
-| 8 | **SUID Hardening**   | Removes SUID from non-essential binaries (at, crontab, chage, etc.)  | 🔴 High Risk |
-| 9 | **Undo SUID**        | Restores SUID permissions from backup                                | ✅ Restore |
-| 10 | **AIDE**            | Installs file integrity monitoring (tripwire alternative)            | ✅ Safe |
-| 11 | **rkhunter**        | Installs rootkit hunter scanner                                      | ✅ Safe |
-| 12 | **Disable Services**| Disables avahi-daemon, cups, nfs-server, rpcbind, slapd, named, postfix | ✅ Safe |
-| 13 | **AppArmor/SELinux**| Configures mandatory access control                                     | ✅ Safe |
-| 14 | **etckeeper**       | Sets up version control for `/etc`                                      | ✅ Safe |
-| 15 | **Boot Security**   | Secures GRUB configuration permissions                                  | ✅ Safe |
-| 16 | **GRUB Password**   | Sets password-protected bootloader                                      | 🔴 High Risk |
-| 17 | **Docker Security** | Enables userns-remap, disables inter-container comms                    | ⚠️ Medium |
-| 18 | **ModSecurity**     | Installs Web Application Firewall for Apache                            | ⚠️ Medium |
-| 19 | **Google Authenticator** | MFA setup guidance (PAM-safe)                                      | ⚠️ Medium |
-| 20 | **USB Blocking**    | Disables USB storage modules                                            | ⚠️ Medium |
-| 21 | **Disable Protocols**| Disables DCCP, SCTP, RDS, TIPC                                         | ✅ Safe |
-| 22 | **Compiler Restriction** | Restricts compilers to root only                                   | ✅ Safe |
-| 23 | **Remote Syslog**    | Configures centralized logging                                         | ⚠️ Medium |
-| 24 | **Password Policies (Safe)** | Sets minlen=12, complexity via pwquality.conf – **PAM-safe!**  | ✅ Safe |
-| 25 | **UMASK Hardening**  | Sets restrictive default umask (027)                                   | ✅ Safe |
-| 26 | **CIS Checks**       | Non-intrusive compliance reporting                                     | 📊 Read-only |
-| 27 | **Apply All Safe**   | One-click application of all safe fixes (1-7, 9-16, 24-25)             | ✅ Recommended |
-| 28 | **Apply All (Full)** | All 30 features applied                                                | ⚠️ Complete |
-| 29 | **Full Revert**      | Restores everything from backup                                        | 🔴 Danger |
-| 30 | **Check Updates**    | Queries GitHub for latest version                                      | 📡 Read-only |
-
----
-
-## 📊 Before vs After
-
-| Setting | Before (Default) | After Hardening |
-|---------|------------------|-----------------|
-| **Root SSH login**         | ✅ Enabled   | ❌ Disabled |
-| **Password auth**          | ✅ Allowed   | ❌ Key-only |
-| **IPv6**                   | ✅ Listening | ⚠️ Hardened |
-| **/tmp mounting**          | `exec`       |`noexec,nosuid`|
-| **Umask**                  | 022          | 027 (restrictive) |
-| **Password policy**        | None         | minlen=12, complexity required |
-| **SUID binaries**          | Many         | Restricted to essentials |
-| **Auditd**                 | ❌ Not running| ✅ Active monitoring |
-| **Firewall**               | ❌ None       | ✅ nftables active |
-| **Fail2Ban**               | ❌ Not installed | ✅ Active |
-| **USB storage**            | ✅ Enabled       | ❌ Blocked |
-
----
-
-## 🖥️ Screenshots
-
-<details>
-<summary>📸 Click to view screenshots</summary>
-
-| Section | Screenshot |
-|---------|------------|
-| Main Menu | ![Main Menu](images/distro-menu.png ) |
-| Hardening Options | ![Hardening Options](images/overview.png) |
-| CIS Results | ![CIS Results](images/cis.png) |
-
-</details>
-
----
-
-## 📋 Requirements
-
-- **Distributions:** Ubuntu 20.04+, Debian 11+, Rocky Linux 8+, RHEL 9+, Arch Linux, openSUSE
-- **Root access required** (script uses `sudo`)
-- **Internet connection** for package installation
-- **Backup your system first** – some changes are irreversible without a backup
-
----
-
-## 🚀 Quick Start
+Most hardening tools audit and hand you a report. This one audits, applies the
+fixes, and keeps a way back. Every file it touches is backed up first, and
+`--revert` restores from that backup.
 
 ```bash
-# Clone the repository
-git clone https://github.com/Kal1010101/ultimate-sys-hardening.git
-cd ultimate-sys-hardening/src/free
-
-# Interactive mode (normal – recommended)
-sudo ./ultimate_hardening.sh
-
-# Check for updates first! (New in v2.2.0)
-sudo ./ultimate_hardening.sh
-# Then select option 30 from the menu
-
-# Dry-run to preview changes (SAFE – no changes made)
-sudo ./ultimate_hardening.sh --dry-run
-
-# Automatic mode (no prompts)
-sudo ./ultimate_hardening.sh --auto-mode
-
-# Skip backups (faster, risky)
-sudo ./ultimate_hardening.sh --skip-backup
-
-# Combine flags
+# See exactly what it would change — writes nothing
 sudo ./ultimate_hardening.sh --auto-mode --dry-run
 
-# Show help
-sudo ./ultimate_hardening.sh --help
+# Apply it
+sudo ./ultimate_hardening.sh --auto-mode
 
-# Full system revert (restores everything from backup)
+# Changed your mind
 sudo ./ultimate_hardening.sh --revert
+```
 
-# Revert only SUID/SGID permissions
-sudo ./ultimate_hardening.sh --revert-suid
+## Quick start
 
-# Interactive revert via menu option #29
-sudo ./ultimate_hardening.sh
-# Then select option 29 from the menu
+```bash
+git clone https://github.com/Kal1010101/ultimate-sys-hardening.git
+cd ultimate-sys-hardening
+chmod +x src/free/ultimate_hardening.sh
+sudo ./src/free/ultimate_hardening.sh
+```
+
+Running it with no flags opens an interactive menu. Nothing is applied without
+confirmation.
+
+## What it hardens
+
+22 modules, each independently selectable from the menu. The interactive menu
+shows a live `[enable ]` / `[disable]` / `[  N/A  ]` status per module, derived
+from the same compliance checks `--cis-only` runs:
+
+| # | Module | Risk | What it does |
+|---|--------|------|--------------|
+| 1 | System updates | Safe | Distro-aware package upgrade |
+| 2 | SSH hardening | Medium | 13 settings, validated with `sshd -t` before restart |
+| 3 | Firewall | Medium | nftables or UFW, default-deny inbound |
+| 4 | Fail2Ban | Safe | SSH jail, ban after 3 failures |
+| 5 | File permissions | Safe | `/etc/shadow`, `/etc/passwd`, sticky `/tmp` |
+| 6 | Kernel / network | Safe | 25 sysctl parameters — ASLR, SYN cookies, martians |
+| 7 | Auditd | Safe | Identity, sudoers, module-loading, and mount rules |
+| 8 | Password policy | Safe | `login.defs` only — **PAM is never modified** |
+| 9 | SUID/SGID | **High** | Strips SUID outside a safe list, inventory recorded |
+| 10 | AIDE | Safe | File integrity baseline + daily cron check |
+| 11 | rkhunter | Safe | Rootkit scanner with daily scan |
+| 12 | Disable services | Safe | 20 unnecessary services |
+| 13 | AppArmor / SELinux | Medium | Enforce mode |
+| 14 | etckeeper | Safe | Git version control for `/etc` |
+| 15 | Boot security | Safe | GRUB permissions, USB storage blacklist |
+| 16 | GRUB password | **High** | PBKDF2 bootloader password; interactive only |
+| 17 | Docker security | Medium | userns-remap, inter-container comms off, log rotation |
+| 18 | ModSecurity | Medium | WAF + core rule set, only if Apache/httpd is present |
+| 19 | Unused protocols | Safe | Blacklists DCCP, SCTP, RDS, TIPC |
+| 20 | Compiler access | Medium | Restricts gcc/clang to root, records original modes |
+| 21 | Remote syslog | Safe | Forwards to a collector on :514 |
+| 22 | UMASK hardening | Safe | Default umask 027 |
+
+## Trust
+
+You're being asked to run a script as root that rewrites SSH and firewall config.
+Here's what it does and doesn't do:
+
+- **No telemetry.** No analytics, no phone-home, no license check. The only
+  outbound traffic is your own package manager.
+- **Backup before write.** Everything modified is copied to
+  `/root/hardening_backup_<timestamp>/` before the first change.
+- **Full revert.** `--revert` restores SSH, sysctl, and permissions.
+  `--revert-suid` restores just SUID/SGID bits.
+- **Dry-run.** `--dry-run` shows every intended change and exits.
+- **PAM untouched.** An early version broke a login screen on an eCryptfs system.
+  PAM modification was removed entirely — see [SECURITY.md](SECURITY.md).
+- **SSH can't lock you out.** The config is validated with `sshd -t` and rolled
+  back automatically if it fails.
+
+## Supported systems
+
+Auto-detected, or selectable from a menu.
+
+**Linux** — Debian, Ubuntu, Mint, Kali, Raspbian, RHEL, CentOS, Fedora, Rocky,
+AlmaLinux, Amazon Linux, Arch, Manjaro, EndeavourOS, openSUSE, Alpine, Void,
+Gentoo, NixOS
+
+**Unix / BSD** — macOS (Homebrew), FreeBSD, OpenBSD, NetBSD, Solaris
+*(detected and adapted; coverage is thinner than Linux)*
+
+Package managers: `apt`, `dnf`, `yum`, `pacman`, `zypper`, `apk`, `xbps`,
+`emerge`, `brew`, `pkg`, `nix`
+Init systems: systemd, OpenRC, SysV, BSD rc.d
+
+## Usage
+
+```
+sudo ./ultimate_hardening.sh [OPTIONS]
+
+  --auto-mode      Run without interactive prompts
+  --skip-backup    Skip creating the backup directory
+  --dry-run        Show what would change, apply nothing
+  --cis-only       Run read-only CIS checks, print score, exit
+  --revert         Restore everything from the most recent backup
+  --revert-suid    Restore only SUID/SGID permissions
+  --help           Show this help
+```
+
+## CI and image builds
+
+`--cis-only` exits after printing a machine-readable score, which makes it usable
+as a build gate:
+
+```bash
+score=$(sudo ./ultimate_hardening.sh --cis-only | grep -oP 'CIS Score: \K[0-9]+')
+[ "$score" -lt 80 ] && exit 1
+```
+
+See [`examples/packer/`](examples/packer/) for a complete golden-image pipeline
+that hardens an AMI and fails the build if the score regresses.
+
+## Tiers
+
+The free tier is MIT licensed, with no expiry and nothing held back for a
+paywall — it's also an early-stage project, and the module set will keep
+growing. Paid tiers add reporting and fleet management on top of the same
+engine.
+
+| | Free | Pro | Enterprise |
+|---|---|---|---|
+| **Price** | $0 | $9/mo · $79/yr | $49/mo (≤10 hosts) |
+| Hardening modules | ✅ | ✅ | ✅ |
+| CIS checks | ✅ | ✅ | ✅ |
+| Dry-run + revert | ✅ | ✅ | ✅ |
+| HTML compliance reports | — | ✅ | ✅ |
+| Open ports / failed logins | — | ✅ | ✅ |
+| Scheduled runs + email | — | ✅ | ✅ |
+| Multi-host dashboard | — | — | ✅ |
+| Remote SSH deploy | — | — | ✅ |
+| Policy-as-code + drift | — | — | ✅ |
+| JSON / CSV export | — | — | ✅ |
+| OpenSCAP integration | — | — | ✅ |
+
+[Full comparison →](https://Kal1010101.github.io/ultimate-sys-hardening/#pricing)
+
+## Standards coverage
+
+Honest scope — including the gaps.
+
+| Standard | Status |
+|----------|--------|
+| CIS Benchmarks | CIS-**aligned** checks. Not a certified CIS-CAT implementation. |
+| Automated remediation | Available |
+| Continuous compliance / drift | Available (Enterprise) |
+| OpenSCAP | Available (Enterprise) — wraps `oscap`, folds results into reports |
+| Packer / Terraform | Available — [example included](examples/packer/) |
+| Fleet scale | Small fleets (tens of hosts). Remote deploy is a sequential SSH loop. |
+| DISA STIG | Roadmap |
+| NIST SP 800-70 | Roadmap |
+| Ansible role | Roadmap |
+
+## Roadmap
+
+- [ ] DISA STIG profile mapping
+- [ ] NIST SP 800-70 checklist mapping
+- [ ] Ansible role packaging
+- [ ] Parallel remote deploy (beyond sequential SSH)
+- [ ] Service-impact simulation before apply
+
+## Contributing
+
+Issues and PRs welcome. Every push runs ShellCheck and `bash -n` against Debian,
+Ubuntu, Fedora, and Alpine — please make sure both pass locally first:
+
+```bash
+shellcheck -e SC2034 -e SC1091 src/**/*.sh
+bash -n src/**/*.sh
+```
+
+Security issues go through [SECURITY.md](SECURITY.md), not the public tracker.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Commercial use of the free tier is unrestricted.
