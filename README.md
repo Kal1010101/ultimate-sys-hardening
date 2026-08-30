@@ -142,6 +142,31 @@ paywall — it's also an early-stage project, and the module set will keep
 growing. Paid tiers add reporting and fleet management on top of the same
 engine.
 
+What the free tier looks like — the whole product, not a teaser:
+
+<div align="center">
+<table>
+<tr>
+<td align="center" width="33%">
+  <a href="docs/images/distro-menu.png"><img src="docs/images/distro-menu.png" width="270"
+     alt="The platform selection menu: eight Linux families and five Unix/BSD systems, with auto-detect as the recommended default."></a>
+  <br><sub><b>Pick a platform</b><br>or let it auto-detect</sub>
+</td>
+<td align="center" width="33%">
+  <a href="docs/images/overview.png"><img src="docs/images/overview.png" width="270"
+     alt="The interactive menu listing 22 hardening modules. Each row carries a risk level and a live status tag: [enable ] where the settings are already in place, [disable] where they are not, and [N/A] for modules that cannot apply on this host."></a>
+  <br><sub><b>All 22 modules</b><br>status read live, never remembered</sub>
+</td>
+<td align="center" width="33%">
+  <a href="docs/images/compliance-check.png"><img src="docs/images/compliance-check.png" width="270"
+     alt="Read-only compliance output: passed checks, warnings explaining why each is not automatable, and a CIS score of 88 percent with 22 of 25 checks passed."></a>
+  <br><sub><b>Score it, change nothing</b><br>each failure names its fix</sub>
+</td>
+</tr>
+</table>
+<sub><i>Click any shot to open it full size.</i></sub>
+</div>
+
 | | Free | Pro | Enterprise |
 |---|---|---|---|
 | **Price** | $0 | $9/mo · $79/yr | $49/mo (≤10 hosts) |

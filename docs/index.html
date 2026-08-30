@@ -78,7 +78,10 @@
   .dot{width:11px;height:11px;border-radius:50%}
   .term-title{margin-left:8px;font-family:var(--mono);font-size:.75rem;color:var(--fg-faint)}
   .term-body{
-    padding:18px;font-family:var(--mono);font-size:.82rem;line-height:1.75;
+    /* 1.5, not the 1.75 used elsewhere: the header's box-drawing characters
+       tile vertically, and a taller line box leaves visible gaps between the
+       box edges that a terminal (line-height 1) does not have. */
+    padding:18px;font-family:var(--mono);font-size:.82rem;line-height:1.5;
     overflow-x:auto;white-space:pre;color:var(--fg-dim);
   }
   .term-body .c-g{color:var(--green)}
@@ -276,16 +279,51 @@
 <div class="term-body"><span class="c-f">$</span> <span class="c-w">git clone https://github.com/Kal1010101/ultimate-sys-hardening.git</span>
 <span class="c-f">$</span> <span class="c-w">cd ultimate-sys-hardening/src/free</span>
 <span class="c-f">$</span> <span class="c-w">sudo ./ultimate_hardening.sh --dry-run</span>
+
+<!-- BEGIN generated hero: ./docs/build-hero.sh -->
+<span class="c-c">╔══════════════════════════════════════════════════════════════════╗</span>
+<span class="c-c">║</span><span class="c-c">       ULTIMATE HARDENING 2.3.0 — FREE TIER</span>                       <span class="c-c">║</span>
+<span class="c-c">║</span><span class="c-c">       Platform: </span><span class="c-w">rhel</span>                                             <span class="c-c">║</span>
+<span class="c-c">╚══════════════════════════════════════════════════════════════════╝</span>
+
+  <span class="c-a">⚠️ DRY RUN — nothing will be modified</span>
+
+  <span class="c-w">[enable ]</span> already in place   <span class="c-w">[disable]</span> not applied yet   <span class="c-w">[  N/A  ]</span> not applicable here
+
+   1) System updates                   <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
+   2) SSH hardening                    <span class="c-a">(Medium)</span>  <span class="c-g">[enable ]</span>
+   3) Firewall                         <span class="c-a">(Medium)</span>  <span class="c-g">[enable ]</span>
+   4) Fail2Ban                         <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
+   5) File permissions                 <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
+   6) Kernel &amp; network                 <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
+   7) Audit daemon                     <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
+   8) Password policy                  <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
+   9) SUID/SGID hardening              <span class="c-r">(High)  </span>  <span class="c-a">[disable]</span>
+  10) AIDE file integrity              <span class="c-g">(Safe)  </span>  <span class="c-a">[disable]</span>
+  11) Rootkit scanner                  <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
+  12) Disable unused services          <span class="c-g">(Safe)  </span>  <span class="c-a">[disable]</span>
+  13) AppArmor / SELinux               <span class="c-a">(Medium)</span>  <span class="c-g">[enable ]</span>
+  14) /etc version control             <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
+  15) Boot security                    <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
+  16) GRUB password                    <span class="c-r">(High)  </span>  <span class="c-c">[  N/A  ]</span>
+  17) Docker security                  <span class="c-a">(Medium)</span>  <span class="c-c">[  N/A  ]</span>
+  18) ModSecurity WAF                  <span class="c-a">(Medium)</span>  <span class="c-c">[  N/A  ]</span>
+  19) Disable unused protocols         <span class="c-g">(Safe)  </span>  <span class="c-a">[disable]</span>
+  20) Compiler access restriction      <span class="c-a">(Medium)</span>  <span class="c-a">[disable]</span>
+  21) Remote syslog                    <span class="c-g">(Safe)  </span>  <span class="c-a">[disable]</span>
+  22) UMASK hardening                  <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
+
+  <span class="c-w">23)</span> Apply all Safe/Medium modules (skip High risk)
+  <span class="c-w">24)</span> Apply all 22 modules (includes High risk)
+  <span class="c-w"> C)</span> Run compliance checks (read-only)
+  <span class="c-w"> Q)</span> Quit
+<!-- END generated hero -->
 </div>
-    <button class="term-shot" type="button" data-full="images/overview.png"
-            aria-label="Enlarge the menu screenshot">
-      <img src="images/overview.png" width="904" height="870"
-           alt="The interactive menu listing 22 hardening modules. Each row carries a risk level and a live status tag: enable where the settings are already in place, disable where they are not, and N/A for modules that cannot apply on this host.">
-    </button>
   </div>
   <p class="hero-note">
-    Real output, not a mockup — click to enlarge.
-    <a href="#pricing">Pro keeps all 22 and adds a second panel.</a>
+    Rendered from the tool's own menu code, not retyped —
+    <a href="#screenshots">see the real screenshots</a> or
+    <a href="#pricing">what Pro adds</a>.
   </p>
 </div>
 
