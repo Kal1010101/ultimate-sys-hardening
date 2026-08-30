@@ -28,15 +28,25 @@ BLUE='\033[0;34m'; CYAN='\033[0;36m'; WHITE='\033[1;37m'; NC='\033[0m'
 source "$PROJECT_DIR/lib/core.sh" 2>/dev/null || true
 UH_VERSION="${UH_VERSION:-unknown}"
 
+# Banner box. The width is computed, not typed: the version line was written
+# without a closing edge, so the box never closed, and any change to
+# UH_VERSION would have shifted it anyway.
+BANNER_W=63
+banner_rule() { local r; printf -v r '%*s' "$BANNER_W" ''; printf '%s' "${r// /═}"; }
+banner_line() {
+    local t="$1" p
+    p=$(( BANNER_W - ${#t} ))
+    if (( p < 0 )); then p=0; fi
+    printf '║%s%*s║\n' "$t" "$p" ''
+}
+
 echo -e "$CYAN"
-cat << BANNER
-╔═══════════════════════════════════════════════════════════════╗
-║                                                               ║
-║                    ULTIMATE HARDENING                         ║
-║                    Installer — v${UH_VERSION}
-║                                                               ║
-╚═══════════════════════════════════════════════════════════════╝
-BANNER
+printf '╔%s╗\n' "$(banner_rule)"
+banner_line ""
+banner_line "                    ULTIMATE HARDENING"
+banner_line "                    Installer — v${UH_VERSION}"
+banner_line ""
+printf '╚%s╝\n' "$(banner_rule)"
 echo -e "$NC"
 
 if [[ $EUID -ne 0 ]]; then

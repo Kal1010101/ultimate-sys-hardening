@@ -316,6 +316,58 @@ _state_tag() {
 #   "%2s" 2 + ") " 2 + label 32 + " " 1 + risk 8 + "  " 2 + state 9 = 56
 # Both tags are fixed-width by construction, so a row is always exactly this
 # many visible columns regardless of which risk or state it carries.
+# -------------------------------------------------------------- box drawing --
+# Fixed-width banner boxes, with the padding COMPUTED rather than typed into
+# the string.
+#
+# Both header boxes used to be hand-padded, and both were wrong:
+#
+#   * the Platform line carried no closing edge at all, so the box never
+#     closed on any system;
+#   * the title line was padded on the assumption that the shield emoji
+#     occupies two terminal columns. Plenty of fonts render it as one, which
+#     left the right edge two columns short of the corners.
+#
+# The second is not fixable by re-counting. Terminals genuinely disagree
+# about the width of that glyph, so a fixed-width box containing emoji is
+# unalignable by construction. Decoration therefore stays outside the border,
+# and everything variable inside it (UH_VERSION, DISTRO_TYPE) is padded at
+# runtime.
+UH_BOX_WIDTH=66
+
+# Colour codes occupy no columns. Handles both the literal '\033[0;36m' form
+# lib/core.sh defines and the expanded form left behind by an earlier echo -e.
+box_strip() {
+    printf '%s' "$1" | sed -e 's/\\033\[[0-9;]*m//g' -e $'s/\033\\[[0-9;]*m//g'
+}
+
+_box_rule() {
+    local r
+    printf -v r '%*s' "$UH_BOX_WIDTH" ''
+    printf '%s' "${r// /═}"
+}
+
+box_top()    { echo -e "${CYAN}╔$(_box_rule)╗${NC}"; }
+box_bottom() { echo -e "${CYAN}╚$(_box_rule)╝${NC}"; }
+
+# box_line "<text>" — text may carry colour codes; they are not counted.
+box_line() {
+    local text="$1" plain pad
+    plain=$(box_strip "$text")
+    if (( ${#plain} > UH_BOX_WIDTH )); then
+        # Too long to fit. Drop the colours and truncate so the border still
+        # closes — the Pro/Enterprise header interpolates $(hostname), which
+        # on a long hostname ran straight through the right edge.
+        plain="${plain:0:$((UH_BOX_WIDTH - 1))}…"
+        text="$plain"
+    fi
+    pad=$(( UH_BOX_WIDTH - ${#plain} ))
+    # An `if`, not `(( pad < 0 )) && pad=0`: that compound returns 1 whenever
+    # the condition is false, which under `set -e` ends the run.
+    if (( pad < 0 )); then pad=0; fi
+    echo -e "${CYAN}║${NC}${text}$(printf '%*s' "$pad" '')${CYAN}║${NC}"
+}
+
 MODULE_ROW_WIDTH=56
 
 # A horizontal rule of $1 box-drawing characters (default: a snug box around
