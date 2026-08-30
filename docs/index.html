@@ -158,6 +158,23 @@
     border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--cyan);
   }
 
+  /* ---------- hero screenshot ---------- */
+  /* This was a hand-written HTML replica of the menu. It drifted: it offered
+     "16) Apply all Safe/Medium", the numbering from back when the tool had 15
+     modules, directly under a badge reading "22 modules". A real screenshot
+     cannot drift. */
+  .term-shot{
+    display:block;width:100%;padding:14px 16px 18px;border:0;
+    background:var(--bg-card);cursor:zoom-in;border-radius:0 0 var(--radius) var(--radius);
+  }
+  .term-shot img{
+    display:block;max-width:560px;width:100%;height:auto;margin:0 auto;
+    border-radius:6px;border:1px solid var(--line);
+  }
+  .term-shot:hover img{border-color:var(--green)}
+  .term-shot:focus-visible{outline:2px solid var(--cyan);outline-offset:-2px}
+  .hero-note{margin:14px 0 0;font-size:.88rem;color:var(--fg-faint);text-align:center}
+
   /* ---------- screenshots ---------- */
   .shots{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
   .shot{
@@ -229,7 +246,8 @@
 <div class="wrap hero">
   <h1>Harden a Linux box in minutes.<br><span class="accent">Undo it in seconds.</span></h1>
   <p class="sub">
-    CIS-aligned security automation for Ubuntu, Debian, RHEL, Arch and SUSE.
+    CIS-aligned security automation for Debian, RHEL, Arch, SUSE, Alpine, Void, Gentoo
+    and NixOS, plus macOS and the BSDs.
     22 hardening modules, a preview mode that shows every change before it happens,
     and a full revert path for when something goes wrong.
   </p>
@@ -238,7 +256,7 @@
     <span class="badge ok">v2.3.0</span>
     <span class="badge ok">ShellCheck clean</span>
     <span class="badge">22 modules</span>
-    <span class="badge">4 distro families</span>
+    <span class="badge">26 platforms</span>
     <span class="badge">MIT licensed</span>
     <span class="badge ok">No telemetry</span>
   </div>
@@ -258,33 +276,17 @@
 <div class="term-body"><span class="c-f">$</span> <span class="c-w">git clone https://github.com/Kal1010101/ultimate-sys-hardening.git</span>
 <span class="c-f">$</span> <span class="c-w">cd ultimate-sys-hardening/src/free</span>
 <span class="c-f">$</span> <span class="c-w">sudo ./ultimate_hardening.sh --dry-run</span>
-
-<span class="c-c">╔══════════════════════════════════════════════════════════╗</span>
-<span class="c-c">║           🛡️  ULTIMATE HARDENING v2.3.0 — FREE TIER  🛡️          ║</span>
-<span class="c-c">╚══════════════════════════════════════════════════════════╝</span>
-
-<span class="c-a">⚠️  DRY RUN — nothing will be modified</span>
-
-  <span class="c-w">[enable ]</span> = already in place   <span class="c-w">[disable]</span> = not applied yet
-
-   1) System updates                   <span class="c-g">(Safe)  </span>  <span class="c-a">[disable]</span>
-   2) SSH hardening                    <span class="c-a">(Medium)</span>  <span class="c-a">[disable]</span>
-   3) Firewall                         <span class="c-a">(Medium)</span>  <span class="c-g">[enable ]</span>
-   4) Fail2Ban                         <span class="c-g">(Safe)  </span>  <span class="c-a">[disable]</span>
-   5) File permissions                 <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
-   6) Kernel &amp; network                 <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
-   <span class="c-c">…</span>
-   9) SUID/SGID hardening              <span class="c-f">(High)  </span>  <span class="c-a">[disable]</span>
-
-  16) Apply all Safe/Medium modules (skip High risk)
-   C) Run compliance checks (read-only)
-
-<span class="c-f">ℹ</span> DRY RUN: would set PermitRootLogin no
-<span class="c-f">ℹ</span> DRY RUN: would set PasswordAuthentication no
-<span class="c-f">ℹ</span> DRY RUN: would back up /etc/ssh/sshd_config → /root/hardening_backup_.../
-<span class="c-g">✅ DRY RUN complete — 0 files modified</span>
 </div>
+    <button class="term-shot" type="button" data-full="images/overview.png"
+            aria-label="Enlarge the menu screenshot">
+      <img src="images/overview.png" width="904" height="870"
+           alt="The interactive menu listing 22 hardening modules. Each row carries a risk level and a live status tag: enable where the settings are already in place, disable where they are not, and N/A for modules that cannot apply on this host.">
+    </button>
   </div>
+  <p class="hero-note">
+    Real output, not a mockup — click to enlarge.
+    <a href="#pricing">Pro keeps all 22 and adds a second panel.</a>
+  </p>
 </div>
 
 <section id="features">
@@ -300,7 +302,7 @@
 
     <div class="grid g3">
       <div class="card"><h3><span class="ico">🔒</span> SSH &amp; access</h3>
-        <p>Root login, password auth, MaxAuthTries, MFA via Google Authenticator, GRUB password protection.</p></div>
+        <p>Root login, password auth, empty passwords, X11 and TCP forwarding, MaxAuthTries, login grace and keepalives &mdash; validated with <code class="inline">sshd -t</code> before restart. Plus GRUB password protection.</p></div>
       <div class="card"><h3><span class="ico">🔥</span> Network</h3>
         <p>nftables/UFW firewall, Fail2Ban, sysctl network hardening, unused protocol blacklisting, remote syslog.</p></div>
       <div class="card"><h3><span class="ico">📋</span> Auditing</h3>
@@ -622,7 +624,7 @@
     if (opener) { opener.focus(); opener = null; }
   }
 
-  document.querySelectorAll('.shot button[data-full]').forEach(function (btn) {
+  document.querySelectorAll('button[data-full]').forEach(function (btn) {
     btn.addEventListener('click', function () { open(btn); });
   });
 
