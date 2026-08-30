@@ -178,6 +178,10 @@
   }
   .shot button:hover img{border-color:var(--green)}
   .shot button:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+  .shot-wide{max-width:420px;margin:0 auto 34px}
+  /* This one shot is portrait and stands alone, so it keeps its own aspect
+     ratio instead of the square box the three-up row uses. */
+  .shot-wide img{aspect-ratio:auto}
   .shot figcaption{margin-top:10px;font-size:.85rem;color:var(--fg-dim)}
   .shot figcaption b{color:var(--fg);display:block;font-weight:600}
 
@@ -413,6 +417,13 @@
       multi-host compliance.
     </p>
 
+    <figure class="shot shot-wide">
+      <button type="button" data-full="images/menu-pro.png" aria-label="Enlarge: the Pro tier menu">
+        <img src="images/menu-pro.png" alt="The Pro tier menu: the same 22 free core hardening modules in one panel, and a second panel of Pro-only features including CIS auto-fix, HTML compliance reports, AI directory locking, scheduling and email notifications." loading="lazy" width="730" height="1054">
+      </button>
+      <figcaption><b>What the paid tiers add</b>The Pro menu keeps all 22 free modules and adds a second panel. Nothing moves behind the paywall.</figcaption>
+    </figure>
+
     <div class="tiers">
 
       <div class="tier">
@@ -482,7 +493,7 @@
           <tr><th>Capability</th><th>Free</th><th>Pro</th><th>Enterprise</th></tr>
         </thead>
         <tbody>
-          <tr><td class="feat">Hardening modules</td><td class="y">15</td><td class="y">15</td><td class="y">15</td></tr>
+          <tr><td class="feat">Hardening modules</td><td class="y">22</td><td class="y">22</td><td class="y">22</td></tr>
           <tr><td class="feat">Dry-run &amp; full revert</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">Built-in CIS checks</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">Automated CIS auto-fix</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
