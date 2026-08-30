@@ -158,6 +158,49 @@
     border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--cyan);
   }
 
+  /* ---------- screenshots ---------- */
+  .shots{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  .shot{
+    background:var(--bg-card);border:1px solid var(--line);
+    border-radius:var(--radius);padding:12px;margin:0;
+  }
+  .shot button{
+    display:block;width:100%;padding:0;border:0;background:none;
+    cursor:zoom-in;border-radius:6px;
+  }
+  .shot img{
+    display:block;width:100%;height:auto;border-radius:6px;border:1px solid var(--line);
+    /* One box for all three so the captions sit on the same line. The shots are
+       near-square but not identical (718x655, 904x870, 766x722); contain
+       letterboxes the difference against the card rather than cropping
+       terminal output. */
+    aspect-ratio:1/1;object-fit:contain;object-position:top center;background:var(--bg);
+  }
+  .shot button:hover img{border-color:var(--green)}
+  .shot button:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+  .shot figcaption{margin-top:10px;font-size:.85rem;color:var(--fg-dim)}
+  .shot figcaption b{color:var(--fg);display:block;font-weight:600}
+
+  /* ---------- lightbox ---------- */
+  .lb{
+    position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+    background:rgba(5,8,12,.92);padding:28px;cursor:zoom-out;
+  }
+  .lb[hidden]{display:none}
+  .lb img{
+    max-width:min(1400px,96vw);max-height:92vh;width:auto;height:auto;
+    border-radius:8px;border:1px solid var(--line);cursor:default;
+  }
+  .lb-close{
+    position:absolute;top:16px;right:20px;background:none;border:0;
+    color:var(--fg-dim);font-size:1.9rem;line-height:1;cursor:pointer;padding:6px 10px;
+  }
+  .lb-close:hover{color:var(--fg)}
+  @media(prefers-reduced-motion:no-preference){
+    .lb img{animation:lbin .14s ease-out}
+    @keyframes lbin{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:none}}
+  }
+
   footer{border-top:1px solid var(--line);padding:36px 0;color:var(--fg-faint);font-size:.86rem}
   .footer-in{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
   .footer-in .sp{margin-left:auto}
@@ -169,6 +212,7 @@
   <div class="wrap nav">
     <span class="brand">🔒 ultimate-sys-hardening</span>
     <nav class="nav-links">
+      <a href="#screenshots">Screenshots</a>
       <a href="#features">Features</a>
       <a href="#compliance">Compliance</a>
       <a href="#pricing">Pricing</a>
@@ -263,6 +307,38 @@
         <p>AppArmor profile enforcement on Debian family, SELinux enforcing mode on RHEL family.</p></div>
       <div class="card"><h3><span class="ico">🐳</span> Workloads</h3>
         <p>Docker daemon hardening, ModSecurity WAF, USB storage blocking, compiler access restriction.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="screenshots">
+  <div class="wrap">
+    <div class="eyebrow">See it</div>
+    <h2>Nothing here is a mockup</h2>
+    <p class="lede" style="margin-bottom:32px">
+      Three screens from a real run on a RHEL-family host. Click any of them to
+      open it full size.
+    </p>
+
+    <div class="shots">
+      <figure class="shot">
+        <button type="button" data-full="images/distro-menu.png" aria-label="Enlarge: Pick a platform">
+          <img src="images/distro-menu.png" alt="The platform selection menu: eight Linux families and five Unix/BSD systems, with auto-detect as the recommended default." loading="lazy" width="718" height="655">
+        </button>
+        <figcaption><b>Pick a platform</b>Eight Linux families and five Unix/BSD systems, or let it auto-detect.</figcaption>
+      </figure>
+      <figure class="shot">
+        <button type="button" data-full="images/overview.png" aria-label="Enlarge: Twenty-two modules">
+          <img src="images/overview.png" alt="The interactive menu listing 22 hardening modules. Each row carries a risk level and a live status tag: enable where the settings are already in place, disable where they are not, and N/A for modules that cannot apply on this host." loading="lazy" width="904" height="870">
+        </button>
+        <figcaption><b>Twenty-two modules</b>Each row carries a risk level and a status read from the live system.</figcaption>
+      </figure>
+      <figure class="shot">
+        <button type="button" data-full="images/compliance-check.png" aria-label="Enlarge: Score it, change nothing">
+          <img src="images/compliance-check.png" alt="Read-only compliance output: passed checks, warnings explaining why each is not automatable, and a CIS score of 88 percent with 22 of 25 checks passed." loading="lazy" width="766" height="722">
+        </button>
+        <figcaption><b>Score it, change nothing</b>Read-only. Every failure names the module that fixes it.</figcaption>
+      </figure>
     </div>
   </div>
 </section>
@@ -506,6 +582,50 @@
     <a href="https://github.com/Kal1010101/ultimate-sys-hardening/blob/main/SECURITY.md">Security</a>
   </div>
 </footer>
+
+<div class="lb" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="Enlarged screenshot">
+  <button class="lb-close" type="button" aria-label="Close">&times;</button>
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+(function () {
+  var box = document.getElementById('lightbox');
+  var img = document.getElementById('lightbox-img');
+  var opener = null;
+
+  function open(btn) {
+    var thumb = btn.querySelector('img');
+    img.src = btn.dataset.full;
+    img.alt = thumb ? thumb.alt : '';
+    box.hidden = false;
+    opener = btn;
+    box.querySelector('.lb-close').focus();
+  }
+
+  function close() {
+    box.hidden = true;
+    img.src = '';
+    // Send focus back where it came from, so keyboard users are not dumped
+    // at the top of the document.
+    if (opener) { opener.focus(); opener = null; }
+  }
+
+  document.querySelectorAll('.shot button[data-full]').forEach(function (btn) {
+    btn.addEventListener('click', function () { open(btn); });
+  });
+
+  // Clicking the backdrop closes; clicking the image itself does not.
+  box.addEventListener('click', function (e) {
+    if (e.target === img) return;
+    close();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !box.hidden) close();
+  });
+}());
+</script>
 
 </body>
 </html>

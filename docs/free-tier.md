@@ -108,9 +108,9 @@ Author not liable for production outages. By using, you acknowledge this is **ir
 
 | Section | Screenshot |
 |---------|------------|
-| Platform selection | ![Platform selection](../images/distro-menu.png) |
-| Module table | ![The 22-module table with live status tags](../images/overview.png) |
-| Compliance checks | ![Read-only compliance output and CIS score](../images/compliance-check.png) |
+| Platform selection | ![Platform selection](images/distro-menu.png) |
+| Module table | ![The 22-module table with live status tags](images/overview.png) |
+| Compliance checks | ![Read-only compliance output and CIS score](images/compliance-check.png) |
 
 </details>
 

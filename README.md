@@ -34,37 +34,28 @@ sudo ./ultimate_hardening.sh --revert
 ```
 
 <div align="center">
-  <img src="images/overview.png" width="820"
-       alt="The interactive menu listing 22 hardening modules. Each row shows a risk level and a live status tag: [enable ] where the module's settings are already in place, [disable] where they are not, and [  N/A  ] for modules that cannot apply on this host.">
+<table>
+<tr>
+<td align="center" width="33%">
+  <a href="docs/images/distro-menu.png"><img src="docs/images/distro-menu.png" width="280"
+     alt="The platform selection menu: eight Linux families and five Unix/BSD systems, with auto-detect as the recommended default."></a>
+  <br><sub><b>Pick a platform</b><br>or let it auto-detect</sub>
+</td>
+<td align="center" width="33%">
+  <a href="docs/images/overview.png"><img src="docs/images/overview.png" width="280"
+     alt="The interactive menu listing 22 hardening modules. Each row carries a risk level and a live status tag: [enable ] where the settings are already in place, [disable] where they are not, and [N/A] for modules that cannot apply on this host."></a>
+  <br><sub><b>22 modules, one menu</b><br>status read live, never remembered</sub>
+</td>
+<td align="center" width="33%">
+  <a href="docs/images/compliance-check.png"><img src="docs/images/compliance-check.png" width="280"
+     alt="Read-only compliance output: passed checks, warnings explaining why each is not automatable, and a CIS score of 88 percent with 22 of 25 checks passed."></a>
+  <br><sub><b>Score it, change nothing</b><br>each failure names its fix</sub>
+</td>
+</tr>
+</table>
+<sub><i>Click any shot to open it full size.</i></sub>
 </div>
 
-<p align="center"><i>Every row's status is read from the live system, not remembered between runs.</i></p>
-
-<details>
-<summary><b>More screenshots</b> — platform selection, compliance checks</summary>
-
-<br>
-
-**Platform selection.** Auto-detect, or choose the family yourself. BSD and
-macOS are detected and adapted, with thinner coverage than Linux.
-
-<div align="center">
-  <img src="images/distro-menu.png" width="820"
-       alt="The platform selection menu, listing eight Linux families and five Unix/BSD systems, with auto-detect as the recommended default.">
-</div>
-
-<br>
-
-**Compliance checks.** Read-only — it scores the system and names the module
-that fixes each failure. This is the same data the menu's status tags come
-from, so the two can never disagree.
-
-<div align="center">
-  <img src="images/compliance-check.png" width="820"
-       alt="Read-only compliance output: passed checks, warnings with an explanation of why each one is not automatable, and a final CIS score of 88 percent with 22 of 25 checks passed.">
-</div>
-
-</details>
 
 ## Quick start
 
