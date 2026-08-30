@@ -7,7 +7,7 @@
 [![Shell Lint](https://github.com/Kal1010101/ultimate-sys-hardening/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/Kal1010101/ultimate-sys-hardening/actions/workflows/shellcheck.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-E8A33D.svg)](LICENSE)
 [![ShellCheck](https://img.shields.io/badge/shellcheck-clean-5FB88F.svg)](https://www.shellcheck.net/)
-[![Platforms](https://img.shields.io/badge/platforms-17%20distros-5FB88F.svg)](#supported-systems)
+[![Platforms](https://img.shields.io/badge/platforms-26-5FB88F.svg)](#supported-systems)
 
 [Website](https://Kal1010101.github.io/ultimate-sys-hardening/) ·
 [Security policy](SECURITY.md) ·
@@ -32,6 +32,39 @@ sudo ./ultimate_hardening.sh --auto-mode
 # Changed your mind
 sudo ./ultimate_hardening.sh --revert
 ```
+
+<div align="center">
+  <img src="images/overview.png" width="820"
+       alt="The interactive menu listing 22 hardening modules. Each row shows a risk level and a live status tag: [enable ] where the module's settings are already in place, [disable] where they are not, and [  N/A  ] for modules that cannot apply on this host.">
+</div>
+
+<p align="center"><i>Every row's status is read from the live system, not remembered between runs.</i></p>
+
+<details>
+<summary><b>More screenshots</b> — platform selection, compliance checks</summary>
+
+<br>
+
+**Platform selection.** Auto-detect, or choose the family yourself. BSD and
+macOS are detected and adapted, with thinner coverage than Linux.
+
+<div align="center">
+  <img src="images/distro-menu.png" width="820"
+       alt="The platform selection menu, listing eight Linux families and five Unix/BSD systems, with auto-detect as the recommended default.">
+</div>
+
+<br>
+
+**Compliance checks.** Read-only — it scores the system and names the module
+that fixes each failure. This is the same data the menu's status tags come
+from, so the two can never disagree.
+
+<div align="center">
+  <img src="images/compliance-check.png" width="820"
+       alt="Read-only compliance output: passed checks, warnings with an explanation of why each one is not automatable, and a final CIS score of 88 percent with 22 of 25 checks passed.">
+</div>
+
+</details>
 
 ## Quick start
 
@@ -98,8 +131,8 @@ Here's what it does and doesn't do:
 Auto-detected, or selectable from a menu.
 
 **Linux** — Debian, Ubuntu, Mint, Kali, Raspbian, RHEL, CentOS, Fedora, Rocky,
-AlmaLinux, Amazon Linux, Arch, Manjaro, EndeavourOS, openSUSE, Alpine, Void,
-Gentoo, NixOS
+AlmaLinux, Amazon Linux, Arch, Manjaro, EndeavourOS, Artix, openSUSE, SLES,
+Alpine, Void, Gentoo, NixOS
 
 **Unix / BSD** — macOS (Homebrew), FreeBSD, OpenBSD, NetBSD, Solaris
 *(detected and adapted; coverage is thinner than Linux)*

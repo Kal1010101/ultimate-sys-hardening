@@ -81,9 +81,12 @@ show_distro_menu() {
     fi
 
     clear
-    echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║              SELECT YOUR OPERATING SYSTEM / DISTRO               ║${NC}"
-    echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════╝${NC}"
+    # This box was the only hand-padded one that happened to be correct — it
+    # holds no emoji and nothing variable. It still goes through box_line, so
+    # there is one way to draw a box rather than one way plus an exception.
+    box_top
+    box_line "${CYAN}              SELECT YOUR OPERATING SYSTEM / DISTRO${NC}"
+    box_bottom
     echo ""
     echo -e "  ${WHITE}Linux${NC}"
     echo -e "  ${GREEN} 1)${NC} Debian / Ubuntu / Mint / Kali / Raspbian"

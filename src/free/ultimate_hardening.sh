@@ -126,10 +126,17 @@ show_menu() {
     # the moment the menu comes back.
     refresh_module_states
     clear
-    echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║       ${SHIELD} ULTIMATE HARDENING ${UH_VERSION} — FREE TIER ${SHIELD}                 ║${NC}"
-    echo -e "${CYAN}║       Platform: ${WHITE}${DISTRO_TYPE}${NC}"
-    echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════╝${NC}"
+    # The header box is drawn by box_line() in lib/menu.sh, which computes the
+    # padding. It was hand-padded, and both inner lines were wrong: the
+    # Platform line had no closing edge at all, and the title line assumed the
+    # shield emoji was two columns wide when many fonts render it as one. The
+    # shields are gone from the header for that reason: no amount of
+    # re-counting makes an emoji-bearing fixed-width box align on every
+    # terminal, so the border holds text only.
+    box_top
+    box_line "${CYAN}       ULTIMATE HARDENING ${UH_VERSION} — FREE TIER${NC}"
+    box_line "${CYAN}       Platform: ${WHITE}${DISTRO_TYPE}${NC}"
+    box_bottom
 
     if [[ "$DRY_RUN" == true ]]; then
         echo -e "\n  ${YELLOW}${WARNING} DRY RUN — nothing will be modified${NC}"
