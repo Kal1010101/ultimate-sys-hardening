@@ -33,30 +33,6 @@ sudo ./ultimate_hardening.sh --auto-mode
 sudo ./ultimate_hardening.sh --revert
 ```
 
-<div align="center">
-<table>
-<tr>
-<td align="center" width="33%">
-  <a href="docs/images/distro-menu.png"><img src="docs/images/distro-menu.png" width="280"
-     alt="The platform selection menu: eight Linux families and five Unix/BSD systems, with auto-detect as the recommended default."></a>
-  <br><sub><b>Pick a platform</b><br>or let it auto-detect</sub>
-</td>
-<td align="center" width="33%">
-  <a href="docs/images/overview.png"><img src="docs/images/overview.png" width="280"
-     alt="The interactive menu listing 22 hardening modules. Each row carries a risk level and a live status tag: [enable ] where the settings are already in place, [disable] where they are not, and [N/A] for modules that cannot apply on this host."></a>
-  <br><sub><b>22 modules, one menu</b><br>status read live, never remembered</sub>
-</td>
-<td align="center" width="33%">
-  <a href="docs/images/compliance-check.png"><img src="docs/images/compliance-check.png" width="280"
-     alt="Read-only compliance output: passed checks, warnings explaining why each is not automatable, and a CIS score of 88 percent with 22 of 25 checks passed."></a>
-  <br><sub><b>Score it, change nothing</b><br>each failure names its fix</sub>
-</td>
-</tr>
-</table>
-<sub><i>Click any shot to open it full size.</i></sub>
-</div>
-
-
 ## Quick start
 
 ```bash
@@ -180,12 +156,6 @@ engine.
 | Policy-as-code + drift | — | — | ✅ |
 | JSON / CSV export | — | — | ✅ |
 | OpenSCAP integration | — | — | ✅ |
-
-<div align="center">
-  <a href="docs/images/menu-pro.png"><img src="docs/images/menu-pro.png" width="360"
-     alt="The Pro tier menu: the same 22 free core hardening modules in one panel, and a second panel of Pro-only features — CIS auto-fix, HTML compliance reports, AI directory locking, scheduling, and email notifications."></a>
-  <br><sub>The Pro menu — the free 22 modules on top, Pro features below.<br><i>Click to enlarge.</i></sub>
-</div>
 
 [Full comparison →](https://Kal1010101.github.io/ultimate-sys-hardening/#pricing)
 

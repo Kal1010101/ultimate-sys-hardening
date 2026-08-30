@@ -121,4 +121,21 @@ if [[ -f "$html" ]]; then
     fi
 fi
 
+# --- the site must show the menu, not redraw it -----------------------------
+# docs/index.html used to contain a hand-written HTML replica of the terminal
+# menu in its hero. It drifted exactly as you would expect: it offered
+# "16) Apply all Safe/Medium modules", the numbering from when the tool had 15
+# modules, sitting directly beneath a badge reading "22 modules", with a box
+# border that did not close and two shield emoji the real header no longer
+# prints. A replica of a UI is a second copy of it that nothing keeps in sync,
+# so the hero is a screenshot now and this keeps it that way.
+if [[ -f "$html" ]]; then
+    replica=$(grep -cE '\xe2\x95\x94|\xe2\x95\x91|Apply all (Safe/Medium|22) modules' "$html" 2>/dev/null || true)
+    if [[ "${replica:-0}" -gt 0 ]]; then
+        fail "docs/index.html redraws the menu in HTML — use a screenshot instead"
+    else
+        pass_msg "docs/index.html shows the menu as a screenshot, not a replica"
+    fi
+fi
+
 finish
