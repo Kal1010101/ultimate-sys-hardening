@@ -98,4 +98,27 @@ for doc in README.md PRICING.md docs/index.html; do
     fi
 done
 
+# --- and must not advertise it in a table cell either ------------------------
+# The check above only sees "<n> modules" as adjacent words. A comparison table
+# puts the label in one cell and the number in the next, which is precisely how
+# docs/index.html came to advertise 15 hardening modules in its pricing table
+# while its own feature list two sections earlier said 22. Seven modules the
+# project actually ships, priced as if they did not exist.
+html="$REPO/docs/index.html"
+if [[ -f "$html" ]]; then
+    row=$(grep -i 'hardening modules' "$html" | grep '<td' || true)
+    if [[ -n "$row" ]]; then
+        nums=$(printf '%s' "$row" | grep -oE '>[0-9]{1,3}<' | tr -d '><' | sort -u)
+        bad=0
+        for n in $nums; do
+            if [[ "$n" != "$EXPECTED" ]]; then
+                fail "docs/index.html comparison table lists $n hardening modules, not $EXPECTED"
+                bad=1
+            fi
+        done
+        [[ -n "$nums" && $bad -eq 0 ]] && \
+            pass_msg "comparison table lists $EXPECTED modules in every tier column"
+    fi
+fi
+
 finish

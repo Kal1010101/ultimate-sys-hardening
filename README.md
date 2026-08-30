@@ -181,6 +181,12 @@ engine.
 | JSON / CSV export | — | — | ✅ |
 | OpenSCAP integration | — | — | ✅ |
 
+<div align="center">
+  <a href="docs/images/menu-pro.png"><img src="docs/images/menu-pro.png" width="360"
+     alt="The Pro tier menu: the same 22 free core hardening modules in one panel, and a second panel of Pro-only features — CIS auto-fix, HTML compliance reports, AI directory locking, scheduling, and email notifications."></a>
+  <br><sub>The Pro menu — the free 22 modules on top, Pro features below.<br><i>Click to enlarge.</i></sub>
+</div>
+
 [Full comparison →](https://Kal1010101.github.io/ultimate-sys-hardening/#pricing)
 
 ## Standards coverage
