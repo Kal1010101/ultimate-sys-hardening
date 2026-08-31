@@ -205,6 +205,25 @@
   .shot figcaption{margin-top:10px;font-size:.85rem;color:var(--fg-dim)}
   .shot figcaption b{color:var(--fg);display:block;font-weight:600}
 
+  /* The hero terminal is pinned to 825x962 so the block sits at a fixed size
+     rather than stretching with the viewport. The generated menu is ~37 lines
+     at this font size, which fits with room; the body scrolls if it ever
+     stops fitting rather than bursting the frame. */
+  .term-hero{width:100%;max-width:825px;height:962px;display:flex;flex-direction:column}
+  .term-hero .term-body{flex:1;overflow:auto}
+
+  /* The compliance block wraps instead of scrolling sideways: its remediation
+     hints are long sentences, and a horizontal scrollbar hides the half of the
+     sentence that explains the failure. Each line is its own element (see the
+     generator's `lines` mode) so the wrapped remainder hangs under the message
+     rather than resetting to column zero. */
+  .term-wrap .term-body{white-space:normal}
+  .term-wrap .ln{
+    white-space:pre-wrap;overflow-wrap:break-word;
+    padding-left:7ch;text-indent:-7ch;
+  }
+  .term-wrap .ln:empty::after{content:"\00a0"}
+
   .term-wide{margin-top:8px}
   .term-cap{margin:10px 0 30px;font-size:.88rem;color:var(--fg-faint)}
 
@@ -272,7 +291,7 @@
     <a class="btn btn-ghost" href="https://github.com/Kal1010101/ultimate-sys-hardening">View source on GitHub</a>
   </div>
 
-  <div class="term">
+  <div class="term term-hero">
     <div class="term-bar">
       <span class="dot" style="background:#f85149"></span>
       <span class="dot" style="background:#d29922"></span>
@@ -403,7 +422,7 @@
     </div>
     <p class="term-cap">Eight Linux families and five Unix/BSD systems, or auto-detect.</p>
 
-    <div class="term term-wide">
+    <div class="term term-wide term-wrap">
       <div class="term-bar">
         <span class="dot" style="background:#f85149"></span>
         <span class="dot" style="background:#d29922"></span>
@@ -411,37 +430,7 @@
         <span class="term-title">ultimate_hardening.sh --cis-only</span>
       </div>
 <div class="term-body"><!-- BEGIN generated cis: ./docs/build-terminals.sh -->
-📊 Running CIS-aligned compliance checks (read-only)
-<span class="c-g">✅</span>   /home is a separate partition
-<span class="c-g">✅</span>   /tmp is a separate partition
-<span class="c-a">⚠️</span>   /var is a separate partition — Not a separate mount point — Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition
-<span class="c-a">⚠️</span>   /var/log is a separate partition — Not a separate mount point — Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition
-<span class="c-a">⚠️</span>   /var/tmp is a separate partition — Not a separate mount point — Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition
-<span class="c-g">✅</span>   SSH root login disabled
-<span class="c-g">✅</span>   SSH password authentication disabled
-<span class="c-g">✅</span>   SSH X11 forwarding disabled
-<span class="c-g">✅</span>   SSH empty passwords rejected
-<span class="c-g">✅</span>   SSH MaxAuthTries is 3 or fewer
-<span class="c-g">✅</span>   auditd is running
-<span class="c-g">✅</span>   fail2ban is running
-<span class="c-g">✅</span>   Firewall is active
-<span class="c-g">✅</span>   ASLR fully enabled
-<span class="c-g">✅</span>   IP forwarding disabled
-<span class="c-g">✅</span>   TCP SYN cookies enabled
-<span class="c-g">✅</span>   Kernel log restricted to root
-<span class="c-g">✅</span>   Kernel pointers hidden
-<span class="c-g">✅</span>   SUID core dumps disabled
-<span class="c-g">✅</span>   Password max age is 90 days or fewer
-<span class="c-g">✅</span>   /etc/passwd permissions are 644 or stricter
-<span class="c-g">✅</span>   /etc/shadow permissions are 640 or stricter
-<span class="c-g">✅</span>   /etc/group permissions are 644 or stricter
-<span class="c-g">✅</span>   /etc/gshadow permissions are 640 or stricter
-<span class="c-g">✅</span>   Mandatory access control is enforcing
-
-<span class="c-c">══════════════════════════════════════════════════════════════════</span>
-<span class="c-w">  CIS Score: 88%  (22/25 checks passed)</span>
-<span class="c-a">  ⚠️ 3 check(s) need attention</span>
-<span class="c-c">══════════════════════════════════════════════════════════════════</span>
+<div class="ln">📊 Running CIS-aligned compliance checks (read-only)</div><div class="ln"><span class="c-g">✅</span>   /home is a separate partition</div><div class="ln"><span class="c-g">✅</span>   /tmp is a separate partition</div><div class="ln"><span class="c-a">⚠️</span>   /var is a separate partition — Not a separate mount point — Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition</div><div class="ln"><span class="c-a">⚠️</span>   /var/log is a separate partition — Not a separate mount point — Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition</div><div class="ln"><span class="c-a">⚠️</span>   /var/tmp is a separate partition — Not a separate mount point — Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition</div><div class="ln"><span class="c-g">✅</span>   SSH root login disabled</div><div class="ln"><span class="c-g">✅</span>   SSH password authentication disabled</div><div class="ln"><span class="c-g">✅</span>   SSH X11 forwarding disabled</div><div class="ln"><span class="c-g">✅</span>   SSH empty passwords rejected</div><div class="ln"><span class="c-g">✅</span>   SSH MaxAuthTries is 3 or fewer</div><div class="ln"><span class="c-g">✅</span>   auditd is running</div><div class="ln"><span class="c-g">✅</span>   fail2ban is running</div><div class="ln"><span class="c-g">✅</span>   Firewall is active</div><div class="ln"><span class="c-g">✅</span>   ASLR fully enabled</div><div class="ln"><span class="c-g">✅</span>   IP forwarding disabled</div><div class="ln"><span class="c-g">✅</span>   TCP SYN cookies enabled</div><div class="ln"><span class="c-g">✅</span>   Kernel log restricted to root</div><div class="ln"><span class="c-g">✅</span>   Kernel pointers hidden</div><div class="ln"><span class="c-g">✅</span>   SUID core dumps disabled</div><div class="ln"><span class="c-g">✅</span>   Password max age is 90 days or fewer</div><div class="ln"><span class="c-g">✅</span>   /etc/passwd permissions are 644 or stricter</div><div class="ln"><span class="c-g">✅</span>   /etc/shadow permissions are 640 or stricter</div><div class="ln"><span class="c-g">✅</span>   /etc/group permissions are 644 or stricter</div><div class="ln"><span class="c-g">✅</span>   /etc/gshadow permissions are 640 or stricter</div><div class="ln"><span class="c-g">✅</span>   Mandatory access control is enforcing</div><div class="ln"></div><div class="ln"><span class="c-c">══════════════════════════════════════════════════════════════════</span></div><div class="ln"><span class="c-w">  CIS Score: 88%  (22/25 checks passed)</span></div><div class="ln"><span class="c-a">  ⚠️ 3 check(s) need attention</span></div><div class="ln"><span class="c-c">══════════════════════════════════════════════════════════════════</span></div><div class="ln"></div>
 <!-- END generated cis -->
 </div>
     </div>
