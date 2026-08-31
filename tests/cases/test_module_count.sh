@@ -131,12 +131,12 @@ fi
 # It is generated from the tool's own menu code now, so this asserts it is not
 # stale rather than banning the replica outright — banning it would have thrown
 # away the thing that reads best.
-gen="$REPO/docs/build-hero.sh"
+gen="$REPO/docs/build-terminals.sh"
 if [[ -x "$gen" ]]; then
     if "$gen" --check >/dev/null 2>&1; then
-        pass_msg "docs/index.html hero matches the current menu"
+        pass_msg "docs/index.html terminals match the current code"
     else
-        fail "docs/index.html hero is stale — run ./docs/build-hero.sh"
+        fail "docs/index.html terminal blocks are stale — run ./docs/build-terminals.sh"
     fi
 fi
 

@@ -205,6 +205,9 @@
   .shot figcaption{margin-top:10px;font-size:.85rem;color:var(--fg-dim)}
   .shot figcaption b{color:var(--fg);display:block;font-weight:600}
 
+  .term-wide{margin-top:8px}
+  .term-cap{margin:10px 0 30px;font-size:.88rem;color:var(--fg-faint)}
+
   /* ---------- lightbox ---------- */
   .lb{
     position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
@@ -280,7 +283,7 @@
 <span class="c-f">$</span> <span class="c-w">cd ultimate-sys-hardening/src/free</span>
 <span class="c-f">$</span> <span class="c-w">sudo ./ultimate_hardening.sh --dry-run</span>
 
-<!-- BEGIN generated hero: ./docs/build-hero.sh -->
+<!-- BEGIN generated modules: ./docs/build-terminals.sh -->
 <span class="c-c">╔══════════════════════════════════════════════════════════════════╗</span>
 <span class="c-c">║</span><span class="c-c">       ULTIMATE HARDENING 2.3.0 — FREE TIER</span>                       <span class="c-c">║</span>
 <span class="c-c">║</span><span class="c-c">       Platform: </span><span class="c-w">rhel</span>                                             <span class="c-c">║</span>
@@ -316,8 +319,9 @@
   <span class="c-w">23)</span> Apply all Safe/Medium modules (skip High risk)
   <span class="c-w">24)</span> Apply all 22 modules (includes High risk)
   <span class="c-w"> C)</span> Run compliance checks (read-only)
+  <span class="c-w"> R)</span> Revert everything from backup
   <span class="c-w"> Q)</span> Quit
-<!-- END generated hero -->
+<!-- END generated modules -->
 </div>
   </div>
   <p class="hero-note">
@@ -358,32 +362,90 @@
 <section id="screenshots">
   <div class="wrap">
     <div class="eyebrow">See it</div>
-    <h2>Nothing here is a mockup</h2>
+    <h2>The screens, not pictures of the screens</h2>
     <p class="lede" style="margin-bottom:32px">
-      Three screens from a real run on a RHEL-family host. Click any of them to
-      open it full size.
+      Both of these are rendered from the tool's own code by
+      <code class="inline">docs/build-terminals.sh</code>, so they cannot drift
+      from what it actually prints. The module states and check results are
+      demo values — the layout, ordering, risk levels, remediation hints and
+      score arithmetic are the real thing.
     </p>
 
-    <div class="shots">
-      <figure class="shot">
-        <button type="button" data-full="images/distro-menu.png" aria-label="Enlarge: Pick a platform">
-          <img src="images/distro-menu.png" alt="The platform selection menu: eight Linux families and five Unix/BSD systems, with auto-detect as the recommended default." loading="lazy" width="718" height="655">
-        </button>
-        <figcaption><b>Pick a platform</b>Eight Linux families and five Unix/BSD systems, or let it auto-detect.</figcaption>
-      </figure>
-      <figure class="shot">
-        <button type="button" data-full="images/overview.png" aria-label="Enlarge: Twenty-two modules">
-          <img src="images/overview.png" alt="The interactive menu listing 22 hardening modules. Each row carries a risk level and a live status tag: enable where the settings are already in place, disable where they are not, and N/A for modules that cannot apply on this host." loading="lazy" width="904" height="870">
-        </button>
-        <figcaption><b>Twenty-two modules</b>Each row carries a risk level and a status read from the live system.</figcaption>
-      </figure>
-      <figure class="shot">
-        <button type="button" data-full="images/compliance-check.png" aria-label="Enlarge: Score it, change nothing">
-          <img src="images/compliance-check.png" alt="Read-only compliance output: passed checks, warnings explaining why each is not automatable, and a CIS score of 88 percent with 22 of 25 checks passed." loading="lazy" width="766" height="722">
-        </button>
-        <figcaption><b>Score it, change nothing</b>Read-only. Every failure names the module that fixes it.</figcaption>
-      </figure>
+    <div class="term term-wide">
+      <div class="term-bar">
+        <span class="dot" style="background:#f85149"></span>
+        <span class="dot" style="background:#d29922"></span>
+        <span class="dot" style="background:#3fb950"></span>
+        <span class="term-title">platform selection</span>
+      </div>
+<div class="term-body"><!-- BEGIN generated distro: ./docs/build-terminals.sh -->
+<span class="c-c">╔══════════════════════════════════════════════════════════════════╗</span>
+<span class="c-c">║</span><span class="c-c">              SELECT YOUR OPERATING SYSTEM / DISTRO</span>               <span class="c-c">║</span>
+<span class="c-c">╚══════════════════════════════════════════════════════════════════╝</span>
+
+  <span class="c-w">Linux</span>
+  <span class="c-g"> 1)</span> Debian / Ubuntu / Mint / Kali / Raspbian
+  <span class="c-g"> 2)</span> RHEL / CentOS / Fedora / Rocky / Alma / Amazon
+  <span class="c-g"> 3)</span> Arch / Manjaro / EndeavourOS / Artix
+  <span class="c-g"> 4)</span> openSUSE / SLES
+  <span class="c-g"> 5)</span> Alpine
+  <span class="c-g"> 6)</span> Void
+  <span class="c-g"> 7)</span> Gentoo
+  <span class="c-g"> 8)</span> NixOS
+
+  <span class="c-w">Unix / BSD</span>  <span class="c-a">(partial coverage)</span>
+  <span class="c-g"> 9)</span> macOS      <span class="c-g">10)</span> FreeBSD    <span class="c-g">11)</span> OpenBSD
+  <span class="c-g">12)</span> NetBSD     <span class="c-g">13)</span> Solaris
+
+  <span class="c-g"> 0)</span> Auto-detect <span class="c-c">(recommended)</span>
+<!-- END generated distro -->
+</div>
     </div>
+    <p class="term-cap">Eight Linux families and five Unix/BSD systems, or auto-detect.</p>
+
+    <div class="term term-wide">
+      <div class="term-bar">
+        <span class="dot" style="background:#f85149"></span>
+        <span class="dot" style="background:#d29922"></span>
+        <span class="dot" style="background:#3fb950"></span>
+        <span class="term-title">ultimate_hardening.sh --cis-only</span>
+      </div>
+<div class="term-body"><!-- BEGIN generated cis: ./docs/build-terminals.sh -->
+📊 Running CIS-aligned compliance checks (read-only)
+<span class="c-g">✅</span>   /home is a separate partition
+<span class="c-g">✅</span>   /tmp is a separate partition
+<span class="c-a">⚠️</span>   /var is a separate partition — Not a separate mount point — Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition
+<span class="c-a">⚠️</span>   /var/log is a separate partition — Not a separate mount point — Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition
+<span class="c-a">⚠️</span>   /var/tmp is a separate partition — Not a separate mount point — Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition
+<span class="c-g">✅</span>   SSH root login disabled
+<span class="c-g">✅</span>   SSH password authentication disabled
+<span class="c-g">✅</span>   SSH X11 forwarding disabled
+<span class="c-g">✅</span>   SSH empty passwords rejected
+<span class="c-g">✅</span>   SSH MaxAuthTries is 3 or fewer
+<span class="c-g">✅</span>   auditd is running
+<span class="c-g">✅</span>   fail2ban is running
+<span class="c-g">✅</span>   Firewall is active
+<span class="c-g">✅</span>   ASLR fully enabled
+<span class="c-g">✅</span>   IP forwarding disabled
+<span class="c-g">✅</span>   TCP SYN cookies enabled
+<span class="c-g">✅</span>   Kernel log restricted to root
+<span class="c-g">✅</span>   Kernel pointers hidden
+<span class="c-g">✅</span>   SUID core dumps disabled
+<span class="c-g">✅</span>   Password max age is 90 days or fewer
+<span class="c-g">✅</span>   /etc/passwd permissions are 644 or stricter
+<span class="c-g">✅</span>   /etc/shadow permissions are 640 or stricter
+<span class="c-g">✅</span>   /etc/group permissions are 644 or stricter
+<span class="c-g">✅</span>   /etc/gshadow permissions are 640 or stricter
+<span class="c-g">✅</span>   Mandatory access control is enforcing
+
+<span class="c-c">══════════════════════════════════════════════════════════════════</span>
+<span class="c-w">  CIS Score: 88%  (22/25 checks passed)</span>
+<span class="c-a">  ⚠️ 3 check(s) need attention</span>
+<span class="c-c">══════════════════════════════════════════════════════════════════</span>
+<!-- END generated cis -->
+</div>
+    </div>
+    <p class="term-cap">Read-only. Every failure names the module that fixes it.</p>
   </div>
 </section>
 

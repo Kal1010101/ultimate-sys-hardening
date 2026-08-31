@@ -216,7 +216,14 @@ run_cis_checks() {
         record_check "Mandatory access control is enforcing" "false" "Neither AppArmor nor SELinux in enforce mode"
     fi
 
-    # -- Score -----------------------------------------------------------------
+    print_cis_score
+}
+
+# The score line and its rules. Split out of run_cis_checks so anything that
+# populates CHECKS_PASSED/CHECKS_FAILED by another route — the site generator
+# renders this section with demo results — prints the identical footer instead
+# of a second copy of the arithmetic that could disagree with this one.
+print_cis_score() {
     local total=$((CHECKS_PASSED + CHECKS_FAILED))
     CIS_SCORE=$(( total > 0 ? CHECKS_PASSED * 100 / total : 0 ))
 
