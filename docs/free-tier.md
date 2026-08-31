@@ -17,7 +17,7 @@ A comprehensive Linux system hardening solution with **Free**, **Pro**, and **En
 ```bash
 git clone https://github.com/Kal1010101/ultimate-sys-hardening.git
 cd ultimate-sys-hardening/src/free
-sudo ./ultimate_hardening.sh
+sudo ./src/free/ultimate_hardening.sh
 
 
 
@@ -123,29 +123,29 @@ git clone https://github.com/Kal1010101/ultimate-sys-hardening.git
 cd ultimate-sys-hardening
 
 # Interactive mode (normal)
-sudo ./ultimate_hardening.sh
+sudo ./src/free/ultimate_hardening.sh
 
 # Dry-run to preview changes
-sudo ./ultimate_hardening.sh --dry-run
+sudo ./src/free/ultimate_hardening.sh --dry-run
 
 # Automatic mode (no prompts)
-sudo ./ultimate_hardening.sh --auto-mode
+sudo ./src/free/ultimate_hardening.sh --auto-mode
 
 # Skip backups (faster, risky)
-sudo ./ultimate_hardening.sh --skip-backup
+sudo ./src/free/ultimate_hardening.sh --skip-backup
 
 # Combine flags
-sudo ./ultimate_hardening.sh --auto-mode --dry-run
+sudo ./src/free/ultimate_hardening.sh --auto-mode --dry-run
 
 # Show help
-sudo ./ultimate_hardening.sh --help
+sudo ./src/free/ultimate_hardening.sh --help
 
 # Full system revert (restores everything from backup)
-sudo ./ultimate_hardening.sh --revert
+sudo ./src/free/ultimate_hardening.sh --revert
 
 # Revert only SUID/SGID permissions
-sudo ./ultimate_hardening.sh --revert-suid
+sudo ./src/free/ultimate_hardening.sh --revert-suid
 
 # Interactive revert is also available via menu option #28
-sudo ./ultimate_hardening.sh
+sudo ./src/free/ultimate_hardening.sh
 # Then select option 28 from the menu

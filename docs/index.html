@@ -300,7 +300,7 @@
     </div>
 <div class="term-body"><span class="c-f">$</span> <span class="c-w">git clone https://github.com/Kal1010101/ultimate-sys-hardening.git</span>
 <span class="c-f">$</span> <span class="c-w">cd ultimate-sys-hardening/src/free</span>
-<span class="c-f">$</span> <span class="c-w">sudo ./ultimate_hardening.sh --dry-run</span>
+<span class="c-f">$</span> <span class="c-w">sudo ./src/free/ultimate_hardening.sh --dry-run</span>
 
 <!-- BEGIN generated modules: ./docs/build-terminals.sh -->
 <span class="c-c">╔══════════════════════════════════════════════════════════════════╗</span>
@@ -486,8 +486,8 @@
         <p>Built-in checks follow CIS Benchmark guidance for Linux. This is alignment, not a CIS certification, and the built-in scorer is not an accredited assessment.</p></div>
       <div class="card"><h3><span class="ico">🎯</span> OpenSCAP scanning <span class="badge ok" style="margin-left:4px">Enterprise</span></h3>
         <p>Runs <code class="inline">oscap</code> against the official SCAP Security Guide, so you get a real, assessable result under a CIS <em>or</em> DISA STIG profile — not our interpretation of one.</p></div>
-      <div class="card"><h3><span class="ico">🗺️</span> NIST 800-53 crosswalk <span class="badge ok" style="margin-left:4px">Enterprise</span></h3>
-        <p>Maps each hardening module to the NIST SP 800-53 Rev. 5 controls it contributes to, for audit evidence and control-narrative work.</p></div>
+      <div class="card"><h3><span class="ico">🗺️</span> NIST 800-53 crosswalk <span class="badge" style="margin-left:4px">Planned</span></h3>
+        <p>Not built yet. The intent is to map each hardening module to the NIST SP 800-53 Rev. 5 controls it contributes to, for audit evidence and control-narrative work.</p></div>
     </div>
 
     <div class="callout">
@@ -528,7 +528,7 @@
           <li>Built-in CIS benchmark checks</li>
           <li>Dry-run preview mode</li>
           <li>Automatic backup &amp; full revert</li>
-          <li>Debian, RHEL, Arch, SUSE</li>
+          <li>26 platforms — 8 Linux families, macOS and the BSDs</li>
           <li>Community support via GitHub</li>
         </ul>
         <a class="btn btn-ghost" href="https://github.com/Kal1010101/ultimate-sys-hardening">Get it on GitHub</a>
@@ -546,8 +546,6 @@
           <li>Security posture: open ports, failed logins, active services</li>
           <li>Scheduled runs (daily/weekly/monthly)</li>
           <li>Email &amp; SMTP alerting</li>
-          <li>Deep security scan (Lynis)</li>
-          <li>Service account &amp; UEFI Secure Boot audit</li>
           <li>Config-file driven runs</li>
           <li>Email support</li>
         </ul>
@@ -563,13 +561,12 @@
           <li class="inherit">Everything in Pro</li>
           <li>Multi-host compliance dashboard</li>
           <li>OpenSCAP scanning — CIS &amp; DISA STIG profiles</li>
-          <li>NIST SP 800-53 Rev. 5 crosswalk</li>
+          <li>NIST SP 800-53 Rev. 5 crosswalk <span class="badge" style="margin-left:4px">Planned</span></li>
           <li>YAML policy-as-code &amp; drift detection</li>
           <li>Remote deployment over SSH</li>
           <li>JSON / CSV audit export</li>
           <li>SQLite state history &amp; trend tracking</li>
-          <li>Active Directory / SSSD integration</li>
-          <li>Centralized logging</li>
+          <li>Fleet-wide syslog: one collector, every host</li>
           <li>Priority support</li>
         </ul>
         <a class="btn btn-ghost" href="mailto:ultimate-sys-hardening@protonmail.com?subject=Ultimate%20Hardening%20Enterprise">Talk to us</a>
@@ -591,14 +588,14 @@
           <tr><td class="feat">HTML compliance report</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">Posture: ports, logins, services</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">Scheduled runs &amp; email alerts</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
-          <tr><td class="feat">Deep scan (Lynis)</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
-          <tr><td class="feat">OpenSCAP CIS / STIG scan</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
-          <tr><td class="feat">NIST 800-53 crosswalk</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
+                    <tr><td class="feat">OpenSCAP CIS / STIG scan</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
+          <tr><td class="feat">NIST 800-53 crosswalk</td><td class="n">—</td><td class="n">—</td><td class="n">Planned</td></tr>
           <tr><td class="feat">Policy-as-code &amp; drift detection</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
           <tr><td class="feat">Multi-host dashboard</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
           <tr><td class="feat">Remote SSH deployment</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
           <tr><td class="feat">JSON / CSV export</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
-          <tr><td class="feat">AD / SSSD &amp; centralized logging</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
+          <tr><td class="feat">Remote syslog forwarding</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="feat">Fleet-wide syslog (one collector, pushed on deploy)</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
           <tr><td class="feat">Support</td><td class="n">Community</td><td class="y">Email</td><td class="y">Priority</td></tr>
         </tbody>
       </table>
@@ -665,7 +662,7 @@
       </div>
 <div class="term-body"><span class="c-f">$</span> <span class="c-w">git clone https://github.com/Kal1010101/ultimate-sys-hardening.git</span>
 <span class="c-f">$</span> <span class="c-w">cd ultimate-sys-hardening/src/free</span>
-<span class="c-f">$</span> <span class="c-w">sudo ./ultimate_hardening.sh --dry-run</span>
+<span class="c-f">$</span> <span class="c-w">sudo ./src/free/ultimate_hardening.sh --dry-run</span>
 </div>
     </div>
     <div class="cta" style="justify-content:center">
