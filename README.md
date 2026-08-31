@@ -24,13 +24,13 @@ fixes, and keeps a way back. Every file it touches is backed up first, and
 
 ```bash
 # See exactly what it would change — writes nothing
-sudo ./ultimate_hardening.sh --auto-mode --dry-run
+sudo ./src/free/ultimate_hardening.sh --auto-mode --dry-run
 
 # Apply it
-sudo ./ultimate_hardening.sh --auto-mode
+sudo ./src/free/ultimate_hardening.sh --auto-mode
 
 # Changed your mind
-sudo ./ultimate_hardening.sh --revert
+sudo ./src/free/ultimate_hardening.sh --revert
 ```
 
 ## Quick start
@@ -84,8 +84,14 @@ Here's what it does and doesn't do:
 - **No telemetry.** No analytics, no phone-home, no license check. The only
   outbound traffic is your own package manager.
 - **Backup before write.** Everything modified is copied to
-  `/root/hardening_backup_<timestamp>/` before the first change.
-- **Full revert.** `--revert` restores SSH, sysctl, and permissions.
+  `/root/hardening_backup_<timestamp>_<tier>/` before the first change, with a
+  manifest recording which tier and version wrote it.
+- **Original state kept separately.** The first-ever copy of each file it
+  touches is also kept in `/root/.ultimate_hardening_genesis/`, so a revert
+  restores the system as it was before any hardening — not merely as it was
+  before the most recent run.
+- **Full revert.** `--revert` restores SSH, sysctl, file permissions, compiler
+  modes, and removes the protocol blacklist and umask profile it added.
   `--revert-suid` restores just SUID/SGID bits.
 - **Dry-run.** `--dry-run` shows every intended change and exits.
 - **PAM untouched.** An early version broke a login screen on an eCryptfs system.
@@ -111,14 +117,17 @@ Init systems: systemd, OpenRC, SysV, BSD rc.d
 ## Usage
 
 ```
-sudo ./ultimate_hardening.sh [OPTIONS]
+sudo ./src/free/ultimate_hardening.sh [OPTIONS]
 
   --auto-mode      Run without interactive prompts
-  --skip-backup    Skip creating the backup directory
+  --safe-only      With --auto-mode, skip the two High-risk modules (9, 16)
   --dry-run        Show what would change, apply nothing
   --cis-only       Run read-only CIS checks, print score, exit
-  --revert         Restore everything from the most recent backup
+  --skip-backup    Skip creating the backup directory (disables revert)
+  --revert         Restore everything from backup
   --revert-suid    Restore only SUID/SGID permissions
+  --check-update   Check GitHub for a newer release, then exit
+  --version        Print version and exit
   --help           Show this help
 ```
 
@@ -128,7 +137,7 @@ sudo ./ultimate_hardening.sh [OPTIONS]
 as a build gate:
 
 ```bash
-score=$(sudo ./ultimate_hardening.sh --cis-only | grep -oP 'CIS Score: \K[0-9]+')
+score=$(sudo ./src/free/ultimate_hardening.sh --cis-only | grep -oP 'CIS Score: \K[0-9]+')
 [ "$score" -lt 80 ] && exit 1
 ```
 
