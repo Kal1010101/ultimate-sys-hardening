@@ -224,6 +224,9 @@
   }
   .term-wrap .ln:empty::after{content:"\00a0"}
 
+  .tier-for{font-size:.8rem;color:var(--green);font-family:var(--mono);margin:-4px 0 10px}
+  .callout b{color:var(--fg);display:block;margin-top:8px}
+
   .term-wide{margin-top:8px}
   .term-cap{margin:10px 0 30px;font-size:.88rem;color:var(--fg-faint)}
 
@@ -503,9 +506,10 @@
     <div class="eyebrow">Pricing</div>
     <h2>The hardening is free. The fleet management isn't.</h2>
     <p class="lede" style="margin-bottom:34px">
-      Every hardening module is in the free, open-source tier and always will be.
-      Paid tiers add the operational layer: reporting, scheduling, drift detection and
-      multi-host compliance.
+      The hardening is free and stays free. What costs money is everything around
+      it: proving the work happened, repeating it on a schedule, and doing it across
+      more machines than you can log into by hand. One server and an evening? The
+      free tier is the whole product.
     </p>
 
     <figure class="shot shot-wide">
@@ -521,7 +525,8 @@
         <div class="tier-tag">Open source</div>
         <h3>Free</h3>
         <div class="price">$0</div>
-        <div class="price-note">MIT licensed. No account, no signup, no limits.</div>
+        <div class="tier-for">One machine you own</div>
+          <div class="price-note">MIT licensed. No account, no signup, no limits.</div>
         <ul>
           <li>All 22 hardening modules</li>
           <li>Interactive menu with live status</li>
@@ -538,7 +543,8 @@
         <div class="tier-tag">Most popular</div>
         <h3>Pro</h3>
         <div class="price">$9<span> /month</span></div>
-        <div class="price-note">or $79/year (save 27%). Single admin, unlimited personal &amp; client servers.</div>
+        <div class="tier-for">One admin, many machines</div>
+          <div class="price-note">or $79/year (save 27%). Single admin, unlimited personal &amp; client servers.</div>
         <ul>
           <li class="inherit">Everything in Free</li>
           <li>One-command auto-fix of CIS findings</li>
@@ -556,7 +562,8 @@
         <div class="tier-tag">Fleets &amp; compliance</div>
         <h3>Enterprise</h3>
         <div class="price">$49<span> /month</span></div>
-        <div class="price-note">Up to 10 hosts, then $3/host/month. Flat $149/month up to 50 hosts.</div>
+        <div class="tier-for">A fleet someone audits</div>
+          <div class="price-note">Up to 10 hosts, then $3/host/month. Flat $149/month up to 50 hosts.</div>
         <ul>
           <li class="inherit">Everything in Pro</li>
           <li>Multi-host compliance dashboard</li>
@@ -599,6 +606,42 @@
           <tr><td class="feat">Support</td><td class="n">Community</td><td class="y">Email</td><td class="y">Priority</td></tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="grid g2" style="margin-top:40px">
+      <div class="card">
+        <h3><span class="ico">🔓</span> What you are actually paying for</h3>
+        <p>Every module in Pro and Enterprise is the same code the free tier runs.
+        Nothing is held back or crippled to make the paid tiers look better — open the
+        Pro menu above and all 22 free modules are sitting there above the paid panel.
+        What you buy is the operational layer: evidence, repetition and scale. It also
+        means the free tier cannot be quietly degraded to drive upgrades, because the
+        paid tiers are built on it.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">↩️</span> If you stop paying</h3>
+        <p>The Pro/Enterprise licence ends at the end of the paid period and you stop
+        running that software. The free tier keeps working under MIT, unaffected.
+        Hardening already applied stays applied, and <code class="inline">--revert</code>
+        still works — both live in the free tier.</p>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:26px">
+      <strong>Honest scope notes.</strong>
+      <b>CIS-aligned is not CIS-certified.</b> The built-in checks follow CIS guidance
+      but are not an accredited assessment; use the Enterprise OpenSCAP scan against
+      official SCAP content for an auditor-recognised result.
+      <b>The NIST crosswalk is not built yet.</b> When it ships it will be a mapping,
+      not evidence of compliance on its own.
+      <b>Host counts are honest.</b> Remote deployment is sequential SSH, suited to tens
+      of hosts, not thousands.
+      <b>Fleet-wide syslog configures forwarding</b> to a collector you run; it is not a
+      log aggregation product.
+      <b>This is a root-privileged tool that edits live configuration.</b> Two modules are
+      marked High risk because SUID stripping and GRUB passwords can leave a machine
+      unbootable. Use <code class="inline">--dry-run</code> first, and
+      <code class="inline">--safe-only</code> for everything except those two.
     </div>
   </div>
 </section>
