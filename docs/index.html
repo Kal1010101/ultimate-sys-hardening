@@ -489,8 +489,8 @@
         <p>Built-in checks follow CIS Benchmark guidance for Linux. This is alignment, not a CIS certification, and the built-in scorer is not an accredited assessment.</p></div>
       <div class="card"><h3><span class="ico">🎯</span> OpenSCAP scanning <span class="badge ok" style="margin-left:4px">Enterprise</span></h3>
         <p>Runs <code class="inline">oscap</code> against the official SCAP Security Guide, so you get a real, assessable result under a CIS <em>or</em> DISA STIG profile — not our interpretation of one.</p></div>
-      <div class="card"><h3><span class="ico">🗺️</span> NIST 800-53 crosswalk <span class="badge" style="margin-left:4px">Planned</span></h3>
-        <p>Not built yet. The intent is to map each hardening module to the NIST SP 800-53 Rev. 5 controls it contributes to, for audit evidence and control-narrative work.</p></div>
+      <div class="card"><h3><span class="ico">🗺️</span> NIST 800-53 crosswalk <span class="badge ok" style="margin-left:4px">Enterprise</span></h3>
+        <p>Maps each hardening module to the NIST SP 800-53 Rev. 5 controls it contributes to, and reports how many are in place on this host right now. Exports to JSON and CSV, and appears in the HTML compliance report. A mapping and a configuration record — not an assessment, and not a claim of compliance.</p></div>
     </div>
 
     <div class="callout">
@@ -568,7 +568,7 @@
           <li class="inherit">Everything in Pro</li>
           <li>Multi-host compliance dashboard</li>
           <li>OpenSCAP scanning — CIS &amp; DISA STIG profiles</li>
-          <li>NIST SP 800-53 Rev. 5 crosswalk <span class="badge" style="margin-left:4px">Planned</span></li>
+          <li>NIST SP 800-53 Rev. 5 crosswalk — with JSON/CSV export</li>
           <li>YAML policy-as-code &amp; drift detection</li>
           <li>Remote deployment over SSH</li>
           <li>JSON / CSV audit export</li>
@@ -596,7 +596,7 @@
           <tr><td class="feat">Posture: ports, logins, services</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">Scheduled runs &amp; email alerts</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
                     <tr><td class="feat">OpenSCAP CIS / STIG scan</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
-          <tr><td class="feat">NIST 800-53 crosswalk</td><td class="n">—</td><td class="n">—</td><td class="n">Planned</td></tr>
+          <tr><td class="feat">NIST 800-53 crosswalk</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
           <tr><td class="feat">Policy-as-code &amp; drift detection</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
           <tr><td class="feat">Multi-host dashboard</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
           <tr><td class="feat">Remote SSH deployment</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
@@ -632,8 +632,10 @@
       <b>CIS-aligned is not CIS-certified.</b> The built-in checks follow CIS guidance
       but are not an accredited assessment; use the Enterprise OpenSCAP scan against
       official SCAP content for an auditor-recognised result.
-      <b>The NIST crosswalk is not built yet.</b> When it ships it will be a mapping,
-      not evidence of compliance on its own.
+      <b>The NIST crosswalk is a mapping, not an assessment.</b> It records which
+      modules contribute to a control and how many are in place here. A control is
+      satisfied by policy, procedure and evidence across a whole system; this is one
+      input to that, not the answer.
       <b>Host counts are honest.</b> Remote deployment is sequential SSH, suited to tens
       of hosts, not thousands.
       <b>Fleet-wide syslog configures forwarding</b> to a collector you run; it is not a
