@@ -341,6 +341,20 @@ box_strip() {
     printf '%s' "$1" | sed -e 's/\\033\[[0-9;]*m//g' -e $'s/\033\\[[0-9;]*m//g'
 }
 
+# Character count, independent of the locale.
+#
+# ${#s} counts CHARACTERS under a UTF-8 locale and BYTES under C/POSIX. A
+# server with LC_ALL=C, a cron job, or a CI runner with no locale set therefore
+# padded the header two columns short, because the em-dash in the title costs
+# three bytes and one column. Counting continuation bytes (0x80-0xBF) and
+# subtracting them gives the character count either way.
+box_char_len() {
+    local s="$1" bytes conts
+    bytes=$(printf '%s' "$s" | wc -c)
+    conts=$(printf '%s' "$s" | tr -dc '\200-\277' | wc -c)
+    printf '%s' "$(( bytes - conts ))"
+}
+
 _box_rule() {
     local r
     printf -v r '%*s' "$UH_BOX_WIDTH" ''
@@ -354,14 +368,16 @@ box_bottom() { echo -e "${CYAN}╚$(_box_rule)╝${NC}"; }
 box_line() {
     local text="$1" plain pad
     plain=$(box_strip "$text")
-    if (( ${#plain} > UH_BOX_WIDTH )); then
+    local plain_len; plain_len=$(box_char_len "$plain")
+    if (( plain_len > UH_BOX_WIDTH )); then
         # Too long to fit. Drop the colours and truncate so the border still
         # closes — the Pro/Enterprise header interpolates $(hostname), which
         # on a long hostname ran straight through the right edge.
         plain="${plain:0:$((UH_BOX_WIDTH - 1))}…"
         text="$plain"
+        plain_len=$(box_char_len "$plain")
     fi
-    pad=$(( UH_BOX_WIDTH - ${#plain} ))
+    pad=$(( UH_BOX_WIDTH - plain_len ))
     # An `if`, not `(( pad < 0 )) && pad=0`: that compound returns 1 whenever
     # the condition is false, which under `set -e` ends the run.
     if (( pad < 0 )); then pad=0; fi

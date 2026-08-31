@@ -18,11 +18,12 @@ source "${REPO_ROOT:-/repo}/tests/lib/assert.sh"
 
 REPO="${REPO_ROOT:-/repo}"
 
-# wc -L reports display width, which is the property under test; byte length
-# would pass on an em-dash that breaks the alignment.
-if [[ "$(printf 'ab\n' | wc -L 2>/dev/null)" != "2" ]]; then
-    skip "wc -L (display width) unavailable in this image"
-fi
+# Display width is the property under test, and measuring it is itself
+# locale-sensitive: wc -L returns 0 for a box-drawing line under LC_ALL=C, so
+# a test that trusted it reported a false failure on exactly the hosts where
+# the real bug lived. Count characters as bytes minus UTF-8 continuation
+# bytes, which is correct under any locale.
+_disp() { local b c; b=$(printf '%s' "$1" | wc -c); c=$(printf '%s' "$1" | tr -dc '\200-\277' | wc -c); printf '%s' "$(( b - c ))"; }
 
 box_env() {
     printf '%s\n' "source '$REPO/lib/core.sh'
@@ -42,7 +43,7 @@ check_box() {
                    $body
                    box_bottom" 2>/dev/null)
     [[ -n "$out" ]] || { fail "$label: box produced no output"; return; }
-    widths=$(printf '%s\n' "$out" | while IFS= read -r l; do printf '%s\n' "$l" | wc -L; done)
+    widths=$(printf '%s\n' "$out" | while IFS= read -r l; do _disp "$l"; echo; done)
     distinct=$(printf '%s\n' "$widths" | sort -u | wc -l)
     assert_exit_code 1 "$distinct" "$label: all box lines share one width"
     assert_exit_code "$((width + 2))" "$(printf '%s\n' "$widths" | sort -u | head -1)" \
