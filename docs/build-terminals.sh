@@ -149,6 +149,7 @@ import sys, re, html
 ansi = re.compile(r'\033\[([0-9;]*)m')
 CLASS = {'0;32':'c-g', '0;36':'c-c', '1;33':'c-a',
          '1;37':'c-w', '0;31':'c-r', '0;34':'c-f', '0;35':'c-c'}
+lines_mode = len(sys.argv) > 1 and sys.argv[1] == 'lines'
 out = []
 for line in sys.stdin.read().split('\n'):
     pos, buf, depth = 0, [], 0
@@ -166,10 +167,14 @@ for line in sys.stdin.read().split('\n'):
     buf.append(html.escape(line[pos:]))
     while depth:
         buf.append('</span>'); depth -= 1
-    out.append(''.join(buf))
-sys.stdout.write('\n'.join(out).strip('\n'))
+    text = ''.join(buf)
+    # In lines mode each logical line is its own element. A pre-wrap block is
+    # one text node, so a hanging indent would apply to the first visual line
+    # of the whole block rather than to each wrapped line.
+    out.append('<div class="ln">%s</div>' % text if lines_mode else text)
+sys.stdout.write(('\n' if not lines_mode else '').join(out).strip('\n'))
 PYCONV
-    python3 "$conv"
+    python3 "$conv" "${1:-}"
     rm -f "$conv"
 }
 
@@ -205,7 +210,7 @@ PYSPLICE
 
 splice distro  "$(block_distro  | ansi_to_html)"
 splice modules "$(block_modules | ansi_to_html)"
-splice cis     "$(block_cis     | ansi_to_html)"
+splice cis     "$(block_cis     | ansi_to_html lines)"
 
 if [[ -f "$COMMERCIAL/src/pro/ultimate-hardening-pro.sh" ]]; then
     echo "  (commercial repo linked — tier blocks would build here)"
