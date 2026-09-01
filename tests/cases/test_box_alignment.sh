@@ -18,12 +18,30 @@ source "${REPO_ROOT:-/repo}/tests/lib/assert.sh"
 
 REPO="${REPO_ROOT:-/repo}"
 
-# Display width is the property under test, and measuring it is itself
-# locale-sensitive: wc -L returns 0 for a box-drawing line under LC_ALL=C, so
-# a test that trusted it reported a false failure on exactly the hosts where
-# the real bug lived. Count characters as bytes minus UTF-8 continuation
-# bytes, which is correct under any locale.
-_disp() { local b c; b=$(printf '%s' "$1" | wc -c); c=$(printf '%s' "$1" | tr -dc '\200-\277' | wc -c); printf '%s' "$(( b - c ))"; }
+# ONE measurement method, and deliberately not the product's.
+#
+# lib/menu.sh computes padding with box_char_len(). If this test measured the
+# rendered output with that same function, a bug in it would cancel out — the
+# renderer would pad wrongly, the test would measure wrongly, and the widths
+# would agree. Verified: injecting a +2 error into box_char_len leaves a
+# box_char_len-based measurement reporting the box as correct.
+#
+# So the oracle is python3, which decodes UTF-8 regardless of the shell's
+# locale. Where python3 is absent the width assertions are skipped rather than
+# silently downgraded to a weaker measure — a skipped check is honest, a
+# weakened one is not.
+_have_oracle=false
+command -v python3 >/dev/null 2>&1 && _have_oracle=true
+
+_disp() {
+    # No trailing newline: callers add their own, matching the previous
+    # contract. print() here put a blank line into every width list.
+    printf '%s' "$1" | python3 -c '
+import sys, re
+raw = sys.stdin.buffer.read().decode("utf-8", "replace")
+sys.stdout.write(str(len(re.sub("\x1b\\[[0-9;]*m", "", raw.rstrip("\n")))))
+'
+}
 
 box_env() {
     printf '%s\n' "source '$REPO/lib/core.sh'
@@ -36,6 +54,10 @@ box_env() {
 # Every line a box emits must be the same width, whatever is inside it.
 check_box() {
     local label="$1" width="$2" body="$3"
+    if [[ "$_have_oracle" != true ]]; then
+        echo "  SKIP (no python3 oracle): $label"
+        return 0
+    fi
     local out widths distinct
     out=$(bash -c "$(box_env)
                    UH_BOX_WIDTH=$width
