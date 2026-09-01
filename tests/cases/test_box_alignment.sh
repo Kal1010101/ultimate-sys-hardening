@@ -70,8 +70,11 @@ check_box "one over"        20 'box_line "123456789012345678901"'
 check_box "colour only"     20 'box_line "${CYAN}${WHITE}${NC}"'
 
 # --- colour codes must not be counted as width -------------------------------
-plain=$(bash -c "$(box_env); UH_BOX_WIDTH=30; box_line 'hello'" | wc -L)
-coloured=$(bash -c "$(box_env); UH_BOX_WIDTH=30; box_line \"\${CYAN}hello\${NC}\"" | wc -L)
+# Measured with _disp like everything else in this file. wc -L would also work
+# here — both sides use the same method, so the comparison is relative — but
+# two measurement methods in one file is a trap for the next reader.
+plain=$(_disp "$(bash -c "$(box_env); UH_BOX_WIDTH=30; box_line 'hello'")")
+coloured=$(_disp "$(bash -c "$(box_env); UH_BOX_WIDTH=30; box_line \"\${CYAN}hello\${NC}\"")")
 assert_exit_code "$plain" "$coloured" "colour codes occupy no columns"
 
 # --- no tier may go back to hand-padding a box -------------------------------
