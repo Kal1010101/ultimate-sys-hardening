@@ -5,22 +5,8 @@
 [![Security](https://img.shields.io/badge/security-CIS_aligned-blue)](https://github.com/Kal1010101/ultimate-sys-hardening)
 [![Version](https://img.shields.io/badge/version-2.2.0-orange)](https://github.com/Kal1010101/ultimate-sys-hardening)
 [![ShellCheck](https://github.com/Kal1010101/ultimate-sys-hardening/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/Kal1010101/ultimate-sys-hardening/actions)
-[![Clones](https://img.shields.io/badge/clones-113_in_14_days-success)](https://github.com/Kal1010101/ultimate-sys-hardening)
 
 > **Keywords:** Linux hardening · security automation · CIS benchmark · PAM-safe · system hardening · bash script · 30 security features · multi-distribution · Ubuntu · RHEL · Arch · SUSE · sysctl · auditd · fail2ban
-
----
-
-## 📊 Project Status
-
-| Metric | Last 14 Days |
-|--------|--------------|
-| **Total Clones**      | 79 |
-| **Unique Cloners**    | 43 |
-| **Total Views**       | 254|
-| **Unique Visitors**   | 11 |
-
-📈 **Views are up 36%** and the project is gaining traction!
 
 ---
 
@@ -33,8 +19,6 @@
 If this script helped you, please consider **starring** this repository! ⭐
 
 It helps others find it and motivates continued development.
-
-**113 sysadmins have already engaged with this script in the last 14 days.** Join them!
 
 ---
 
