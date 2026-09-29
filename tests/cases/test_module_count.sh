@@ -55,7 +55,11 @@ else
 fi
 
 # --- module headers in lib/modules.sh ---------------------------------------
-headers=$(grep -coE '\[[0-9]+/'"$EXPECTED"'\]' "$REPO/lib/modules.sh" 2>/dev/null || echo 0)
+# Counted on the log_message lines that ARE the headers, not on every line
+# containing the pattern: a comment that quotes a module number (explaining a
+# past failure at [3/22], say) is not a 23rd module, and counting it as one
+# made this assertion fail for a documentation change.
+headers=$(grep -cE 'log_message .*\[[0-9]+/'"$EXPECTED"'\]' "$REPO/lib/modules.sh" 2>/dev/null || echo 0)
 assert_exit_code "$EXPECTED" "$headers" "lib/modules.sh has $EXPECTED [n/$EXPECTED] module headers"
 
 # No module may still be numbered against an older total.
@@ -79,7 +83,13 @@ for tier in "src/free/ultimate_hardening.sh" \
     fi
     missing=""
     for n in $(seq 1 "$EXPECTED"); do
-        grep -qE "^[[:space:]]*$n\)[[:space:]]+apply_" "$REPO/$tier" || missing="$missing $n"
+        # Any of three forms counts as dispatched: the module called
+        # directly, through run_module, or through dispatch_module_choice
+        # (the per-module-revert toggle every tier's menu now routes
+        # through — see test_module_isolation.sh, which enforces the
+        # wrapper, and lib/menu.sh's dispatch_module_choice()).
+        grep -qE "^[[:space:]]*$n\)[[:space:]]+((run_module|dispatch_module_choice)[[:space:]]+[a-z0-9]+[[:space:]]+)?apply_" \
+            "$REPO/$tier" || missing="$missing $n"
     done
     if [[ -n "$missing" ]]; then
         fail "$(basename "$tier") has no menu case for module(s):$missing"
@@ -106,7 +116,10 @@ done
 # project actually ships, priced as if they did not exist.
 html="$REPO/docs/index.html"
 if [[ -f "$html" ]]; then
-    row=$(grep -i 'hardening modules' "$html" | grep '<td' || true)
+    # Match only the total-count row, not "Paid-only hardening modules" —
+    # that row's own number (extra paid-only modules) is legitimately
+    # different from EXPECTED and isn't a staleness signal.
+    row=$(grep -iE '(^|>)hardening modules' "$html" | grep -v -i 'paid-only' | grep '<td' || true)
     if [[ -n "$row" ]]; then
         nums=$(printf '%s' "$row" | grep -oE '>[0-9]{1,3}<' | tr -d '><' | sort -u)
         bad=0
@@ -132,7 +145,9 @@ fi
 # stale rather than banning the replica outright — banning it would have thrown
 # away the thing that reads best.
 gen="$REPO/docs/build-terminals.sh"
-if [[ -x "$gen" ]]; then
+if [[ -x "$gen" ]] && ! command -v python3 >/dev/null 2>&1; then
+    echo "  ⏭️  SKIP: build-terminals.sh check — python3 not available in this image"
+elif [[ -x "$gen" ]]; then
     if "$gen" --check >/dev/null 2>&1; then
         pass_msg "docs/index.html terminals match the current code"
     else

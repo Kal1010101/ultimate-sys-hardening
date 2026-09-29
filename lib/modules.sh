@@ -117,6 +117,14 @@ EOF
         chmod 600 "$dropin" 2>/dev/null || true
     fi
 
+    # sshd -t itself needs /run/sshd (privilege separation) to exist, which a
+    # normal boot creates but a host where sshd has never once started (a
+    # freshly `apt install`'d package, a minimal container) has not — sshd -t
+    # then fails on a missing directory, not the config, and this safety
+    # check would wrongly restore the backup and skip hardening entirely on
+    # an otherwise-fine host. Harmless and idempotent to ensure it exists.
+    mkdir -p /run/sshd 2>/dev/null || true
+
     # Validate before restarting — a bad config must never lock the operator out.
     if sshd -t 2>/dev/null; then
         restart_sshd

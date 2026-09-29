@@ -335,7 +335,6 @@ backup_file() {
     [[ "$DRY_RUN" == true ]] && { log_dry "Would back up $src"; return 0; }
 
     create_backup_dir || return 1
-    _seed_genesis "$src" || log_warning "Could not seed genesis backup for $src (revert-to-original may be incomplete for this file)"
 
     # Skip a redundant per-run copy when the file is byte-identical to
     # whatever was captured last — genesis on the very first run ever, the
@@ -347,10 +346,21 @@ backup_file() {
     # this session did heavily) left one full duplicate of every untouched
     # file behind per run — "too many copies of the same file with different
     # dates," reported directly by the user.
-    local prior; prior=$(_latest_backup_copy "$src")
-    if [[ -n "$prior" ]] && cmp -s "$src" "$prior"; then
-        return 0
-    fi
+    #
+    # This check MUST run before _seed_genesis(), not after: seeding first
+    # means a file's very first-ever backup finds the genesis copy this same
+    # call just created, correctly matches it byte-for-byte, and skips the
+    # per-run copy — meaning no per-run copy is EVER created for any file's
+    # first capture, on any host. Found via a real "no backup found" test
+    # failure against a completely fresh container, where every file was
+    # necessarily a first-ever capture.
+    local prior skip_copy=false
+    prior=$(_latest_backup_copy "$src")
+    [[ -n "$prior" ]] && cmp -s "$src" "$prior" && skip_copy=true
+
+    _seed_genesis "$src" || log_warning "Could not seed genesis backup for $src (revert-to-original may be incomplete for this file)"
+
+    [[ "$skip_copy" == true ]] && return 0
 
     local dest="$BACKUP_DIR/files$src"
     mkdir -p "$(dirname "$dest")" 2>/dev/null || return 1
