@@ -1,4 +1,3 @@
-backup/
 .env
 *.env.local
 __pycache__/
