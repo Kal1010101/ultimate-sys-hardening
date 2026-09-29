@@ -35,7 +35,7 @@ It is designed to be auditable before you run it. Concretely:
 | Backups | Every modified file is copied to `/root/hardening_backup_<timestamp>/` before the first write. |
 | Revert | `--revert` restores SSH, sysctl, and permissions. `--revert-suid` restores SUID/SGID bits from a recorded inventory. |
 | Preview | `--dry-run` prints every intended change and exits without writing. |
-| PAM | Not touched. The script never modifies `/etc/pam.d`. |
+| PAM | Not touched. The script never modifies `/etc/pam.d`. Want SSH MFA anyway? See [docs/mfa.md](docs/mfa.md) — a manual guide, deliberately not automated. |
 | SSH lockout protection | `sshd -t` validates the config before restart; on failure the backup is restored automatically. |
 
 ## Known risks
@@ -47,10 +47,16 @@ outside an explicit safe list. If a binary your workload depends on is not on
 that list, it will lose its SUID bit. `--revert-suid` restores it from the
 inventory taken at the start of the run.
 
-**Disabling services** stops and disables services from a fixed list. Revert
-does not automatically re-enable them — that is deliberate, since re-enabling
-services on a hardened box should be a conscious act. Re-enable manually with
-`systemctl enable <service>`.
+**Disabling services** stops and disables services from a fixed list, and
+records exactly which ones it actually stopped (most hosts don't have most of
+this list running to begin with). Selecting this module again from the menu
+while it shows enabled re-enables and starts exactly those — nothing from the
+list this run didn't touch. This is behind the same confirmation tier as
+SUID/GRUB (typing "yes"), on purpose: re-enabling a service that was disabled
+for a reason should still be a conscious act, just no longer a manual one if
+you choose to confirm it. Prefer to do it by hand instead, or the inventory is
+missing (a host hardened before this existed)? Re-enable manually with
+`systemctl enable --now <service>`.
 
 **Firewall configuration** resets existing rules before applying its own. If you
 have a hand-built ruleset, back it up separately — the script's backup covers

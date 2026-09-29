@@ -17,10 +17,33 @@
 # --- 1. System updates -------------------------------------------------------
 apply_system_updates() {
     log_message "${GEAR} [1/22] System Updates"
+
+    local kernels_before=""
+    if [[ "$DRY_RUN" != true ]]; then
+        kernels_before=$(installed_kernel_versions)
+    fi
+
     update_packages
-    log_success "System packages updated"
     # The menu caches the pending-upgrade count; this run just changed it.
     declare -F invalidate_pending_updates_cache >/dev/null && invalidate_pending_updates_cache
+
+    # An upgrade that leaves the next boot broken is not a successful upgrade,
+    # and this module used to say it was: on Alpine a kernel upgrade whose
+    # initramfs was never rebuilt reported "System packages updated" and the
+    # machine failed its next reboot. verify_boot_chain (lib/platform.sh)
+    # rebuilds a stale boot image where it can.
+    #
+    # Where it cannot, this returns 1 — deliberately breaking the "never exit
+    # non-zero" contract at the top of this file, because this is not a benign
+    # failure. run_module records it and the run continues, so the summary
+    # names "System updates" as failed instead of printing a green tick over a
+    # machine that will not boot.
+    if [[ "$DRY_RUN" != true ]] && ! verify_boot_chain "$kernels_before"; then
+        log_error "Packages were upgraded, but the next boot would fail (see above). Do NOT reboot until that is fixed."
+        return 1
+    fi
+
+    log_success "System packages updated"
     count_fix
 }
 
@@ -57,6 +80,43 @@ apply_ssh_hardening() {
     echo "Authorized access only. All activity is monitored and logged." \
         > /etc/issue.net 2>/dev/null || true
 
+    # sshd_config uses first-obtained-value-wins: whichever value for a
+    # keyword it parses FIRST is the one that applies, and every later
+    # setting of that same keyword — including everything just written above
+    # — is silently ignored. On Debian/Ubuntu, `Include
+    # /etc/ssh/sshd_config.d/*.conf` sits near the TOP of the main file, well
+    # before these settings, so any drop-in dropped there is parsed first and
+    # wins outright. Cloud-init ships exactly such a drop-in
+    # (sshd_config.d/50-cloud-init.conf, PasswordAuthentication yes) on every
+    # stock cloud image — meaning on a real cloud VM, the password-auth
+    # setting above was being written to the file but never actually taking
+    # effect. Found by an attacker-simulation test logging in over SSH with a
+    # real password on a guest this had already "hardened".
+    #
+    # The fix mirrors the file it's racing against: our own drop-in, sorted
+    # to glob-expand before any other (a two-digit prefix starting at 00
+    # comes before cloud-init's 50-, and before any other vendor drop-in
+    # likely to use a higher prefix), carrying the security-relevant subset
+    # of the same settings so it wins the same way cloud-init's does. The
+    # main-file settings above are left in place too, both as the effective
+    # config on any host with no conflicting drop-in and as a visible record
+    # of intent for anyone reading sshd_config directly.
+    if [[ -d /etc/ssh/sshd_config.d ]]; then
+        local dropin="/etc/ssh/sshd_config.d/00-ultimate-hardening.conf"
+        cat > "$dropin" << 'EOF'
+# Written by Ultimate Hardening. Named to sort first among
+# /etc/ssh/sshd_config.d/*.conf so it wins sshd's first-value-wins parsing
+# over drop-ins (e.g. cloud-init's 50-cloud-init.conf) that would otherwise
+# silently override the settings below.
+PermitRootLogin no
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+PermitEmptyPasswords no
+MaxAuthTries 3
+EOF
+        chmod 600 "$dropin" 2>/dev/null || true
+    fi
+
     # Validate before restarting — a bad config must never lock the operator out.
     if sshd -t 2>/dev/null; then
         restart_sshd
@@ -70,6 +130,12 @@ apply_ssh_hardening() {
 }
 
 # --- 3. Firewall -------------------------------------------------------------
+# Picks the firewall that belongs on THIS platform instead of assuming ufw.
+# The old fallback hardcoded `install_package ufw`, which cannot succeed on
+# rhel/suse (ufw is not in their default repos) — and then returned 1, which
+# under `set -euo pipefail` aborted apply_safe_modules() and silently skipped
+# modules 4-22. A firewall that cannot be installed must degrade this module
+# only; see the set -e contract at the top of this file.
 apply_firewall() {
     log_message "${FIRE} [3/22] Firewall"
     if [[ "$DRY_RUN" == true ]]; then
@@ -77,35 +143,225 @@ apply_firewall() {
         return 0
     fi
 
-    if command -v ufw >/dev/null 2>&1; then
-        ufw --force reset          >>"$LOG_FILE" 2>&1 || true
-        ufw default deny incoming  >>"$LOG_FILE" 2>&1 || true
-        ufw default allow outgoing >>"$LOG_FILE" 2>&1 || true
-        ufw allow ssh              >>"$LOG_FILE" 2>&1 || true
-        ufw allow 80/tcp           >>"$LOG_FILE" 2>&1 || true
-        ufw allow 443/tcp          >>"$LOG_FILE" 2>&1 || true
-        ufw --force enable         >>"$LOG_FILE" 2>&1 || true
-        log_success "UFW: deny inbound, allow outbound, SSH/80/443 open"
-    elif command -v nft >/dev/null 2>&1; then
-        nft flush ruleset 2>/dev/null || true
-        nft add table ip filter 2>/dev/null || true
-        nft add chain ip filter INPUT  '{ type filter hook input  priority 0; policy drop; }'   2>/dev/null || true
-        nft add chain ip filter OUTPUT '{ type filter hook output priority 0; policy accept; }' 2>/dev/null || true
-        nft add rule  ip filter INPUT ct state established,related accept 2>/dev/null || true
-        nft add rule  ip filter INPUT iif lo accept                       2>/dev/null || true
-        nft add rule  ip filter INPUT tcp dport '{ 22, 80, 443 }' accept  2>/dev/null || true
-        log_success "nftables: default-drop inbound, SSH/80/443 accepted"
-    elif command -v pfctl >/dev/null 2>&1; then
+    local distro="${DISTRO_TYPE:-$(detect_platform)}"
+
+    # Configure whatever is already installed, in platform-preference order:
+    # a stray ufw on RHEL should not win over firewalld, and vice versa.
+    case "$distro" in
+        rhel|suse)
+            command -v firewall-cmd >/dev/null 2>&1 && { _fw_firewalld; return 0; }
+            command -v nft          >/dev/null 2>&1 && { _fw_nftables;  return 0; }
+            command -v ufw          >/dev/null 2>&1 && { _fw_ufw;       return 0; }
+            ;;
+        debian)
+            command -v ufw          >/dev/null 2>&1 && { _fw_ufw;       return 0; }
+            command -v nft          >/dev/null 2>&1 && { _fw_nftables;  return 0; }
+            command -v firewall-cmd >/dev/null 2>&1 && { _fw_firewalld; return 0; }
+            ;;
+        *)
+            command -v nft          >/dev/null 2>&1 && { _fw_nftables;  return 0; }
+            command -v ufw          >/dev/null 2>&1 && { _fw_ufw;       return 0; }
+            command -v firewall-cmd >/dev/null 2>&1 && { _fw_firewalld; return 0; }
+            ;;
+    esac
+
+    if command -v pfctl >/dev/null 2>&1; then
         log_warning "BSD pf detected — configure /etc/pf.conf manually (not automated)"
         return 0
-    else
-        log_warning "No firewall found — installing ufw"
-        install_package ufw || { log_error "Could not install a firewall"; return 1; }
-        ufw --force enable >>"$LOG_FILE" 2>&1 || true
-        ufw allow ssh      >>"$LOG_FILE" 2>&1 || true
-        log_success "UFW installed and enabled"
     fi
+
+    # Nothing installed: install the one this platform actually ships.
+    local pkg; pkg=$(firewall_package_for "$distro")
+
+    log_warning "No firewall found — installing $pkg"
+    if ! install_package "$pkg"; then
+        log_error "Could not install $pkg — firewall left unconfigured, continuing"
+        return 0
+    fi
+
+    case "$pkg" in
+        firewalld) _fw_firewalld ;;
+        ufw)       _fw_ufw ;;
+        nftables)  _fw_nftables ;;
+    esac
+    return 0
+}
+
+# Which firewall this platform actually ships. Read by apply_firewall AND by
+# the preflight pass in platform.sh, so what preflight promises to install and
+# what the module installs cannot drift — the same reason cis_check_module()
+# exists for the check/module mapping.
+firewall_package_for() {
+    case "${1:-${DISTRO_TYPE:-}}" in
+        rhel|suse)                     echo "firewalld" ;;
+        debian)                        echo "ufw" ;;
+        alpine|arch|void|gentoo|nixos) echo "nftables" ;;
+        *)                             echo "nftables" ;;
+    esac
+}
+
+# Each backend counts its own fix, so a module that configured nothing does
+# not inflate FIXES_APPLIED.
+_fw_ufw() {
+    ufw --force reset          >>"$LOG_FILE" 2>&1 || true
+    ufw default deny incoming  >>"$LOG_FILE" 2>&1 || true
+    ufw default allow outgoing >>"$LOG_FILE" 2>&1 || true
+    ufw allow ssh              >>"$LOG_FILE" 2>&1 || true
+    ufw allow 80/tcp           >>"$LOG_FILE" 2>&1 || true
+    ufw allow 443/tcp          >>"$LOG_FILE" 2>&1 || true
+    ufw --force enable         >>"$LOG_FILE" 2>&1 || true
+    log_success "UFW: deny inbound, allow outbound, SSH/80/443 open"
     count_fix
+}
+
+_fw_firewalld() {
+    enable_service firewalld >/dev/null 2>&1 || true
+    firewall-cmd --permanent --set-default-zone=drop >>"$LOG_FILE" 2>&1 || true
+    firewall-cmd --permanent --add-service=ssh       >>"$LOG_FILE" 2>&1 || true
+    firewall-cmd --permanent --add-service=http      >>"$LOG_FILE" 2>&1 || true
+    firewall-cmd --permanent --add-service=https     >>"$LOG_FILE" 2>&1 || true
+    firewall-cmd --reload                            >>"$LOG_FILE" 2>&1 || true
+    # enable_service logs "enabled" unconditionally (systemctl start's own
+    # exit code is thrown away) — the same false-positive shape apply_fail2ban
+    # already guards against. Same fix here: only claim success once the
+    # service is actually confirmed running.
+    if is_service_active firewalld; then
+        log_success "firewalld: default zone drop, SSH/80/443 open"
+        count_fix
+    else
+        log_warning "firewalld was configured but is not running — check: systemctl status firewalld"
+    fi
+}
+
+# Unlike the ufw and firewalld backends, raw nft rules do not survive a reboot
+# on their own — they are written out and the service enabled, or the hardening
+# silently lapses at the next boot.
+_fw_nftables() {
+    nft flush ruleset 2>/dev/null || true
+    nft add table ip filter 2>/dev/null || true
+    nft add chain ip filter INPUT  '{ type filter hook input  priority 0; policy drop; }'   2>/dev/null || true
+    nft add chain ip filter OUTPUT '{ type filter hook output priority 0; policy accept; }' 2>/dev/null || true
+    nft add rule  ip filter INPUT ct state established,related accept 2>/dev/null || true
+    nft add rule  ip filter INPUT iif lo accept                       2>/dev/null || true
+    nft add rule  ip filter INPUT tcp dport '{ 22, 80, 443 }' accept  2>/dev/null || true
+
+    if command -v rc-update >/dev/null 2>&1; then
+        nft list ruleset > /etc/nftables.nft 2>/dev/null || true
+    else
+        nft list ruleset > /etc/nftables.conf 2>/dev/null || true
+    fi
+    enable_service nftables >/dev/null 2>&1 || true
+
+    # Unlike firewalld/fail2ban, the rules above are already live in the
+    # kernel via `nft add` — that part does not depend on the nftables
+    # service at all. What the service actually gates is persistence: without
+    # it running/enabled, this ruleset does not survive a reboot, silently
+    # undoing this module the next time the host restarts. enable_service
+    # logs "enabled" unconditionally, so check the real state before claiming
+    # "(persisted)" rather than just "applied".
+    count_fix
+    if is_service_active nftables; then
+        log_success "nftables: default-drop inbound, SSH/80/443 accepted (persisted)"
+    else
+        log_success "nftables: default-drop inbound, SSH/80/443 accepted (active now)"
+        log_warning "nftables service is not running — this ruleset will NOT survive a reboot; check: systemctl status nftables"
+    fi
+}
+
+# Revert module 3 on whichever backend is actually configured right now —
+# detected the same way apply_firewall() picks one to apply to, not
+# re-derived from DISTRO_TYPE, since what is live is the ground truth.
+# There is no captured "before" ruleset to restore: SECURITY.md already
+# documents that firewall config resets existing rules rather than backing
+# up live kernel state ("If you have a hand-built ruleset, back it up
+# separately"), so "revert" here can only mean the same thing apply's own
+# --force reset / delete already means — back to that backend's own clean,
+# inactive default, not a guess at whatever was there before.
+#
+# nftables specifically: `nft delete table ip filter` rather than `nft
+# flush ruleset` (what apply uses) — flush would wipe every table on the
+# system, including anything unrelated to this tool; delete removes
+# exactly the one table this module (and the paid rate-limit module, which
+# only ever adds rules inside this same table) created, and nothing else.
+revert_firewall() {
+    local acted=false
+
+    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi '^Status: active'; then
+        ufw --force reset  >>"$LOG_FILE" 2>&1 || true
+        ufw disable        >>"$LOG_FILE" 2>&1 || true
+        log_success "ufw: reset to defaults and disabled"
+        acted=true
+    fi
+
+    if command -v firewall-cmd >/dev/null 2>&1 && is_service_active firewalld; then
+        # Services were meant to land in the "drop" zone (apply sets that as
+        # default BEFORE adding them) but read the REAL current default
+        # rather than assuming "drop": found by testing this for real that
+        # --set-default-zone=drop can silently not take effect right after
+        # firewalld was just installed and started in the same run (a timing
+        # race between the daemon coming up and the very next D-Bus call),
+        # leaving ssh/http/https added to "public" instead — a real,
+        # separate bug in apply's own _fw_firewalld(), not fixed here, but
+        # this read-the-actual-zone approach means revert still finds and
+        # removes them correctly either way.
+        # A REAL SSH lockout, caused by this exact code, on a real guest:
+        # the first version called --reload here before stopping the
+        # service. --permanent edits don't take effect until reload (or a
+        # restart) — but this session's earlier apply had (separately,
+        # see the timing-race note above) put ssh in the "public" zone,
+        # so reloading a "public" zone with ssh just removed from it, WHILE
+        # firewalld was still actively enforcing, cut the live SSH session
+        # off immediately. Had to recover over the serial console. Fixed by
+        # never reloading the now-more-restrictive config into a still-
+        # running daemon: the --permanent edits are written (correct for
+        # if firewalld ever gets started again later) but never applied
+        # live — stop_service() below tears down enforcement entirely
+        # instead, which is unconditionally safe for the current session
+        # regardless of what the pending zone edits would have done.
+        local zone; zone=$(firewall-cmd --get-default-zone 2>/dev/null || echo drop)
+        firewall-cmd --permanent --zone="$zone" --remove-service=ssh   >>"$LOG_FILE" 2>&1 || true
+        firewall-cmd --permanent --zone="$zone" --remove-service=http  >>"$LOG_FILE" 2>&1 || true
+        firewall-cmd --permanent --zone="$zone" --remove-service=https >>"$LOG_FILE" 2>&1 || true
+        firewall-cmd --permanent --set-default-zone=public >>"$LOG_FILE" 2>&1 || true
+        # Matching ufw's own revert above: apply_firewall() only ever
+        # installs+enables a backend when none was already active, so "no
+        # firewall was here before" means the service itself should stop,
+        # not just have its rules emptied — otherwise the compliance check
+        # (which reads service state, not rule content) still shows
+        # [enable ] and the log's own "no active firewall" claim is false.
+        # stop_service() (lib/platform.sh), not a hardcoded systemctl call —
+        # this codebase runs on OpenRC hosts too.
+        stop_service firewalld
+        log_success "firewalld: removed the hardened services and stopped the service"
+        acted=true
+    fi
+
+    if command -v nft >/dev/null 2>&1 && nft list tables 2>/dev/null | grep -q 'ip filter'; then
+        nft delete table ip filter 2>>"$LOG_FILE" || true
+        if command -v rc-update >/dev/null 2>&1; then
+            rm -f /etc/nftables.nft
+        else
+            rm -f /etc/nftables.conf
+        fi
+        # The CIS check behind this module's [enable ]/[disable] tag reads
+        # `is_service_active nftables`, not rule content (see lib/cis.sh) —
+        # deleting the table alone leaves the tag showing [enable ] even
+        # with no rules left, same inconsistency the firewalld branch above
+        # was found to have. stop_service() rather than a hardcoded
+        # systemctl call — Alpine (nftables' main real-world use here) runs
+        # OpenRC, not systemd.
+        stop_service nftables
+        log_success "nftables: removed the filter table, its persisted ruleset file, and stopped the service"
+        acted=true
+    fi
+
+    if [[ "$acted" != true ]]; then
+        log_info "Firewall: nothing reverted — no active ufw/firewalld configuration or nftables filter table from this tool was found"
+        return 1
+    fi
+
+    log_warning "The host now has no active firewall — the same unprotected state as before module 3 ever ran, not a restored prior ruleset (see SECURITY.md: live kernel firewall state was never backed up, only config files are)."
+    return 0
 }
 
 # --- 4. Fail2Ban -------------------------------------------------------------
@@ -118,9 +374,20 @@ apply_fail2ban() {
 
     install_package fail2ban || { log_warning "fail2ban unavailable — skipping"; return 0; }
 
+    # The sshd jail's default backend reads /var/log/auth.log, which does not
+    # exist on a journald-only host (no rsyslog installed) — increasingly the
+    # default on modern Debian/Ubuntu cloud images. Without a log source the
+    # whole fail2ban daemon fails to start at all (not just the sshd jail),
+    # so enable_service below would report "enabled" for a service that is
+    # actually dead. On a systemd host, reading the journal directly sidesteps
+    # the missing-file problem entirely; on a non-systemd host (e.g. Alpine's
+    # OpenRC) the traditional file-based backend is left as-is.
+    local backend="auto"
+    _has_systemd && backend="systemd"
+
     backup_file /etc/fail2ban/jail.local
     mkdir -p /etc/fail2ban 2>/dev/null || true
-    cat > /etc/fail2ban/jail.local << 'EOF'
+    cat > /etc/fail2ban/jail.local << EOF
 [DEFAULT]
 bantime  = 3600
 findtime = 600
@@ -131,11 +398,16 @@ enabled  = true
 port     = ssh
 maxretry = 3
 bantime  = 7200
+backend  = ${backend}
 EOF
 
     enable_service fail2ban
-    log_success "Fail2Ban active: SSH jail bans for 2h after 3 failures"
-    count_fix
+    if is_service_active fail2ban; then
+        log_success "Fail2Ban active: SSH jail bans for 2h after 3 failures"
+        count_fix
+    else
+        log_warning "fail2ban was configured but is not running — check: systemctl status fail2ban"
+    fi
 }
 
 # --- 5. File permissions -----------------------------------------------------
@@ -153,9 +425,14 @@ apply_permission_hardening() {
         "/etc/crontab:600"
         "/boot/grub/grub.cfg:600"
     )
+
+    create_backup_dir
+    local inventory="$BACKUP_DIR/perm_original_modes.txt"
     for entry in "${targets[@]}"; do
         local file="${entry%:*}" mode="${entry##*:}"
         [[ -f "$file" ]] || continue
+        local orig; orig=$(stat -c '%a' "$file" 2>/dev/null || stat -f '%Lp' "$file" 2>/dev/null)
+        [[ -n "$orig" && "$orig" != "$mode" && "$SKIP_BACKUP" == false ]] && printf '%s %s\n' "$file" "$orig" >> "$inventory"
         chmod "$mode" "$file" 2>/dev/null && log_info "  chmod $mode $file" || true
     done
 
@@ -266,8 +543,15 @@ EOF
 
     enable_service auditd
     command -v augenrules >/dev/null 2>&1 && { augenrules --load >>"$LOG_FILE" 2>&1 || true; }
-    log_success "Auditd configured with 18 audit rules"
-    count_fix
+    # enable_service logs "enabled" unconditionally — verify the daemon is
+    # actually up before claiming the rules are in effect, same as
+    # apply_fail2ban.
+    if is_service_active auditd; then
+        log_success "Auditd configured with 18 audit rules"
+        count_fix
+    else
+        log_warning "Audit rules written but auditd is not running — check: systemctl status auditd"
+    fi
 }
 
 # --- 8. Password policy (login.defs only — PAM is never touched) --------------
@@ -367,8 +651,16 @@ apply_aide() {
     else
         aide --init >>"$LOG_FILE" 2>&1 || true
     fi
-    [[ -f /var/lib/aide/aide.db.new ]] && \
+    # aideinit (Debian) writes the uncompressed .new; RHEL-family hosts have
+    # no aideinit and aide.conf's own default is a compressed .new.gz — miss
+    # that variant and aide.db.gz never exists, so both this module's own
+    # compliance tag and the daily cron check above (which reads aide.db.gz)
+    # stay broken forever. Found by testing this module for real on Rocky.
+    if [[ -f /var/lib/aide/aide.db.new ]]; then
         mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db 2>/dev/null || true
+    elif [[ -f /var/lib/aide/aide.db.new.gz ]]; then
+        mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz 2>/dev/null || true
+    fi
 
     if [[ -d /etc/cron.daily ]]; then
         cat > /etc/cron.daily/aide-check << 'EOF'
@@ -423,11 +715,20 @@ apply_disable_services() {
 
     local -a services=("${UH_UNNEEDED_SERVICES[@]}")
 
+    # Recorded so a revert knows exactly which of these were actually
+    # running and disabled BY THIS TOOL on THIS host — most of the 16 in
+    # UH_UNNEEDED_SERVICES are inactive by default on a normal install, and
+    # re-enabling all 16 blind on revert would turn on services this run
+    # never touched. Same idea as SUID's own inventory (SUID_BACKUP_FILE):
+    # a record of the change, not a guess at it.
+    create_backup_dir
+    local inventory="$BACKUP_DIR/disabled_services.txt"
     local disabled=0
     for svc in "${services[@]}"; do
         if is_service_active "$svc"; then
             stop_service "$svc"
             log_info "  disabled: $svc"
+            [[ "$SKIP_BACKUP" == false ]] && printf '%s\n' "$svc" >> "$inventory"
             bump disabled
         fi
     done
@@ -454,16 +755,24 @@ apply_apparmor() {
         enable_service apparmor
         command -v aa-enforce >/dev/null 2>&1 && \
             { aa-enforce /etc/apparmor.d/* >>"$LOG_FILE" 2>&1 || true; }
-        log_success "AppArmor enabled, profiles set to enforce"
+        # enable_service logs "enabled" unconditionally — verify apparmor is
+        # actually running before claiming profiles are enforced, same as
+        # apply_fail2ban.
+        if is_service_active apparmor; then
+            log_success "AppArmor enabled, profiles set to enforce"
+            count_fix
+        else
+            log_warning "AppArmor profiles were set but the service is not running — check: systemctl status apparmor"
+        fi
     elif command -v sestatus >/dev/null 2>&1; then
         backup_file /etc/selinux/config
         set_config "SELINUX" "enforcing" /etc/selinux/config "="
         log_success "SELinux set to enforcing (takes effect after reboot)"
+        count_fix
     else
         log_warning "No MAC framework present — install apparmor or selinux manually"
         return 0
     fi
-    count_fix
 }
 
 # --- 14. etckeeper -----------------------------------------------------------
@@ -505,8 +814,12 @@ apply_boot_secure() {
         return 0
     fi
 
+    create_backup_dir
+    local inventory="$BACKUP_DIR/boot_original_perms.txt"
     for cfg in /boot/grub/grub.cfg /boot/grub2/grub.cfg /boot/efi/EFI/*/grub.cfg; do
         [[ -f "$cfg" ]] || continue
+        local orig; orig=$(stat -c '%a' "$cfg" 2>/dev/null || stat -f '%Lp' "$cfg" 2>/dev/null)
+        [[ -n "$orig" && "$orig" != "600" && "$SKIP_BACKUP" == false ]] && printf '%s %s\n' "$cfg" "$orig" >> "$inventory"
         chmod 600 "$cfg" 2>/dev/null && log_info "  locked: $cfg" || true
     done
 
@@ -742,6 +1055,22 @@ apply_compiler_restriction() {
 # Needs a destination host, so like the GRUB password it skips in auto-mode
 # rather than inventing one. UH_SYSLOG_SERVER lets a config file or CI supply
 # it non-interactively.
+# A remote-syslog destination is appended verbatim to /etc/rsyslog.conf as
+# `*.* @host:514`, and it arrives from an environment variable, a terminal
+# prompt, or (in the paid tiers) a config file. rsyslog's config language can
+# run programs, so an unvalidated string — a newline followed by a directive —
+# is arbitrary root code at the next rsyslog restart. A destination is a
+# hostname or an IP address; nothing else is accepted.
+#
+# Split out of the module so it can be tested without the module's side
+# effects: exercising it through apply_remote_syslog meant a real
+# create_backup_dir and a real edit to /etc/rsyslog.conf, which then broke the
+# NEXT test case. That is the test-pollution trap this project has hit three
+# times; a pure predicate cannot cause it.
+valid_syslog_destination() {
+    [[ "${1:-}" =~ ^[A-Za-z0-9]([A-Za-z0-9._:-]*[A-Za-z0-9])?$ ]]
+}
+
 apply_remote_syslog() {
     log_message "${NET_ICON} [21/22] Remote Syslog"
 
@@ -763,6 +1092,13 @@ apply_remote_syslog() {
         log_info "No server given — skipping remote syslog"
         return 0
     fi
+
+    if ! valid_syslog_destination "$server"; then
+        log_error "Refusing remote syslog destination '${server}' — not a hostname or IP address"
+        log_warning "A destination goes into rsyslog.conf verbatim; only [A-Za-z0-9 . : _ -] are accepted."
+        return 0
+    fi
+
     if [[ ! -f /etc/rsyslog.conf ]]; then
         log_warning "/etc/rsyslog.conf not found — rsyslog is not installed, skipping"
         return 0
@@ -823,36 +1159,102 @@ EOF
     return 0
 }
 
+# --- module runner -----------------------------------------------------------
+# One module returning non-zero must not truncate the run.
+#
+# Before this wrapper the aggregates below called each module bare, one per
+# line, under the `set -euo pipefail` the tier scripts set. A single non-zero
+# return therefore killed the script mid-sequence and every module after it was
+# silently skipped -- no error, no summary, just a run that stopped. That is
+# exactly what apply_firewall did on Rocky 9: it aborted at [3/22], modules
+# 4-22 never ran, and the host was left hardened through SSH and untouched from
+# the firewall onward with nothing in the output saying so.
+#
+# Failures are recorded and the run continues to the end, then reports what
+# failed. Each module's own contract (top of this file) still stands: degrade
+# and return 0 on a benign failure rather than leaning on this net.
+#
+# Trade-off worth knowing: calling the module as the left side of `||` disables
+# errexit inside that call, so a failing command partway through a module no
+# longer stops that module either -- it runs on to its next line. That is the
+# price of not stopping the other 21, and it is why the set -e contract above
+# is a contract rather than a convenience.
+UH_MODULE_FAILED=()
+
+run_module() {
+    local key="$1" fn="$2" rc=0
+
+    # MOD_LABEL lives in lib/menu.sh so the name printed here and the name in
+    # the menu table cannot drift. menu.sh is not required to be sourced
+    # (test_lib_loading sources less than a tier does), hence the fallback.
+    local label="$key"
+    if declare -p MOD_LABEL >/dev/null 2>&1; then
+        label="${MOD_LABEL[$key]:-$key}"
+    fi
+
+    "$fn" || rc=$?
+    if [[ $rc -eq 0 ]]; then
+        return 0
+    fi
+
+    UH_MODULE_FAILED+=("$label")
+    log_warning "Module '$label' failed (exit $rc) - continuing with the remaining modules"
+    return 0
+}
+
+# Close out an aggregate run by saying plainly what did and did not complete.
+# A run that stops early used to look identical to a run that finished.
+report_module_results() {
+    local scope="$1"
+    local n=${#UH_MODULE_FAILED[@]}
+
+    if [[ $n -eq 0 ]]; then
+        log_success "$scope - $FIXES_APPLIED fixes applied, all modules completed"
+        return 0
+    fi
+
+    log_warning "$scope - $FIXES_APPLIED fixes applied, $n module(s) did not complete: ${UH_MODULE_FAILED[*]}"
+    log_warning "Run those modules individually from the menu to see the failure in full."
+    return 0
+}
+
+
 # --- Aggregate ---------------------------------------------------------------
 # Every module, including the High-risk one (module 9, SUID/SGID hardening).
 apply_all_modules() {
     log_message "${ROCKET} Applying all 22 hardening modules (including High risk)"
     create_backup_dir
+    UH_MODULE_FAILED=()
 
-    apply_system_updates
-    apply_ssh_hardening
-    apply_firewall
-    apply_fail2ban
-    apply_permission_hardening
-    apply_kernel_hardening
-    apply_audit_config
-    apply_password_policies
-    apply_suid_hardening
-    apply_aide
-    apply_rkhunter
-    apply_disable_services
-    apply_apparmor
-    apply_etckeeper
-    apply_boot_secure
-    apply_grub_password
-    apply_docker_security
-    apply_modsecurity
-    apply_unused_protocols
-    apply_compiler_restriction
-    apply_remote_syslog
-    apply_umask_hardening
+    # Resolve every module's packages before the first module changes anything,
+    # so an unobtainable dependency is reported up front rather than discovered
+    # partway through a half-hardened system.
+    preflight_dependencies
 
-    log_success "All modules processed — $FIXES_APPLIED applied"
+    run_module updates   apply_system_updates
+    run_module ssh       apply_ssh_hardening
+    run_module firewall  apply_firewall
+    run_module fail2ban  apply_fail2ban
+    run_module perms     apply_permission_hardening
+    run_module kernel    apply_kernel_hardening
+    run_module audit     apply_audit_config
+    run_module password  apply_password_policies
+    run_module suid      apply_suid_hardening
+    run_module aide      apply_aide
+    run_module rkhunter  apply_rkhunter
+    run_module services  apply_disable_services
+    run_module apparmor  apply_apparmor
+    run_module etckeeper apply_etckeeper
+    run_module boot      apply_boot_secure
+    run_module grubpw    apply_grub_password
+    run_module docker    apply_docker_security
+    run_module modsec    apply_modsecurity
+    run_module protocols apply_unused_protocols
+    run_module compiler  apply_compiler_restriction
+    run_module syslog    apply_remote_syslog
+    run_module umask     apply_umask_hardening
+
+    report_module_results "All 22 modules processed"
 }
 
 # Safe + Medium risk only — skips module 9 (SUID/SGID hardening), the one
@@ -867,27 +1269,33 @@ apply_all_modules() {
 apply_safe_modules() {
     log_message "${ROCKET} Applying Safe/Medium modules (skipping the High-risk SUID/SGID and GRUB password modules)"
     create_backup_dir
+    UH_MODULE_FAILED=()
 
-    apply_system_updates
-    apply_ssh_hardening
-    apply_firewall
-    apply_fail2ban
-    apply_permission_hardening
-    apply_kernel_hardening
-    apply_audit_config
-    apply_password_policies
-    apply_aide
-    apply_rkhunter
-    apply_disable_services
-    apply_apparmor
-    apply_etckeeper
-    apply_boot_secure
-    apply_docker_security
-    apply_modsecurity
-    apply_unused_protocols
-    apply_compiler_restriction
-    apply_remote_syslog
-    apply_umask_hardening
+    # Resolve every module's packages before the first module changes anything,
+    # so an unobtainable dependency is reported up front rather than discovered
+    # partway through a half-hardened system.
+    preflight_dependencies
 
-    log_success "Safe/Medium modules processed — $FIXES_APPLIED applied (High-risk modules 9 and 16 skipped, run them separately)"
+    run_module updates   apply_system_updates
+    run_module ssh       apply_ssh_hardening
+    run_module firewall  apply_firewall
+    run_module fail2ban  apply_fail2ban
+    run_module perms     apply_permission_hardening
+    run_module kernel    apply_kernel_hardening
+    run_module audit     apply_audit_config
+    run_module password  apply_password_policies
+    run_module aide      apply_aide
+    run_module rkhunter  apply_rkhunter
+    run_module services  apply_disable_services
+    run_module apparmor  apply_apparmor
+    run_module etckeeper apply_etckeeper
+    run_module boot      apply_boot_secure
+    run_module docker    apply_docker_security
+    run_module modsec    apply_modsecurity
+    run_module protocols apply_unused_protocols
+    run_module compiler  apply_compiler_restriction
+    run_module syslog    apply_remote_syslog
+    run_module umask     apply_umask_hardening
+
+    report_module_results "Safe/Medium modules processed (High-risk 9 and 16 skipped, run them separately)"
 }
