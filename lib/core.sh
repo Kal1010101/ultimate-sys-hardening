@@ -10,7 +10,7 @@
 # =============================================================================
 
 # ------------------------------------------------------------------ version --
-UH_VERSION="2.3.0"
+UH_VERSION="2.4.0"
 
 # ------------------------------------------------------------------- colors --
 RED='\033[0;31m'
@@ -46,6 +46,37 @@ ROCKET="🚀";    UNDO="↩️";      CIS_ICON="📊"; DB_ICON="🗄️"; NET_IC
 
 : "${LOG_FILE:=/var/log/ultimate_hardening_$(date +%Y%m%d_%H%M%S).log}"
 
+# The run log records every file touched, every service stopped and the full
+# SUID inventory. tee creates it with the ambient umask — 0644 on a default
+# root shell, i.e. readable by every local account. Created here, restricted
+# here, before anything writes to it.
+#
+# ONLY ever a regular file we created. Callers legitimately point LOG_FILE at
+# /dev/null to silence logging — docs/build-terminals.sh does exactly that —
+# and an unguarded chmod turned /dev/null into 0600 root:root on a real guest,
+# which breaks every program on the host that redirects to it. Found by the VM
+# lab, in a test run that then could not copy its own report back.
+#
+# The symlink guard is the cheaper half of the same lesson: LOG_FILE is a
+# predictable path under /var/log, and `: >` through a symlink would truncate
+# whatever it points at.
+_uh_init_log() {
+    case "$LOG_FILE" in
+        /dev/*) return 0 ;;
+    esac
+    if [[ -L "$LOG_FILE" ]]; then
+        return 0
+    fi
+    if [[ ! -e "$LOG_FILE" ]]; then
+        ( umask 077; : > "$LOG_FILE" ) 2>/dev/null || return 0
+    fi
+    if [[ -f "$LOG_FILE" ]]; then
+        chmod 600 "$LOG_FILE" 2>/dev/null || true
+    fi
+    return 0
+}
+_uh_init_log
+
 # Backup directory name is <timestamp>_<tier>, deliberately timestamp-FIRST:
 # find_latest_backup() picks the newest by lexical sort, so putting the tier
 # in front would sort "enterprise" before "free" and break "latest".
@@ -62,6 +93,79 @@ ROCKET="🚀";    UNDO="↩️";      CIS_ICON="📊"; DB_ICON="🗄️"; NET_IC
 
 FIXES_APPLIED=0
 BACKUP_CREATED=false
+
+# ------------------------------------------------------- running as root --
+# Everything below runs as root and calls tools by bare name (sed, grep,
+# systemctl, apt-get, ufw, …). A PATH with a writable directory ahead of the
+# system ones therefore chooses which binaries root executes. sudo's secure_path
+# normally prevents that, but this script is also run from cron, from CI, from
+# systemd units and by `bash script.sh` where nothing resets PATH.
+#
+# The system directories are PREPENDED rather than PATH being replaced: a
+# replacement would break hosts whose tooling genuinely lives in /opt or
+# /usr/local/opt, while prepending is enough — a planted `sed` further down the
+# PATH is shadowed by /usr/bin/sed either way.
+_uh_harden_path() {
+    local d std="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    local new="$std"
+    local IFS=':'
+    for d in ${PATH:-}; do
+        [[ -z "$d" ]] && continue
+        case ":$std:" in
+            *":$d:"*) continue ;;
+        esac
+        new="$new:$d"
+    done
+    PATH="$new"
+    export PATH
+}
+_uh_harden_path
+
+# Is the library this run just sourced writable by anyone who is not root and
+# not the person who invoked it? If so, that party chooses what runs as root
+# here. This does NOT refuse to run: `sudo ./src/free/ultimate_hardening.sh`
+# from your own checkout is the documented way to use this, and your own files
+# are yours to trust. It refuses nothing and warns precisely — group- or
+# world-writable, or owned by some third party.
+#
+# Set UH_TRUST_LIB=1 to silence it (a deliberate "I know, this is a shared
+# build host" switch, not a default).
+# EUID is readonly in bash, so the effective uid is read through this rather
+# than the variable directly — it is the only way the check above can be
+# exercised by a test that is not running as root.
+_uh_euid() { printf '%s' "${EUID:-$(id -u)}"; }
+
+check_lib_trust() {
+    if [[ "${UH_TRUST_LIB:-0}" == "1" ]]; then
+        return 0
+    fi
+    [[ "$(_uh_euid)" -eq 0 ]] || return 0
+    local dir="${1:-${LIB_DIR:-}}"
+    [[ -n "$dir" && -d "$dir" ]] || return 0
+
+    local invoker="${SUDO_UID:-0}"
+    local f owner mode
+    local -a risky=()
+    for f in "$dir" "$dir"/*.sh; do
+        [[ -e "$f" ]] || continue
+        owner=$(stat -c '%u' "$f" 2>/dev/null) || continue
+        mode=$(stat -c '%A' "$f" 2>/dev/null) || continue
+        # group- or world-writable, whoever owns it
+        if [[ "$mode" == ?????w???? || "$mode" == ????????w? ]]; then
+            risky+=("$f (mode $mode)")
+        elif [[ "$owner" != "0" && "$owner" != "$invoker" ]]; then
+            risky+=("$f (owned by uid $owner)")
+        fi
+    done
+
+    if (( ${#risky[@]} )); then
+        log_warning "The library this run loaded is writable by someone other than root or you:"
+        for f in "${risky[@]}"; do log_warning "    $f"; done
+        log_warning "Whoever can write there chooses what runs as root in this session."
+        log_warning "Move the checkout somewhere only you can write, or set UH_TRUST_LIB=1 to silence this."
+    fi
+    return 0
+}
 
 # ------------------------------------------------------------------ logging --
 log_message() { echo -e "${BLUE}[$(date '+%H:%M:%S')]${NC} $1" | tee -a "$LOG_FILE"; }
@@ -118,6 +222,31 @@ create_backup_dir() {
 
     BACKUP_CREATED=true
     log_info "Backup directory: $BACKUP_DIR  (${UH_TIER} tier, v${UH_VERSION})"
+    prune_old_backups
+    return 0
+}
+
+# Per-run backup directories had no retention at all — every run left a new
+# one behind forever, the same "grows unbounded" shape as the Enterprise
+# state DB's runs/intrusion_snapshots tables (fixed separately in the
+# commercial repo with db_prune()). Called from create_backup_dir() itself,
+# so every real run prunes automatically with no separate cron entry.
+#
+# Genesis (BACKUP_GENESIS_DIR) is NEVER touched here and never will be: it
+# holds the one true pre-hardening original of every file, and full_system_
+# revert()/restore_file() both prefer it over any per-run copy. Deleting it
+# would permanently remove the "revert to original" guarantee, which is a
+# different failure mode entirely from an old per-run directory just taking
+# up disk space.
+prune_old_backups() {
+    local days="${UH_BACKUP_RETENTION_DAYS:-90}"
+    [[ "$days" =~ ^[0-9]+$ ]] || { log_warning "UH_BACKUP_RETENTION_DAYS='$days' is not a number — skipping backup prune, using the default next time is safer than guessing"; return 0; }
+    local dir pruned=0
+    while IFS= read -r dir; do
+        [[ "$dir" == "$BACKUP_DIR" ]] && continue   # never prune the one just created
+        rm -rf "$dir" 2>/dev/null && bump pruned
+    done < <(find "$UH_BACKUP_ROOT" -maxdepth 1 -type d -name 'hardening_backup_*' -mtime "+${days}" 2>/dev/null)
+    (( pruned > 0 )) && log_info "Pruned ${pruned} backup director$( [[ $pruned -eq 1 ]] && echo y || echo ies ) older than ${days} days"
     return 0
 }
 
@@ -165,6 +294,10 @@ _seed_genesis() {
     local dest="$BACKUP_GENESIS_DIR/files$src"
     [[ -f "$dest" ]] && return 0
     mkdir -p "$(dirname "$dest")" 2>/dev/null || return 1
+    # create_backup_dir chmods the per-run directory to 700; genesis holds the
+    # same class of content and was inheriting the ambient umask instead —
+    # observed as 755 on a real host. Same content, same mode.
+    chmod 700 "$BACKUP_GENESIS_DIR" 2>/dev/null || true
     cp -a "$src" "$dest" 2>/dev/null || return 1
 
     # Genesis is shared across every tier and every run, so record which tier
@@ -177,6 +310,23 @@ _seed_genesis() {
     return 0
 }
 
+# Most recently captured copy of $1, across genesis and every EXISTING
+# per-run backup (never the one create_backup_dir just made for this run —
+# that one is still empty for this path, so it would never match anyway).
+# Per-run directories sort correctly by name (timestamp-first, see the
+# BACKUP_DIR comment above), so the lexically-last one is the most recent.
+_latest_backup_copy() {
+    local src="$1" prior
+    prior=$(find "$UH_BACKUP_ROOT" -maxdepth 1 -type d -name 'hardening_backup_*' 2>/dev/null \
+             | grep -vF "$BACKUP_DIR" | sort | tail -1)
+    if [[ -n "$prior" && -f "$prior/files$src" ]]; then
+        printf '%s' "$prior/files$src"
+        return 0
+    fi
+    [[ -f "$BACKUP_GENESIS_DIR/files$src" ]] && printf '%s' "$BACKUP_GENESIS_DIR/files$src"
+    return 0
+}
+
 # Copy a file into the backup tree, preserving its absolute path structure.
 backup_file() {
     local src="$1"
@@ -185,13 +335,29 @@ backup_file() {
     [[ "$DRY_RUN" == true ]] && { log_dry "Would back up $src"; return 0; }
 
     create_backup_dir || return 1
+    _seed_genesis "$src" || log_warning "Could not seed genesis backup for $src (revert-to-original may be incomplete for this file)"
+
+    # Skip a redundant per-run copy when the file is byte-identical to
+    # whatever was captured last — genesis on the very first run ever, the
+    # most recent prior per-run backup on every run after that. Restoring
+    # from that earlier copy would produce exactly the same bytes a fresh
+    # copy would, so making another physical copy is pure duplication. Found:
+    # re-running hardening against an already-hardened, unchanged host (a
+    # cron'd --auto-mode, or simply running the tool more than once, which
+    # this session did heavily) left one full duplicate of every untouched
+    # file behind per run — "too many copies of the same file with different
+    # dates," reported directly by the user.
+    local prior; prior=$(_latest_backup_copy "$src")
+    if [[ -n "$prior" ]] && cmp -s "$src" "$prior"; then
+        return 0
+    fi
+
     local dest="$BACKUP_DIR/files$src"
     mkdir -p "$(dirname "$dest")" 2>/dev/null || return 1
     cp -a "$src" "$dest" 2>/dev/null || {
         log_warning "Could not back up $src"
         return 1
     }
-    _seed_genesis "$src" || log_warning "Could not seed genesis backup for $src (revert-to-original may be incomplete for this file)"
     return 0
 }
 
@@ -211,12 +377,189 @@ restore_file() {
     return 0
 }
 
+# Revert one file to its TRUE ORIGINAL, without needing a specific
+# BACKUP_DIR context the way restore_file() does — built for reverting a
+# single module from the menu, standalone, not mid-run or as part of a full
+# system revert.
+#
+# Deliberately NOT _latest_backup_copy() (the dedup helper above): that one
+# exists to answer "what's the most recent thing captured," which is right
+# for skipping a redundant copy but wrong here — on a host with a long
+# history, the most recent per-run capture is often itself an
+# ALREADY-hardened snapshot (caught by testing this for real: reverting SSH
+# hardening on a heavily-tested guest silently restored an already-hardened
+# sshd_config, because the "most recent" backup had been made moments
+# earlier, mid-testing, from an already-hardened live file — PermitRootLogin
+# stayed "no" instead of going back to "yes"). Genesis is the one place
+# guaranteed to hold the true pre-hardening state (first capture ever,
+# first write wins — see _seed_genesis() above), so prefer it unconditionally,
+# same as restore_file() and full_system_revert() both already do. Only
+# without a genesis copy at all (a host hardened before genesis tracking
+# existed) does this fall back to the OLDEST per-run capture, not the
+# newest, for the same reason.
+#
+# Files a module WROTE rather than modified never had a genuine "before"
+# to go back to. The obvious signal — no backup exists anywhere — turned
+# out NOT to be reliable for these on a host with real run history: the
+# module's own apply function calls backup_file() on the path right before
+# regenerating it wholesale (`backup_file "$f"; cat > "$f"`), so on the
+# SECOND run ever (after the first run's own `cat >` already created the
+# file), backup_file() sees the file exists and seeds genesis with THAT —
+# already-hardened — content, permanently. There is never a run where
+# genesis captures a genuine "doesn't exist yet" state for these paths,
+# because backup_file() only ever fires once the file is already there.
+# Caught by testing for real: reverting module 6 (kernel) restored
+# `/etc/sysctl.d/99-hardening.conf` from genesis, and `kernel.dmesg_restrict`
+# stayed hardened — genesis held this session's OWN earlier output, not a
+# true original, because this guest has been kernel-hardened many times
+# before genesis ever got a chance to see it absent.
+#
+# full_system_revert() already knew about this shape of problem — its own
+# revert doesn't trust backup/genesis lookups for these paths at all, it
+# just unconditionally `rm -f`s a hand-maintained list. Same fix here,
+# generalized: a path known to be entirely module-output, not a modified
+# pre-existing file, is always deleted, and genesis/per-run backups are
+# never even consulted for it — no lookup to get poisoned by.
+UH_TOOL_CREATED_PATHS=(
+    "/etc/sysctl.d/99-hardening.conf"
+    "/etc/audit/rules.d/99-hardening.rules"
+    "/etc/modprobe.d/99-hardening-usb.conf"
+    "/etc/modprobe.d/disable-unused-protocols.conf"
+    "/etc/profile.d/hardening-umask.sh"
+    "/etc/fail2ban/jail.local"
+    "/etc/ssh/sshd_config.d/00-ultimate-hardening.conf"
+    "/etc/docker/daemon.json"
+)
+
+_is_tool_created_path() {
+    local target="$1" p
+    for p in "${UH_TOOL_CREATED_PATHS[@]}"; do
+        [[ "$target" == "$p" ]] && return 0
+    done
+    return 1
+}
+
+revert_backed_up_file() {
+    local target="$1"
+    [[ -f "$target" ]] || return 0   # nothing to revert
+    [[ "$DRY_RUN" == true ]] && { log_dry "Would revert $target"; return 0; }
+
+    if _is_tool_created_path "$target"; then
+        rm -f "$target" 2>/dev/null && { log_success "Removed (created by hardening, no earlier version existed): $target"; return 0; }
+        log_warning "Could not remove $target"
+        return 1
+    fi
+
+    local src="$BACKUP_GENESIS_DIR/files$target"
+    if [[ ! -f "$src" ]]; then
+        src=""
+        local d
+        while IFS= read -r d; do
+            if [[ -f "$d/files$target" ]]; then src="$d/files$target"; break; fi
+        done < <(find "$UH_BACKUP_ROOT" -maxdepth 1 -type d -name 'hardening_backup_*' 2>/dev/null | sort)
+    fi
+
+    if [[ -n "$src" ]]; then
+        cp -a "$src" "$target" 2>/dev/null && { log_success "Restored: $target"; return 0; }
+        log_warning "Could not restore $target"
+        return 1
+    fi
+
+    # No known-tool-created match AND no backup anywhere either. Found the
+    # hard way this is NOT safe to treat as "must be tool-created, delete
+    # it": on a host where the module was never actually applied — the
+    # compliance check simply read the system as already matching (Rocky
+    # ships SELinux enforcing by default, so module 13's SELinux branch
+    # never ran, never called backup_file, and genesis was never seeded) —
+    # this path deleted a real, in-use `/etc/selinux/config` outright.
+    # backup_file() being silent tells you nothing changed; it does not
+    # tell you the file was tool-created. Only UH_TOOL_CREATED_PATHS
+    # (checked above) is an actual claim about provenance — anything else
+    # with no backup is left alone, not guessed at.
+    log_info "Nothing to revert for $target — no backup was ever taken, most likely because this module never actually changed it on this host (already compliant by default). Left untouched."
+    return 2
+}
+
 # Locate the most recent backup when reverting in a fresh session.
+# Where per-run backup directories live. A variable so tests can point it at a
+# fixture instead of /root.
+: "${UH_BACKUP_ROOT:=/root}"
+
 find_latest_backup() {
     local latest
-    latest=$(find /root -maxdepth 1 -type d -name 'hardening_backup_*' 2>/dev/null | sort | tail -1)
+    latest=$(find "$UH_BACKUP_ROOT" -maxdepth 1 -type d -name 'hardening_backup_*' 2>/dev/null | sort | tail -1)
     [[ -n "$latest" ]] || return 1
     echo "$latest"
+}
+
+# Every restore point, NEWEST FIRST, one per line as "<path>\t<label>".
+# Genesis (the true pre-hardening original) is listed last, as the oldest state.
+list_backup_points() {
+    local d
+    while IFS= read -r d; do
+        [[ -n "$d" ]] || continue
+        printf '%s\t%s\n' "$d" "$(describe_backup "$d")"
+    done < <(find "$UH_BACKUP_ROOT" -maxdepth 1 -type d -name 'hardening_backup_*' 2>/dev/null | sort -r)
+    [[ -d "$BACKUP_GENESIS_DIR/files" ]] && \
+        printf '%s\t%s\n' "$BACKUP_GENESIS_DIR" "original pre-hardening state (genesis)"
+    return 0
+}
+
+# Resolve a --revert-to value to a backup directory path.
+#   ""|latest   -> most recent per-run backup
+#   genesis|original -> the genesis directory
+#   /abs/path   -> that directory if it exists
+#   <text>      -> newest per-run backup whose name contains <text>
+#                  (so a date like 20260921 or a full timestamp both work)
+# Prints the path, or nothing (return 1) if no match.
+resolve_revert_target() {
+    local t="$1" hit
+    case "$t" in
+        ""|latest)         find_latest_backup ;;
+        genesis|original)  [[ -d "$BACKUP_GENESIS_DIR/files" ]] && echo "$BACKUP_GENESIS_DIR" || return 1 ;;
+        /*)                [[ -d "$t" ]] && echo "$t" || return 1 ;;
+        *)  hit=$(find "$UH_BACKUP_ROOT" -maxdepth 1 -type d -name "hardening_backup_*${t}*" 2>/dev/null | sort | tail -1)
+            [[ -n "$hit" ]] && echo "$hit" || return 1 ;;
+    esac
+}
+
+# Interactive restore-point chooser. Draws the menu to STDERR and echoes only
+# the chosen target token to STDOUT, so it is safe inside $(...). Returns 1 if
+# the user cancels.
+choose_backup_point() {
+    local -a paths=() labels=()
+    local p l
+    while IFS=$'\t' read -r p l; do paths+=("$p"); labels+=("$l"); done < <(list_backup_points)
+    (( ${#paths[@]} )) || { echo "genesis"; return 0; }
+    {
+        echo ""
+        echo "Restore points, newest first:"
+        local i
+        for i in "${!paths[@]}"; do printf '  %2d) %s\n' "$((i+1))" "${labels[$i]}"; done
+        echo "   0) original pre-hardening state (default)"
+        echo "   q) cancel"
+    } >&2
+    local ans=""
+    read -r -p "  Revert to which? [0]: " ans </dev/tty 2>/dev/null || ans=""
+    case "$ans" in
+        ""|0)      echo "genesis" ;;
+        q|Q)       return 1 ;;
+        *[!0-9]*)  echo "genesis" ;;
+        *)         if (( ans >= 1 && ans <= ${#paths[@]} )); then echo "${paths[$((ans-1))]}"; else echo "genesis"; fi ;;
+    esac
+    return 0
+}
+
+# Print the restore points for --list-backups, then return.
+list_backups_cli() {
+    local any=false p l n=0
+    log_info "Available restore points (newest first):"
+    while IFS=$'\t' read -r p l; do
+        any=true; n=$((n+1))
+        printf '  %2d) %s\n      %s\n' "$n" "$l" "$p"
+    done < <(list_backup_points)
+    [[ "$any" == true ]] || log_warning "No backups found under $UH_BACKUP_ROOT and no genesis directory."
+    return 0
 }
 
 # --------------------------------------------------------------- confirmation --
@@ -253,6 +596,17 @@ append_once() {
     grep -qxF "$line" "$file" 2>/dev/null && return 0
     echo "$line" >> "$file" 2>/dev/null || return 1
     return 0
+}
+
+# Inverse of append_once() — remove an exact line if present, no-op otherwise.
+remove_line() {
+    local line="$1" file="$2" tmp
+    [[ -f "$file" ]] || return 0
+    [[ "$DRY_RUN" == true ]] && { log_dry "Would remove from $file: $line"; return 0; }
+    grep -qxF "$line" "$file" 2>/dev/null || return 0
+    tmp=$(mktemp) || return 1
+    grep -vxF "$line" "$file" > "$tmp" && cat "$tmp" > "$file"
+    rm -f "$tmp"
 }
 
 # Set key/value in a config file, replacing an existing line or appending.

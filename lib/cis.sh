@@ -112,8 +112,15 @@ run_cis_checks() {
     CHECK_RESULTS=()
 
     # -- Filesystem separation -------------------------------------------------
+    # `mount | grep -q` is unsafe under `set -o pipefail`, which every tier
+    # sets: grep -q exits on its first match, mount takes SIGPIPE on its next
+    # write and exits 141, and pipefail reports 141 for the whole pipeline —
+    # so a matched partition reads as unmounted. It only stays hidden while
+    # mount's output fits the pipe buffer. Capture once, match against the
+    # string. (Same failure class as the virsh checks in tests/vm/uh-kvm-lab.sh.)
+    local _mounts; _mounts=$(mount 2>/dev/null || true)
     for part in /home /tmp /var /var/log /var/tmp; do
-        if mount | grep -qE "on ${part} "; then
+        if grep -qE "on ${part} " <<< "$_mounts"; then
             record_check "$part is a separate partition" "true"
         else
             record_check "$part is a separate partition" "false" "Not a separate mount point"
@@ -154,7 +161,18 @@ run_cis_checks() {
         fi
     done
 
-    if is_service_active nftables || is_service_active ufw \
+    # ufw's systemd unit is a oneshot that applies the ruleset and exits —
+    # `systemctl is-active ufw` reports "inactive" even while the firewall it
+    # configured is genuinely enforcing. `is_service_active` (systemctl-based)
+    # is correct for the other backends, which run as long-lived daemons, so
+    # only ufw needs its own command consulted instead. Found by a real
+    # dry-run showing "No active firewall service detected" against a guest
+    # whose `ufw status` said "Status: active" with the correct rules applied
+    # a moment earlier in the same session.
+    local ufw_active=false
+    command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active' && ufw_active=true
+
+    if is_service_active nftables || [[ "$ufw_active" == true ]] \
        || is_service_active firewalld || is_service_active pf; then
         record_check "Firewall is active" "true"
     else
@@ -267,16 +285,158 @@ undo_suid_hardening() {
     log_success "Restored SUID/SGID on $restored binaries"
 }
 
+# Same shape as undo_suid_hardening() just above — a mode inventory, not a
+# file backup, so it needs its own revert rather than revert_backed_up_file()
+# (lib/core.sh). Used by full_system_revert() (inline, historically) and now
+# also by revert_module() (lib/menu.sh) for reverting module 20 on its own.
+undo_compiler_restriction() {
+    log_message "${UNDO} Restoring compiler permissions"
+
+    local inv; inv=$(find /root -name 'compiler_original_perms.txt' -type f 2>/dev/null | sort | tail -1)
+    [[ -n "$inv" ]] || { log_error "No compiler-permissions inventory found — cannot revert"; return 1; }
+    [[ "$DRY_RUN" == true ]] && { log_dry "Would restore compiler permissions from $inv"; return 0; }
+
+    local restored=0
+    while read -r cpath cmode; do
+        [[ -f "$cpath" ]] || continue
+        chmod "$cmode" "$cpath" 2>/dev/null && { log_info "  restored compiler mode: $cpath ($cmode)"; bump restored; } || \
+            log_warning "  could not restore $cpath"
+    done < "$inv"
+
+    log_success "Restored permissions on $restored compiler(s)"
+}
+
+# Same shape again — a mode inventory for the handful of files
+# apply_permission_hardening() actually loosened (files already at or
+# stricter than the target were never recorded, since there's nothing to
+# undo for those). Also strips the limits.conf line that module appended;
+# chown root:root and /tmp's 1777 mode are deliberately left alone, since
+# those are baseline hygiene rather than anything worth un-hardening.
+undo_permission_hardening() {
+    log_message "${UNDO} Restoring file permissions"
+
+    local inv; inv=$(find /root -name 'perm_original_modes.txt' -type f 2>/dev/null | sort | tail -1)
+    if [[ -z "$inv" ]]; then
+        log_info "No permission changes were recorded — every file this module touches was already at or stricter than its target, so there's nothing to revert."
+        remove_line "* hard core 0" /etc/security/limits.conf
+        return 0
+    fi
+    [[ "$DRY_RUN" == true ]] && { log_dry "Would restore file permissions from $inv"; return 0; }
+
+    local restored=0
+    while read -r fpath fmode; do
+        [[ -f "$fpath" ]] || continue
+        chmod "$fmode" "$fpath" 2>/dev/null && { log_info "  restored: $fpath ($fmode)"; bump restored; } || \
+            log_warning "  could not restore $fpath"
+    done < "$inv"
+
+    remove_line "* hard core 0" /etc/security/limits.conf
+
+    log_success "Restored permissions on $restored file(s)"
+}
+
+# Same mode-inventory shape a third time, for grub.cfg. Also removes the
+# USB-storage modprobe blacklist apply_boot_secure() writes — that file is
+# in UH_TOOL_CREATED_PATHS (lib/core.sh), so revert_backed_up_file() always
+# deletes it outright rather than looking for a "before" version, since
+# there never was one.
+undo_boot_secure() {
+    log_message "${UNDO} Restoring boot configuration"
+
+    local inv; inv=$(find /root -name 'boot_original_perms.txt' -type f 2>/dev/null | sort | tail -1)
+    if [[ -z "$inv" ]]; then
+        log_info "No grub.cfg permission change was recorded — it was already at 600 or stricter, so there's nothing to revert there."
+    elif [[ "$DRY_RUN" == true ]]; then
+        log_dry "Would restore grub.cfg permissions from $inv"
+    else
+        local restored=0
+        while read -r cfg cmode; do
+            [[ -f "$cfg" ]] || continue
+            chmod "$cmode" "$cfg" 2>/dev/null && { log_info "  restored: $cfg ($cmode)"; bump restored; } || \
+                log_warning "  could not restore $cfg"
+        done < "$inv"
+        log_success "Restored permissions on $restored grub config(s)"
+    fi
+
+    revert_backed_up_file /etc/modprobe.d/99-hardening-usb.conf
+}
+
+# Re-enables and starts exactly the services THIS TOOL disabled (per the
+# inventory apply_disable_services() now records), not a blind re-enable of
+# everything in UH_UNNEEDED_SERVICES — most of that list is inactive by
+# default on a normal host and was never touched by this run.
+#
+# SECURITY.md previously documented this as permanently manual ("re-
+# enabling services on a hardened box should be a conscious act"). That
+# stayed the DEFAULT posture: revert_module() gates this behind the
+# strongest confirmation tier (confirm_risky, typing "yes"), the same as
+# SUID and GRUB password — the user explicitly asked to override the
+# no-auto-revert stance for a real revert, and this is that revert, not a
+# silent one-click toggle. SECURITY.md's own wording was updated to match
+# — the manual `systemctl enable --now` path documented there still works
+# and still applies to hosts that predate this feature, or if the
+# inventory is missing.
+undo_disabled_services() {
+    log_message "${UNDO} Re-enabling services this tool disabled"
+
+    local inv; inv=$(find /root -name 'disabled_services.txt' -type f 2>/dev/null | sort | tail -1)
+    if [[ -z "$inv" ]]; then
+        log_error "No disabled-services inventory found — cannot revert. Re-enable manually: systemctl enable --now <service>"
+        return 1
+    fi
+    [[ "$DRY_RUN" == true ]] && { log_dry "Would re-enable and start services listed in $inv"; return 0; }
+
+    local restored=0 svc
+    while IFS= read -r svc; do
+        [[ -z "$svc" ]] && continue
+        enable_service "$svc" >/dev/null 2>&1 && { log_info "  re-enabled: $svc"; bump restored; } || \
+            log_warning "  could not re-enable $svc — it may no longer be installed"
+    done < "$inv"
+
+    log_success "Re-enabled $restored service(s)"
+    return 0
+}
+
 full_system_revert() {
     log_message "${UNDO} Full system revert"
+
+    # Choose a restore point. UH_REVERT_TARGET comes from --revert-to; with no
+    # target and an interactive session, offer the chooser. A specific per-run
+    # backup pins a point in time (genesis is NOT preferred over it); "genesis"
+    # or no choice keeps the historical restore-to-true-original behaviour.
+    local _target="${UH_REVERT_TARGET:-}"
+    # Only prompt when there is a real terminal — a piped/scripted --revert (and
+    # the test suite) falls through to the default, it never blocks on input.
+    if [[ -z "$_target" && "$AUTO_MODE" != true && -t 0 ]]; then
+        _target=$(choose_backup_point) || { log_info "Revert cancelled."; return 0; }
+    fi
+    local _pin_perrun=false
+    if [[ -n "$_target" ]]; then
+        local _resolved; _resolved=$(resolve_revert_target "$_target") || _resolved=""
+        if [[ -z "$_resolved" ]]; then
+            log_error "No backup matches '${_target}'. Run --list-backups to see the options."
+            return 1
+        fi
+        if [[ "$_resolved" != "$BACKUP_GENESIS_DIR" ]]; then
+            BACKUP_DIR="$_resolved"
+            SUID_BACKUP_FILE="$BACKUP_DIR/suid_sgid_original_perms.txt"
+            _pin_perrun=true
+            log_info "Reverting to chosen restore point:"
+            log_info "  $BACKUP_DIR  ($(describe_backup "$BACKUP_DIR"))"
+        fi
+    fi
 
     # Genesis holds the first-ever captured copy of every file any tier's
     # run has touched — the true pre-hardening state, even across a
     # Free -> Pro -> Enterprise upgrade path where each tier's own
     # per-run backup only captures "state right before that run" (which by
     # then already includes earlier tiers' changes). Prefer it.
+    # A pinned per-run choice restores exactly that point in time, so genesis
+    # (the true original) is deliberately not preferred over it.
     local have_genesis=false
-    [[ -d "$BACKUP_GENESIS_DIR/files" ]] && have_genesis=true
+    if [[ "$_pin_perrun" != true ]] && [[ -d "$BACKUP_GENESIS_DIR/files" ]]; then
+        have_genesis=true
+    fi
 
     if [[ ! -d "$BACKUP_DIR" ]]; then
         local found; found=$(find_latest_backup) || {
@@ -300,6 +460,8 @@ full_system_revert() {
         local seeded_by
         seeded_by=$(cut -d'|' -f2 "$BACKUP_GENESIS_DIR/genesis_manifest.txt" 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/ $//')
         [[ -n "$seeded_by" ]] && log_info "  └─ originals captured by: ${seeded_by} (see $BACKUP_GENESIS_DIR/genesis_manifest.txt)"
+    elif [[ "$_pin_perrun" == true ]]; then
+        log_info "Restoring to the chosen point in time; the original (genesis) state is not used."
     else
         log_warning "No genesis backup found — this host was hardened before genesis tracking existed. Falling back to the most recent per-run backup, which may only restore to the state before the LAST run, not the system's original defaults."
     fi
