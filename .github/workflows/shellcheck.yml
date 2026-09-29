@@ -56,8 +56,3 @@ jobs:
         # by hand (`./tests/run.sh --all-distros`) before a release, or wire
         # it to a schedule/workflow_dispatch trigger if broader per-PR
         # coverage becomes worth the wait.
-
-  # The "python" job that lived here byte-compiled and pyflakes'd
-  # src/enterprise/modules/*.py. Those files moved to the private commercial
-  # repository, which runs that job instead. Keeping it here would fail every
-  # build against a clean clone of this repo.
