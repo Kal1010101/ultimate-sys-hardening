@@ -224,18 +224,59 @@ _fw_ufw() {
 
 _fw_firewalld() {
     enable_service firewalld >/dev/null 2>&1 || true
-    firewall-cmd --permanent --set-default-zone=drop >>"$LOG_FILE" 2>&1 || true
-    firewall-cmd --permanent --add-service=ssh       >>"$LOG_FILE" 2>&1 || true
-    firewall-cmd --permanent --add-service=http      >>"$LOG_FILE" 2>&1 || true
-    firewall-cmd --permanent --add-service=https     >>"$LOG_FILE" 2>&1 || true
-    firewall-cmd --reload                            >>"$LOG_FILE" 2>&1 || true
+
+    # systemctl reports the unit "active" as soon as the process starts,
+    # which can be before firewalld has finished registering its own D-Bus
+    # service — especially right after installing the package in this same
+    # run. Wait for firewalld's own readiness signal (--state prints
+    # "running") instead of trusting the service manager's, up to 5 seconds
+    # — still relevant even after the fix below, since --set-default-zone
+    # genuinely needs the D-Bus service up.
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        [[ "$(firewall-cmd --state 2>/dev/null)" == "running" ]] && break
+        sleep 0.5
+    done
+
+    # --set-default-zone is a "stand-alone option" in firewall-cmd's own
+    # parser and cannot be combined with --permanent at all — firewall-cmd
+    # rejects it outright ("Can't use stand-alone options with other
+    # options.", exit 2). The original code passed both together, so this
+    # call has failed on every single invocation, on every host, silently
+    # swallowed by `|| true` — not an intermittent D-Bus race, an
+    # unconditional bug. --set-default-zone is inherently both immediate
+    # and permanent on its own; no --permanent needed or accepted. Found by
+    # testing this module for real on a freshly-installed Rocky guest,
+    # where the "wait for firewalld to be ready" fix above made no
+    # difference — the command was malformed regardless of timing.
+    firewall-cmd --set-default-zone=drop         >>"$LOG_FILE" 2>&1 || true
+    firewall-cmd --permanent --add-service=ssh   >>"$LOG_FILE" 2>&1 || true
+    firewall-cmd --permanent --add-service=http  >>"$LOG_FILE" 2>&1 || true
+    firewall-cmd --permanent --add-service=https >>"$LOG_FILE" 2>&1 || true
+    firewall-cmd --reload                        >>"$LOG_FILE" 2>&1 || true
+
+    # Verify the zone change actually took rather than trusting firewall-
+    # cmd's own exit code. One retry before giving an honest warning — the
+    # readiness wait above still matters for this retry, since
+    # --set-default-zone genuinely does need firewalld's D-Bus service up.
+    local zone; zone=$(firewall-cmd --get-default-zone 2>/dev/null)
+    if [[ "$zone" != "drop" ]]; then
+        firewall-cmd --set-default-zone=drop >>"$LOG_FILE" 2>&1 || true
+        firewall-cmd --reload >>"$LOG_FILE" 2>&1 || true
+        zone=$(firewall-cmd --get-default-zone 2>/dev/null)
+    fi
+
     # enable_service logs "enabled" unconditionally (systemctl start's own
     # exit code is thrown away) — the same false-positive shape apply_fail2ban
     # already guards against. Same fix here: only claim success once the
     # service is actually confirmed running.
     if is_service_active firewalld; then
-        log_success "firewalld: default zone drop, SSH/80/443 open"
-        count_fix
+        if [[ "$zone" == "drop" ]]; then
+            log_success "firewalld: default zone drop, SSH/80/443 open"
+            count_fix
+        else
+            log_warning "firewalld default zone is '$zone', not 'drop', after a retry — check: firewall-cmd --get-default-zone"
+        fi
     else
         log_warning "firewalld was configured but is not running — check: systemctl status firewalld"
     fi

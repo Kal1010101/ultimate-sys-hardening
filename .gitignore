@@ -24,6 +24,10 @@ PRICING.md
 # Internal working notes — not for the public repo.
 HANDOFF.md
 VM-TEST-PLAN.md
+CHANGELOG.local.md
+
+# In-house KVM test lab tooling — not for the public repo.
+tests/vm/
 
 # Session scratch/quarantine — never publish.
 _to_delete/
