@@ -93,7 +93,7 @@ Examples:
   sudo $0 --cis-only               Score the system, change nothing
   sudo $0 --revert                 Undo the most recent run
 
-Free is the complete hardening engine. Pro adds compliance reports, scheduled
+This tier is the hardening engine. Pro adds compliance reports, scheduled
 runs, and email alerts; Enterprise adds a multi-host dashboard, remote deploy,
 policy-as-code, drift detection, and OpenSCAP. See README.md.
 EOF
