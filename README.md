@@ -81,8 +81,8 @@ from the same compliance checks `--cis-only` runs:
 You're being asked to run a script as root that rewrites SSH and firewall config.
 Here's what it does and doesn't do:
 
-- **No telemetry.** No analytics, no phone-home, no license check. The only
-  outbound traffic is your own package manager.
+- **No telemetry.** No analytics, no phone-home. The only outbound traffic
+  is your own package manager.
 - **Backup before write.** Everything modified is copied to
   `/root/hardening_backup_<timestamp>_<tier>/` before the first change, with a
   manifest recording which tier and version wrote it.
@@ -151,7 +151,7 @@ paywall — it's also an early-stage project, and the module set will keep
 growing. Paid tiers add reporting and fleet management on top of the same
 engine.
 
-What the free tier looks like — the whole product, not a teaser:
+What the free tier looks like:
 
 <div align="center">
 <table>
