@@ -125,7 +125,7 @@ show_menu() {
     # checks before drawing, so applying or reverting a module is reflected
     # the moment the menu comes back.
     refresh_module_states
-    clear
+    clear 2>/dev/null || true
     # The header box is drawn by box_line() in lib/menu.sh, which computes the
     # padding. It was hand-padded, and both inner lines were wrong: the
     # Platform line had no closing edge at all, and the title line assumed the
