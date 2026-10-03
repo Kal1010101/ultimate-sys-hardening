@@ -459,8 +459,8 @@
         <p><code class="inline">--revert</code> restores from backup; <code class="inline">--revert-suid</code> rolls back only permission changes. Revert auto-finds the most recent backup.</p></div>
       <div class="card"><h3><span class="ico">🧬</span> PAM-safe by design</h3>
         <p>Password policy is written to <code class="inline">/etc/security/pwquality.conf</code> — never by hand-editing <code class="inline">/etc/pam.d/*</code>. It also skips when multiple display-manager PAM profiles are detected.</p></div>
-      <div class="card"><h3><span class="ico">📡</span> No telemetry, no network calls</h3>
-        <p>Nothing phones home. The only outbound request is the optional, explicitly-invoked update check against the GitHub API.</p></div>
+      <div class="card"><h3><span class="ico">📡</span> No telemetry, no phone-home</h3>
+        <p>Nothing is ever sent anywhere about your hosts. In the free tier the only outbound request is the optional, explicitly-invoked update check against the GitHub API. The paid tiers can additionally <em>download</em> public vulnerability data — your distro's security feed, and the CISA KEV and EPSS lists — but only when you pass <code class="inline">--cve-feeds</code> or <code class="inline">--cve-enrich</code>, which are off by default. Those are inbound fetches of public files; no query carries anything identifying.</p></div>
       <div class="card"><h3><span class="ico">🔍</span> Readable and reviewed</h3>
         <p>Plain Bash, MIT licensed, ShellCheck-clean in CI on every push, tested across Debian, RHEL, Arch and SUSE families.</p></div>
     </div>
@@ -676,9 +676,16 @@
       names accordingly.</p></details>
 
     <details><summary>Does it send any data anywhere?</summary>
-      <p>No. There is no telemetry, analytics or licence phone-home. The only outbound request is the
-      optional update check you invoke yourself from the menu, which queries the public GitHub API.
-      Everything else is local. The free tier is MIT-licensed — source is on GitHub.</p></details>
+      <p>No. There is no telemetry, analytics or licence phone-home, in any tier — nothing about your
+      hosts leaves them. In the free tier the only outbound request is the optional update check you
+      invoke yourself from the menu, which queries the public GitHub API. Everything else is local.</p>
+      <p>The Pro and Enterprise CVE features default to your own package manager's repository
+      metadata, so they need no new network access at all. Two optional flags will download public
+      files if you ask for them — <code class="inline">--cve-feeds</code> for your distro's security
+      feed, <code class="inline">--cve-enrich</code> for the CISA KEV catalogue and EPSS scores. Both
+      are off unless passed, and both are plain downloads: nothing is uploaded, and the request
+      contains no host identifier, package list or licence key.</p>
+      <p>The free tier is MIT-licensed — source is on GitHub.</p></details>
 
     <details><summary>How does Enterprise host counting work?</summary>
       <p>A host is any machine you scan, harden or track in the dashboard. The base tier covers 10 hosts,
