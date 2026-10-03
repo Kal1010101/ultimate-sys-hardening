@@ -55,11 +55,11 @@ from the same compliance checks `--cis-only` runs:
 |---|--------|------|--------------|
 | 1 | System updates | Safe | Distro-aware package upgrade |
 | 2 | SSH hardening | Medium | 13 settings, validated with `sshd -t` before restart |
-| 3 | Firewall | Medium | nftables or UFW, default-deny inbound |
+| 3 | Firewall | Medium | nftables, UFW or firewalld — default-deny inbound on **IPv4 and IPv6** |
 | 4 | Fail2Ban | Safe | SSH jail, ban after 3 failures |
 | 5 | File permissions | Safe | `/etc/shadow`, `/etc/passwd`, sticky `/tmp` |
-| 6 | Kernel / network | Safe | 25 sysctl parameters — ASLR, SYN cookies, martians |
-| 7 | Auditd | Safe | Identity, sudoers, module-loading, and mount rules |
+| 6 | Kernel / network | Safe | 27 sysctl parameters — ASLR, SYN cookies, martians |
+| 7 | Auditd | Safe | 17 rules — identity, sudoers, module loading, mounts |
 | 8 | Password policy | Safe | `login.defs` only — **PAM is never modified** |
 | 9 | SUID/SGID | **High** | Strips SUID outside a safe list, inventory recorded |
 | 10 | AIDE | Safe | File integrity baseline + daily cron check |
@@ -91,13 +91,22 @@ Here's what it does and doesn't do:
   restores the system as it was before any hardening — not merely as it was
   before the most recent run.
 - **Full revert.** `--revert` restores SSH, sysctl, file permissions, compiler
-  modes, and removes the protocol blacklist and umask profile it added.
-  `--revert-suid` restores just SUID/SGID bits.
+  modes, and removes the protocol and filesystem blacklists and the umask
+  profile it added. `--revert-suid` restores just SUID/SGID bits.
+- **Per-module revert.** Any module already applied can be backed out on its
+  own from the menu, without reverting the rest.
 - **Dry-run.** `--dry-run` shows every intended change and exits.
 - **PAM untouched.** An early version broke a login screen on an eCryptfs system.
   PAM modification was removed entirely — see [SECURITY.md](SECURITY.md).
 - **SSH can't lock you out.** The config is validated with `sshd -t` and rolled
   back automatically if it fails.
+- **Dependencies resolved before the first write.** Applying everything checks
+  each module's packages up front and names anything it cannot obtain, so you
+  find out before the run rather than forty seconds into a half-hardened host.
+- **An upgrade that would break the next boot fails loudly.** After a kernel
+  upgrade the boot image is checked for every new kernel plus the one that
+  boots next, rebuilt if stale, and the module reports failure — rather than
+  "updated" — if it still is not right.
 
 ## Supported systems
 
@@ -184,6 +193,7 @@ What the free tier looks like:
 | Dry-run + revert | ✅ | ✅ | ✅ |
 | HTML compliance reports | — | ✅ | ✅ |
 | Open ports / failed logins | — | ✅ | ✅ |
+| Exception register (waivers) | — | ✅ | ✅ |
 | Scheduled runs + email | — | ✅ | ✅ |
 | Multi-host dashboard | — | — | ✅ |
 | Remote SSH deploy | — | — | ✅ |
@@ -205,13 +215,16 @@ Honest scope — including the gaps.
 | OpenSCAP | Available (Enterprise) — wraps `oscap`, folds results into reports |
 | Packer / Terraform | Available — [example included](examples/packer/) |
 | Fleet scale | Small fleets (tens of hosts). Remote deploy is a sequential SSH loop. |
-| DISA STIG | Roadmap |
+| DISA STIG | **Scanning** available (Enterprise) — `--scap-profile stig` against the distro's SSG content. STIG-specific remediation is not mapped. |
+| PCI-DSS / HIPAA / ANSSI / others | Scanning available (Enterprise) wherever the distro's SSG content ships that profile — `--scap-list-profiles` shows which. |
+| Exception register | Available (Pro) — accepted risks with a justification and a review date |
+| TLS log forwarding | Available — all tiers, module 21 |
 | NIST SP 800-70 | Roadmap |
 | Ansible role | Roadmap |
 
 ## Roadmap
 
-- [ ] DISA STIG profile mapping
+- [ ] DISA STIG remediation mapping (scanning already works — see above)
 - [ ] NIST SP 800-70 checklist mapping
 - [ ] Ansible role packaging
 - [ ] Parallel remote deploy (beyond sequential SSH)
@@ -223,9 +236,22 @@ Issues and PRs welcome. Every push runs ShellCheck and `bash -n` against Debian,
 Ubuntu, Fedora, and Alpine — please make sure both pass locally first:
 
 ```bash
-shellcheck -e SC2034 -e SC1091 src/**/*.sh
-bash -n src/**/*.sh
+# the same invocation CI uses
+shellcheck --severity=warning -x -e SC2034 -e SC1091 -e SC2154 \
+    lib/*.sh src/free/ultimate_hardening.sh scripts/*.sh \
+    tests/run.sh tests/lib/*.sh tests/cases/*.sh
+bash -n lib/*.sh src/free/*.sh
+
+# the integration suite, in throwaway containers (needs docker)
+./tests/run.sh --distro debian:12
+./tests/run.sh --all-distros
 ```
+
+`tests/run.sh` applies real hardening inside a container and asserts the system
+actually changed, which is the difference between "the script parses" and "the
+script works". Tests that stub a command must stub it with a shell **function**:
+`lib/core.sh` prepends the system directories to `PATH` when it is sourced, so a
+stub directory put on `PATH` beforehand is shadowed by the real binary.
 
 Security issues go through [SECURITY.md](SECURITY.md), not the public tracker.
 
