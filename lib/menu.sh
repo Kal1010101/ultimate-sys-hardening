@@ -58,7 +58,7 @@ declare -A MOD_LABEL=(
     [grubpw]="GRUB password"
     [docker]="Docker security"
     [modsec]="ModSecurity WAF"
-    [protocols]="Disable unused protocols"
+    [protocols]="Disable unused protocols & filesystems"
     [compiler]="Compiler access restriction"
     [syslog]="Remote syslog"
     [umask]="UMASK hardening"
@@ -96,7 +96,7 @@ declare -A MOD_REVERT_FILES=(
     [password]="/etc/login.defs"
     [grubpw]="/etc/grub.d/40_custom"
     [docker]="/etc/docker/daemon.json"
-    [protocols]="/etc/modprobe.d/disable-unused-protocols.conf"
+    [protocols]="/etc/modprobe.d/disable-unused-protocols.conf /etc/modprobe.d/disable-unused-filesystems.conf"
     [syslog]="/etc/rsyslog.conf"
     [umask]="/etc/login.defs /etc/profile.d/hardening-umask.sh /etc/bash.bashrc"
 )
