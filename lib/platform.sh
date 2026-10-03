@@ -84,7 +84,7 @@ show_distro_menu() {
         return
     fi
 
-    clear
+    clear 2>/dev/null || true
     # This box was the only hand-padded one that happened to be correct — it
     # holds no emoji and nothing variable. It still goes through box_line, so
     # there is one way to draw a box rather than one way plus an exception.
