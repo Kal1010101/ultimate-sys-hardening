@@ -537,7 +537,7 @@ apply_kernel_hardening() {
         return 0
     fi
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would write 25 sysctl parameters to /etc/sysctl.d/99-hardening.conf"
+        log_dry "Would write 27 sysctl parameters to /etc/sysctl.d/99-hardening.conf"
         return 0
     fi
 
@@ -630,7 +630,7 @@ EOF
     # actually up before claiming the rules are in effect, same as
     # apply_fail2ban.
     if is_service_active auditd; then
-        log_success "Auditd configured with 18 audit rules"
+        log_success "Auditd configured with 17 audit rules"
         count_fix
     else
         log_warning "Audit rules written but auditd is not running — check: systemctl status auditd"
