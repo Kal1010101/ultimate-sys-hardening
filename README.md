@@ -73,7 +73,7 @@ from the same compliance checks `--cis-only` runs:
 | 18 | ModSecurity | Medium | WAF + core rule set, only if Apache/httpd is present |
 | 19 | Unused kernel modules | Safe | Blacklists DCCP, SCTP, RDS, TIPC and the CIS uncommon filesystems (cramfs, freevxfs, hfs, hfsplus, jffs2, squashfs, udf). squashfs is left alone where snapd needs it. |
 | 20 | Compiler access | Medium | Restricts gcc/clang to root, records original modes |
-| 21 | Remote syslog | Safe | Forwards to a collector on :514 |
+| 21 | Remote syslog | Safe | Forwards to a collector over UDP, TCP or TLS (`UH_SYSLOG_PROTO`, `UH_SYSLOG_TLS_CA`). TLS verifies the collector and queues to disk while it is unreachable. |
 | 22 | UMASK hardening | Safe | Default umask 027 |
 
 ## Trust
