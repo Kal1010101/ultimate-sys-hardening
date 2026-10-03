@@ -1239,15 +1239,61 @@ valid_syslog_destination() {
     [[ "${1:-}" =~ ^[A-Za-z0-9]([A-Za-z0-9._:-]*[A-Za-z0-9])?$ ]]
 }
 
+# udp | tcp | tls. Everything else is a typo, and a typo must not silently
+# become plaintext UDP.
+valid_syslog_protocol() {
+    case "${1:-}" in udp|tcp|tls) return 0 ;; *) return 1 ;; esac
+}
+
+_syslog_default_port() {
+    case "$1" in tls) echo 6514 ;; *) echo 514 ;; esac
+}
+
+# rsyslog needs a separate package for the GnuTLS network driver, and without
+# it a TLS config loads but every forward fails. Package name differs per
+# distro; a miss is reported, never assumed away.
+_syslog_install_tls_driver() {
+    [[ -n "$(find /usr/lib /usr/lib64 /lib -name 'lmnsd_gtls.so' -print -quit 2>/dev/null)" ]] && return 0
+    local pkg
+    case "${DISTRO_TYPE:-}" in
+        debian|rhel) pkg="rsyslog-gnutls" ;;
+        suse)        pkg="rsyslog-module-gtls" ;;
+        alpine)      pkg="rsyslog-tls" ;;
+        *)           pkg="rsyslog-gnutls" ;;
+    esac
+    install_package "$pkg" >/dev/null 2>&1 || true
+    [[ -n "$(find /usr/lib /usr/lib64 /lib -name 'lmnsd_gtls.so' -print -quit 2>/dev/null)" ]]
+}
+
 apply_remote_syslog() {
     log_message "${NET_ICON} [21/22] Remote Syslog"
 
-    if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would forward all syslog facilities to a remote collector on port 514"
+    local server="${UH_SYSLOG_SERVER:-}"
+    local proto="${UH_SYSLOG_PROTO:-udp}"
+    local ca="${UH_SYSLOG_TLS_CA:-}"
+    # A CA on its own means TLS was intended; honour that rather than quietly
+    # forwarding in clear text.
+    [[ -n "$ca" && "$proto" == "udp" ]] && proto="tls"
+    local port="${UH_SYSLOG_PORT:-$(_syslog_default_port "$proto")}"
+
+    if ! valid_syslog_protocol "$proto"; then
+        log_error "Refusing syslog protocol '${proto}' — expected udp, tcp or tls"
+        return 0
+    fi
+    if [[ ! "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+        log_error "Refusing syslog port '${port}' — expected 1-65535"
         return 0
     fi
 
-    local server="${UH_SYSLOG_SERVER:-}"
+    if [[ "$DRY_RUN" == true ]]; then
+        if [[ "$proto" == tls ]]; then
+            log_dry "Would forward all syslog facilities over TLS to ${server:-<server>}:${port}, verifying the collector against ${ca:-<CA file>}"
+        else
+            log_dry "Would forward all syslog facilities to ${server:-<server>}:${port} over ${proto}"
+        fi
+        return 0
+    fi
+
     if [[ -z "$server" ]]; then
         if [[ "$AUTO_MODE" == true ]]; then
             log_warning "Remote syslog needs a destination — set UH_SYSLOG_SERVER to use it in auto-mode; skipping"
@@ -1267,23 +1313,95 @@ apply_remote_syslog() {
         return 0
     fi
 
-    if [[ ! -f /etc/rsyslog.conf ]]; then
-        log_warning "/etc/rsyslog.conf not found — rsyslog is not installed, skipping"
+    # Both exist only for tests/cases/test_syslog_tls.sh; unset, they are the
+    # real paths.
+    local rsconf="${UH_RSYSLOG_CONF:-/etc/rsyslog.conf}"
+    local ca_dir="${UH_SYSLOG_CA_DIR:-/etc/ultimate-hardening}"
+    if [[ ! -f "$rsconf" ]]; then
+        log_warning "$rsconf not found — rsyslog is not installed, skipping"
         return 0
     fi
 
+    # TLS has prerequisites, and half a TLS setup forwards nothing at all. If
+    # either the CA or the driver is missing, say so and change nothing —
+    # falling back to plaintext would be the opposite of what was asked for.
+    if [[ "$proto" == tls ]]; then
+        if [[ -z "$ca" ]]; then
+            log_error "TLS forwarding needs the collector's CA certificate — set UH_SYSLOG_TLS_CA; nothing changed"
+            return 0
+        fi
+        if [[ ! -f "$ca" ]]; then
+            log_error "CA certificate not found: ${ca} — nothing changed"
+            return 0
+        fi
+        if ! _syslog_install_tls_driver; then
+            log_error "rsyslog's GnuTLS driver (lmnsd_gtls) is not available and could not be installed — nothing changed, because a TLS config without it forwards nothing"
+            return 0
+        fi
+        # The CA is read by rsyslog at startup; keep our own copy so a cert in
+        # /tmp or a home directory cannot vanish and silently break forwarding.
+        mkdir -p "$ca_dir" 2>/dev/null || true
+        if [[ "$ca" != "$ca_dir/syslog-ca.pem" ]]; then
+            if cp -- "$ca" "$ca_dir/syslog-ca.pem" 2>/dev/null; then
+                chmod 644 "$ca_dir/syslog-ca.pem" 2>/dev/null || true
+                ca="$ca_dir/syslog-ca.pem"
+            else
+                log_warning "Could not copy the CA to ${ca_dir} — using ${ca} in place"
+            fi
+        fi
+    fi
+
     create_backup_dir
-    backup_file /etc/rsyslog.conf
-    # Idempotent: replace any forwarding line this module added before rather
-    # than appending a second one on every run.
-    sed -i '/# ultimate-hardening: remote syslog/,+1d' /etc/rsyslog.conf 2>/dev/null || true
+    backup_file "$rsconf"
+
+    # Idempotent, and tolerant of what earlier versions wrote. The original
+    # single-line form had no end marker, so a multi-line block could not be
+    # replaced by the same `+1d` rule; both forms are removed here.
+    sed -i '/# ultimate-hardening: remote syslog BEGIN/,/# ultimate-hardening: remote syslog END/d' "$rsconf" 2>/dev/null || true
+    sed -i '/# ultimate-hardening: remote syslog$/,+1d' "$rsconf" 2>/dev/null || true
+
     {
-        echo "# ultimate-hardening: remote syslog"
-        echo "*.* @${server}:514"
-    } >> /etc/rsyslog.conf
+        echo "# ultimate-hardening: remote syslog BEGIN"
+        if [[ "$proto" == tls ]]; then
+            echo "global(DefaultNetstreamDriver=\"gtls\")"
+            echo "global(DefaultNetstreamDriverCAFile=\"${ca}\")"
+            # x509/name: the collector must present a certificate signed by
+            # that CA *and* matching the name we dialled. x509/certvalid would
+            # accept any host the CA ever signed.
+            echo "action(type=\"omfwd\" target=\"${server}\" port=\"${port}\" protocol=\"tcp\""
+            echo "       StreamDriver=\"gtls\" StreamDriverMode=\"1\" StreamDriverAuthMode=\"x509/name\""
+            echo "       StreamDriverPermittedPeers=\"${server}\""
+            # A disk-assisted queue is what stops a collector outage becoming
+            # lost audit evidence; UDP forwarding had nowhere to buffer.
+            echo "       queue.type=\"LinkedList\" queue.filename=\"uh_fwd\" queue.maxdiskspace=\"256m\""
+            echo "       queue.saveOnShutdown=\"on\" action.resumeRetryCount=\"-1\")"
+        elif [[ "$proto" == tcp ]]; then
+            echo "action(type=\"omfwd\" target=\"${server}\" port=\"${port}\" protocol=\"tcp\""
+            echo "       queue.type=\"LinkedList\" queue.filename=\"uh_fwd\" queue.maxdiskspace=\"256m\""
+            echo "       queue.saveOnShutdown=\"on\" action.resumeRetryCount=\"-1\")"
+        else
+            echo "*.* @${server}:${port}"
+        fi
+        echo "# ultimate-hardening: remote syslog END"
+    } >> "$rsconf"
+
+    # A bad directive makes rsyslog refuse to start, which takes local logging
+    # down with it. Validate first and roll back rather than restart blind.
+    if command -v rsyslogd >/dev/null 2>&1; then
+        if ! rsyslogd -N1 >>"$LOG_FILE" 2>&1; then
+            log_error "rsyslog rejected the new configuration — restoring the previous one, nothing forwarded"
+            restore_file "$rsconf" || log_error "Restore failed. Check $rsconf by hand."
+            return 0
+        fi
+    fi
 
     restart_service rsyslog || log_warning "Could not restart rsyslog — the change applies on next restart"
-    log_success "Remote syslog forwarding configured to ${server}:514"
+    case "$proto" in
+        tls) log_success "Remote syslog forwarding to ${server}:${port} over TLS (collector verified against $(basename "$ca"), queued to disk if it is unreachable)" ;;
+        tcp) log_success "Remote syslog forwarding to ${server}:${port} over TCP (queued to disk if it is unreachable)" ;;
+        udp) log_success "Remote syslog forwarding configured to ${server}:${port} over UDP"
+             log_warning "UDP syslog is unauthenticated, unencrypted and silently lossy — set UH_SYSLOG_PROTO=tls with UH_SYSLOG_TLS_CA for an auditable channel" ;;
+    esac
     count_fix
     return 0
 }
