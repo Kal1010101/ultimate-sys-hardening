@@ -147,7 +147,10 @@ done
 # rather than a fixture.
 COMMERCIAL="${UH_COMMERCIAL_REPO:-$REPO/../ultimate-hardening-commercial}"
 if [[ -d "$COMMERCIAL" ]]; then
-    export UH_COMMERCIAL_REPO="$(cd "$COMMERCIAL" && pwd)"
+    # Declared first: `export X="$(...)"` masks the subshell's exit status
+    # (SC2155), which the repo's own CI shellcheck step treats as an error.
+    UH_COMMERCIAL_REPO="$(cd "$COMMERCIAL" && pwd)"
+    export UH_COMMERCIAL_REPO
     leaked=0; checked=0
     while IFS= read -r cf; do
         checked=$((checked + 1))
