@@ -117,7 +117,7 @@ run_cis_checks() {
     # write and exits 141, and pipefail reports 141 for the whole pipeline —
     # so a matched partition reads as unmounted. It only stays hidden while
     # mount's output fits the pipe buffer. Capture once, match against the
-    # string. (Same failure class as the virsh checks in tests/vm/uh-kvm-lab.sh.)
+    # string. (Same failure class as the virsh checks in the KVM lab harness.)
     local _mounts; _mounts=$(mount 2>/dev/null || true)
     for part in /home /tmp /var /var/log /var/tmp; do
         if grep -qE "on ${part} " <<< "$_mounts"; then
