@@ -99,8 +99,8 @@ mutate_and_check \
 import os
 p=os.environ["REPO_ROOT"]+"/lib/modules.sh"
 s=open(p).read()
-old="    if [[ \"$DRY_RUN\" == true ]]; then\n        log_dry \"Would write 25 sysctl parameters to /etc/sysctl.d/99-hardening.conf\"\n        return 0\n    fi"
-new="    if [[ \"$DRY_RUN\" == true ]]; then\n        log_dry \"Would write 25 sysctl parameters\"\n    fi"
+old="    if [[ \"$DRY_RUN\" == true ]]; then\n        log_dry \"Would write 27 sysctl parameters to /etc/sysctl.d/99-hardening.conf\"\n        return 0\n    fi"
+new="    if [[ \"$DRY_RUN\" == true ]]; then\n        log_dry \"Would write 27 sysctl parameters\"\n    fi"
 assert old in s
 open(p,"w").write(s.replace(old,new,1))
 '
@@ -127,7 +127,7 @@ mutate_and_check \
 import os
 p=os.environ["REPO_ROOT"]+"/lib/modules.sh"
 s=open(p).read()
-old="        /usr/bin/fusermount /usr/bin/fusermount3\n"
+old="    /usr/bin/fusermount /usr/bin/fusermount3\n"
 assert old in s
 open(p,"w").write(s.replace(old,"",1))
 '
