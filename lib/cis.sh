@@ -34,6 +34,7 @@ cis_check_module() {
     local label="$1"
     case "$label" in
         *"separate partition"*)   echo "" ;;   # not fixable by any module
+        *"filesystems blacklisted"*|*"protocols blacklisted"*) echo "protocols" ;;
         *"sshd_config present"*)  echo "ssh" ;;
         *"SSH"*)                  echo "ssh" ;;
         *"auditd is running"*)    echo "audit" ;;
@@ -60,6 +61,7 @@ _cis_module_hint_text() {
         audit)    echo "run module 7 (Audit daemon)" ;;
         password) echo "run module 8 (Password policy)" ;;
         apparmor) echo "run module 13 (AppArmor / SELinux)" ;;
+        protocols) echo "run module 19 (Unused kernel modules)" ;;
         *)        echo "" ;;
     esac
 }
@@ -232,6 +234,31 @@ run_cis_checks() {
         record_check "SELinux is enforcing" "true"
     else
         record_check "Mandatory access control is enforcing" "false" "Neither AppArmor nor SELinux in enforce mode"
+    fi
+
+    # -- Unloadable kernel modules (CIS 1.1.1.x filesystems, 3.2.x protocols) --
+    # Checks the effective modprobe configuration rather than our own file, so
+    # a host that blacklists these somewhere else still passes. squashfs is
+    # excluded when snapd needs it, matching what module 19 will actually do.
+    if is_linux && command -v modprobe >/dev/null 2>&1; then
+        local _m _missing _set
+        # The sets live in lib/modules.sh, which every tier sources first. Guarded
+        # anyway so sourcing cis.sh on its own cannot trip `set -u`.
+        for _set in "protocols:${UH_BLACKLIST_PROTOCOLS[*]:-}" "filesystems:${UH_BLACKLIST_FILESYSTEMS[*]:-}"; do
+            [[ -n "${_set#*:}" ]] || continue
+            _missing=""
+            for _m in ${_set#*:}; do
+                [[ "$_m" == "squashfs" ]] && declare -F _squashfs_required >/dev/null && _squashfs_required && continue
+                modprobe --showconfig 2>/dev/null \
+                    | grep -qE "^(blacklist|install)[[:space:]]+${_m}([[:space:]]|$)" \
+                    || _missing+="${_m} "
+            done
+            if [[ -z "$_missing" ]]; then
+                record_check "Uncommon ${_set%%:*} blacklisted" "true"
+            else
+                record_check "Uncommon ${_set%%:*} blacklisted" "false" "Loadable: ${_missing% }"
+            fi
+        done
     fi
 
     print_cis_score
@@ -503,6 +530,7 @@ full_system_revert() {
     rm -f /etc/audit/rules.d/99-hardening.rules 2>/dev/null || true
     rm -f /etc/modprobe.d/99-hardening-usb.conf 2>/dev/null || true
     rm -f /etc/modprobe.d/disable-unused-protocols.conf 2>/dev/null || true
+    rm -f /etc/modprobe.d/disable-unused-filesystems.conf 2>/dev/null || true
     rm -f /etc/profile.d/hardening-umask.sh 2>/dev/null || true
 
     # Compilers chmod'd by module 20 — restore their recorded original modes.

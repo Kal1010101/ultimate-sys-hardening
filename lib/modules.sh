@@ -1074,29 +1074,114 @@ apply_modsecurity() {
 }
 
 # --- 19. Disable unused protocols --------------------------------------------
+# The CIS benchmarks ask for two kinds of kernel module to be unloadable: the
+# uncommon network protocols (1.2.x) and the uncommon filesystems (1.1.1.x).
+# Both are the same mechanism — a modprobe.d entry — so they are one module
+# here rather than two, which is also what keeps the free tier at 22.
+#
+# `install X /bin/false` stops an on-demand autoload; `blacklist X` stops a
+# load by name. CIS asks for both, and either alone leaves a way in.
+UH_BLACKLIST_PROTOCOLS=(dccp sctp rds tipc)
+# Deliberately NOT here: overlay (containers), vfat (EFI system partition),
+# iso9660 (installer and rescue media). Blacklisting those breaks hosts.
+UH_BLACKLIST_FILESYSTEMS=(cramfs freevxfs hfs hfsplus jffs2 squashfs udf)
+
+# Is this kernel module actually in use right now? Mounted, or held by
+# something with a non-zero reference count.
+_kmod_in_use() {
+    local m="$1"
+    awk -v m="$m" '$3 == m { found = 1 } END { exit !found }' /proc/mounts 2>/dev/null && return 0
+    local refs
+    refs=$(awk -v m="$m" '$1 == m { print $3 }' /proc/modules 2>/dev/null)
+    [[ -n "$refs" && "$refs" != "0" ]]
+}
+
+# squashfs is the one entry on the CIS list that routinely breaks a working
+# system: every snap package is a squashfs image, so blacklisting it on a host
+# with snapd means no snap starts after the next boot. CIS notes the exception;
+# this detects it rather than leaving the operator to find out.
+_squashfs_required() {
+    command -v snap >/dev/null 2>&1 && return 0
+    [[ -d /snap || -d /var/lib/snapd ]] && return 0
+    awk '$3 == "squashfs" { found = 1 } END { exit !found }' /proc/mounts 2>/dev/null
+}
+
 apply_unused_protocols() {
-    log_message "${GEAR} [19/22] Disable Unused Network Protocols"
+    log_message "${GEAR} [19/22] Disable Unused Kernel Modules"
 
     if ! is_linux; then
         log_warning "modprobe blacklisting is Linux-specific — skipping on ${DISTRO_TYPE}"
         return 0
     fi
+
+    # Decide what is actually going to be blacklisted before announcing it, so
+    # a dry run reports the same set a real run would write.
+    local -a fs_wanted=() fs_skipped=()
+    local fs
+    for fs in "${UH_BLACKLIST_FILESYSTEMS[@]}"; do
+        if [[ "$fs" == "squashfs" ]] && _squashfs_required; then
+            fs_skipped+=("squashfs")
+            continue
+        fi
+        fs_wanted+=("$fs")
+    done
+
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would blacklist the DCCP, SCTP, RDS and TIPC kernel modules"
+        log_dry "Would blacklist ${#UH_BLACKLIST_PROTOCOLS[@]} unused protocols (${UH_BLACKLIST_PROTOCOLS[*]})"
+        log_dry "Would blacklist ${#fs_wanted[@]} uncommon filesystems (${fs_wanted[*]})"
+        [[ ${#fs_skipped[@]} -gt 0 ]] && \
+            log_dry "Would leave ${fs_skipped[*]} alone (snapd present — blacklisting it would break every snap)"
         return 0
     fi
 
     create_backup_dir
-    backup_file /etc/modprobe.d/disable-unused-protocols.conf
-    mkdir -p /etc/modprobe.d 2>/dev/null || true
-    cat > /etc/modprobe.d/disable-unused-protocols.conf << 'EOF'
-install dccp /bin/false
-install sctp /bin/false
-install rds  /bin/false
-install tipc /bin/false
-EOF
+    # UH_MODPROBE_DIR exists only so tests/cases/test_kmod_blacklist.sh can run
+    # against a fake root; unset it is /etc/modprobe.d, as always.
+    local md="${UH_MODPROBE_DIR:-/etc/modprobe.d}"
+    mkdir -p "$md" 2>/dev/null || true
 
-    log_success "Unused network protocols blacklisted (DCCP, SCTP, RDS, TIPC)"
+    backup_file "$md/disable-unused-protocols.conf"
+    {
+        echo "# Written by Ultimate Hardening — unused network protocols (CIS 3.2.x/1.2.x)."
+        for fs in "${UH_BLACKLIST_PROTOCOLS[@]}"; do
+            echo "install $fs /bin/false"
+            echo "blacklist $fs"
+        done
+    } > "$md/disable-unused-protocols.conf"
+
+    backup_file "$md/disable-unused-filesystems.conf"
+    {
+        echo "# Written by Ultimate Hardening — uncommon filesystems (CIS 1.1.1.x)."
+        if [[ ${#fs_skipped[@]} -gt 0 ]]; then
+            echo "# Deliberately absent: ${fs_skipped[*]} — snapd on this host needs squashfs;"
+            echo "# blacklisting it would stop every snap mounting after the next boot."
+        fi
+        for fs in "${fs_wanted[@]}"; do
+            echo "install $fs /bin/false"
+            echo "blacklist $fs"
+        done
+    } > "$md/disable-unused-filesystems.conf"
+
+    # Blacklisting stops the NEXT autoload; it does not unload what is already
+    # resident. Unload the ones nothing is using so the running kernel matches
+    # the file, and say so plainly about the ones still in use.
+    local -a still_loaded=()
+    for fs in "${UH_BLACKLIST_PROTOCOLS[@]}" "${fs_wanted[@]}"; do
+        grep -qE "^${fs}[[:space:]]" /proc/modules 2>/dev/null || continue
+        if _kmod_in_use "$fs"; then
+            still_loaded+=("$fs")
+        elif ! modprobe -r "$fs" >>"$LOG_FILE" 2>&1; then
+            still_loaded+=("$fs")
+        fi
+    done
+
+    log_success "Kernel modules blacklisted: ${#UH_BLACKLIST_PROTOCOLS[@]} protocols (${UH_BLACKLIST_PROTOCOLS[*]}), ${#fs_wanted[@]} filesystems (${fs_wanted[*]})"
+    if [[ ${#fs_skipped[@]} -gt 0 ]]; then
+        log_warning "Left alone: ${fs_skipped[*]} — snapd uses squashfs, and blacklisting it would stop every snap from mounting after the next boot"
+    fi
+    if [[ ${#still_loaded[@]} -gt 0 ]]; then
+        log_warning "Already loaded and still in use: ${still_loaded[*]} — blacklisted for the next boot, but they stay loaded until whatever uses them is stopped"
+    fi
     count_fix
     return 0
 }

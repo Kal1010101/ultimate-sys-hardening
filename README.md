@@ -71,7 +71,7 @@ from the same compliance checks `--cis-only` runs:
 | 16 | GRUB password | **High** | PBKDF2 bootloader password; interactive only |
 | 17 | Docker security | Medium | userns-remap, inter-container comms off, log rotation |
 | 18 | ModSecurity | Medium | WAF + core rule set, only if Apache/httpd is present |
-| 19 | Unused protocols | Safe | Blacklists DCCP, SCTP, RDS, TIPC |
+| 19 | Unused kernel modules | Safe | Blacklists DCCP, SCTP, RDS, TIPC and the CIS uncommon filesystems (cramfs, freevxfs, hfs, hfsplus, jffs2, squashfs, udf). squashfs is left alone where snapd needs it. |
 | 20 | Compiler access | Medium | Restricts gcc/clang to root, records original modes |
 | 21 | Remote syslog | Safe | Forwards to a collector on :514 |
 | 22 | UMASK hardening | Safe | Default umask 027 |
