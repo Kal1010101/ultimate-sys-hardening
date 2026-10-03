@@ -286,33 +286,67 @@ _fw_firewalld() {
 # on their own — they are written out and the service enabled, or the hardening
 # silently lapses at the next boot.
 _fw_nftables() {
-    nft flush ruleset 2>/dev/null || true
-    nft add table ip filter 2>/dev/null || true
-    nft add chain ip filter INPUT  '{ type filter hook input  priority 0; policy drop; }'   2>/dev/null || true
-    nft add chain ip filter OUTPUT '{ type filter hook output priority 0; policy accept; }' 2>/dev/null || true
-    nft add rule  ip filter INPUT ct state established,related accept 2>/dev/null || true
-    nft add rule  ip filter INPUT iif lo accept                       2>/dev/null || true
-    nft add rule  ip filter INPUT tcp dport '{ 22, 80, 443 }' accept  2>/dev/null || true
-
-    if command -v rc-update >/dev/null 2>&1; then
-        nft list ruleset > /etc/nftables.nft 2>/dev/null || true
-    else
-        nft list ruleset > /etc/nftables.conf 2>/dev/null || true
+    # This module owns ONE table, `inet uh_filter`, and touches nothing else.
+    #
+    # The previous version ran `nft flush ruleset`, which destroyed every table
+    # that belonged to someone else — Docker's NAT, fail2ban's f2b-table, a
+    # hand-written ruleset — and then built its own in the `ip` family only.
+    # Two consequences, both measured with real packets: the host's IPv6 was
+    # never filtered at all (default-drop on v4, wide open on v6), and anything
+    # sharing the netns lost its rules the moment this ran.
+    #
+    # `inet` covers v4 and v6 in one table. IPv6 cannot work without ICMPv6
+    # neighbour discovery, so those types are accepted explicitly; IPv4 keeps
+    # its old behaviour (no ICMP beyond what conntrack already relates).
+    nft delete table inet uh_filter 2>/dev/null || true
+    # The table earlier releases created. A packet must be accepted by EVERY
+    # base chain at a hook, so leaving its drop policy in place would keep
+    # dropping whatever this table accepts. Removed only when it is recognisably
+    # ours (the combined 22/80/443 accept), never a table that merely shares
+    # the name.
+    if nft list chain ip filter INPUT 2>/dev/null | grep -q 'dport { 22, 80, 443 } accept'; then
+        nft delete table ip filter 2>/dev/null || true
     fi
+
+    nft add table inet uh_filter 2>/dev/null || true
+    nft add chain inet uh_filter input '{ type filter hook input priority 0; policy drop; }' 2>/dev/null || true
+    nft add rule  inet uh_filter input ct state established,related accept 2>/dev/null || true
+    nft add rule  inet uh_filter input ct state invalid drop 2>/dev/null || true
+    nft add rule  inet uh_filter input iif lo accept 2>/dev/null || true
+    nft add rule  inet uh_filter input ip6 nexthdr icmpv6 icmpv6 type \
+        '{ destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert }' \
+        accept 2>/dev/null || true
+    nft add rule  inet uh_filter input tcp dport '{ 22, 80, 443 }' accept 2>/dev/null || true
+
+    # Persist OUR table only. `nft list ruleset` would freeze whatever else is
+    # loaded right now (Docker's rules, fail2ban's bans) into a boot file.
+    # `table X` then `delete table X` is the idiom that makes reloading the file
+    # idempotent whether or not the table already exists.
+    local conf="${UH_NFT_CONF:-}"   # test hook: lets the suite write somewhere harmless
+    if [[ -z "$conf" ]]; then
+        conf=/etc/nftables.conf
+        command -v rc-update >/dev/null 2>&1 && conf=/etc/nftables.nft
+    fi
+    [[ -f "$conf" ]] && backup_file "$conf"
+    {
+        echo '#!/usr/sbin/nft -f'
+        echo
+        echo 'table inet uh_filter'
+        echo 'delete table inet uh_filter'
+        nft list table inet uh_filter 2>/dev/null
+    } > "$conf" 2>/dev/null || true
     enable_service nftables >/dev/null 2>&1 || true
 
-    # Unlike firewalld/fail2ban, the rules above are already live in the
-    # kernel via `nft add` — that part does not depend on the nftables
-    # service at all. What the service actually gates is persistence: without
-    # it running/enabled, this ruleset does not survive a reboot, silently
-    # undoing this module the next time the host restarts. enable_service
-    # logs "enabled" unconditionally, so check the real state before claiming
-    # "(persisted)" rather than just "applied".
+    # The rules above are live in the kernel already — that part does not
+    # depend on the nftables service. What the service gates is persistence:
+    # without it the ruleset does not survive a reboot, silently undoing this
+    # module the next time the host restarts. enable_service logs "enabled"
+    # unconditionally, so check the real state before claiming "(persisted)".
     count_fix
     if is_service_active nftables; then
-        log_success "nftables: default-drop inbound, SSH/80/443 accepted (persisted)"
+        log_success "nftables: default-drop inbound (IPv4 and IPv6), SSH/80/443 accepted (persisted)"
     else
-        log_success "nftables: default-drop inbound, SSH/80/443 accepted (active now)"
+        log_success "nftables: default-drop inbound (IPv4 and IPv6), SSH/80/443 accepted (active now)"
         log_warning "nftables service is not running — this ruleset will NOT survive a reboot; check: systemctl status nftables"
     fi
 }
