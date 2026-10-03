@@ -74,7 +74,11 @@ detect_platform() {
 is_linux() { [[ "${OS_FAMILY:-linux}" == "linux" ]]; }
 
 show_distro_menu() {
-    if [[ "${AUTO_MODE:-false}" == true ]]; then
+    # UH_AUTODETECT_PLATFORM is set by the paid tiers for flags that run to
+    # completion without a menu (--policy, --openscap, --report, --auto-fix…).
+    # It is deliberately NOT AUTO_MODE: that one also auto-answers every
+    # confirm() prompt, which an unattended flag has no business doing.
+    if [[ "${AUTO_MODE:-false}" == true || "${UH_AUTODETECT_PLATFORM:-false}" == true ]]; then
         DISTRO_TYPE=$(detect_platform)
         log_success "Auto-detected platform: $DISTRO_TYPE"
         return
