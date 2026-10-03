@@ -1,0 +1,183 @@
+#!/bin/bash
+# =============================================================================
+#  pre-commit — refuse to publish commercial source from the public repo
+#
+#  This repository's remote is the PUBLIC github.com/Kal1010101/ultimate-sys-
+#  hardening and its LICENSE is MIT: anything committed here is published under
+#  an MIT grant, irreversibly. The Pro and Enterprise tiers are commercial.
+#
+#  .gitignore already lists the obvious paths, but it did not close the hole
+#  that actually fired: the commercial checkout symlinks its lib/ and tests/
+#  into THIS repo, a commercial test file was written through that symlink into
+#  tests/ — which is tracked, not ignored — and it reached the public repo
+#  before being removed. .gitignore is also bypassed by `git add -f`.
+#
+#  So this checks CONTENT as well as paths. Path rules can only anticipate the
+#  directories that exist today; the next src/shared/ will not be in the list.
+#
+#  Install:  ./scripts/hooks/install.sh
+#  Override: git commit --no-verify   (deliberate, and it says so below)
+# =============================================================================
+set -uo pipefail
+
+RED=$'\033[0;31m'; YEL=$'\033[1;33m'; CYN=$'\033[0;36m'; NC=$'\033[0m'
+
+# Paths that are commercial by location.
+PATH_RULES='^(src/pro/|src/enterprise/|src/shared/|LICENSE-PRO\.md$|PRICING\.md$)'
+
+# Identifiers that appear in commercial source and nowhere in this repo.
+# Chosen empirically: every one was checked against all tracked files here and
+# produced zero hits. Deliberately NOT included — they read as commercial but
+# occur legitimately in this repo, and blocking them would train people to use
+# --no-verify, which is worse than no hook at all:
+#   "LICENSE-PRO"                  the free LICENSE points at it
+#   "src/pro/…", "src/enterprise/…"  tests/cases/test_module_count.sh and
+#                                    test_module_isolation.sh iterate the tiers
+#                                    by path and skip the absent ones
+# The guard's own files necessarily QUOTE the markers, so scanning them would
+# block the guard from ever being committed — checked, and it did: neither the
+# hook nor its test could be committed before this exemption existed. They are
+# exempt from the CONTENT scan only; the path rules above still apply to them.
+SELF_PATHS='^(scripts/hooks/pre-commit|tests/cases/test_publication_guard\.sh)$'
+
+CONTENT_MARKERS=(
+    'tier_config_defaults'      'tier_post_autofix'      'tier_report_prescan'
+    'tier_report_sections'      'tier_report_postrun'
+    'run_openscap_scan'         'show_dashboard'         'apply_policy'
+    'db_init'                   'db_record_run'
+    'export_nist_crosswalk'     'nist_controls_for_module'
+    'lock_ai_directories'       'send_email_notification' 'setup_schedule'
+    'collect_open_ports'        'collect_failed_logins'   'load_config_file'
+    'run_remote'
+    'UH_TIER="pro"'             'UH_TIER="enterprise"'    'UH_TIER_LABEL'
+    # Commercial TOOLING, not tier source. ci/test_no_duplicate_functions.sh
+    # names no tier function, so the identifiers above missed it entirely —
+    # and a commercial test file written through the symlinked tests/ is
+    # precisely the leak that already happened once.
+    'COMMERCIAL_ROOT'
+)
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null)
+[[ -n "$staged" ]] || exit 0
+
+# ---------------------------------------------------------------------------
+# Exact-content check against the commercial repo.
+#
+# The identifier list below is a heuristic and only ever caught bash tier
+# source. Measured against the real commercial repo, staging each of its files
+# under an innocent name: 21 of 27 got through — the Python dashboard modules,
+# the HTML/CSS/JS, the examples, ci.yml, the tier READMEs, PRICING.md. A guard
+# that catches 6 of 27 is worse than none, because it feels like protection.
+#
+# This compares git blob hashes instead, so it is exact and file-type blind.
+# It catches the realistic leak — a file written verbatim through the symlinked
+# lib/ or tests/ — regardless of what it is called or where it is staged.
+#
+# lib/ and tests/ inside the commercial repo are SYMLINKS back into this one.
+# They must be excluded, or this would hash this repo's own files and block
+# every commit. (`find` does not descend symlinked directories without -L, but
+# the exclusions are explicit so a future -L cannot quietly break it.)
+#
+# If the commercial repo is not on this machine — CI, a contributor's clone —
+# this check simply does not run, and the identifier list is all that remains.
+# That is a real gap, not a covered one.
+COMMERCIAL="${UH_COMMERCIAL_REPO:-$(cd "$(git rev-parse --show-toplevel)/.." 2>/dev/null && pwd)/ultimate-hardening-commercial}"
+COMMERCIAL_HASHES=""
+if [[ -d "$COMMERCIAL" ]]; then
+    COMMERCIAL_HASHES=$(find "$COMMERCIAL" -type f \
+        -not -path '*/.git/*' -not -path '*/_gitjunk/*' \
+        -not -path "$COMMERCIAL/lib/*" -not -path "$COMMERCIAL/tests/*" \
+        -print0 2>/dev/null | xargs -0 -r git hash-object 2>/dev/null)
+
+    # Subtract the blobs THIS repo already tracks. A blob present in both repos
+    # is free-tier content by definition, and refusing it would be refusing
+    # ordinary work.
+    #
+    # This is not hypothetical tidiness. If the commercial repo is ever changed
+    # from "paid tiers only, sharing lib/ by symlink" to "a whole self-contained
+    # copy of free + paid" — a structure worth considering, since it removes the
+    # symlink leak path entirely — then every free-tier file exists verbatim in
+    # both repos. Tested against a simulated vendored layout: without this
+    # subtraction the hook refused src/free/ultimate_hardening.sh and
+    # README.md. The hook has to survive that restructure, not block it.
+    if [[ -n "$COMMERCIAL_HASHES" ]]; then
+        own=$(git ls-tree -r HEAD 2>/dev/null | awk '{print $3}')
+        if [[ -n "$own" ]]; then
+            COMMERCIAL_HASHES=$(grep -vxF -f <(printf '%s\n' "$own") \
+                                <<< "$COMMERCIAL_HASHES" || true)
+        fi
+    fi
+fi
+
+# Binary paths, asked of git rather than guessed from the bytes. numstat prints
+# "-\t-" for a binary blob.
+#
+# The previous attempt tested `case "$content" in *$'\0'*)`, which silently
+# disabled the entire content check: bash cannot hold a NUL in a string, so
+# $'\0' expands to nothing and the pattern degenerates to `**`, matching every
+# file. The path rules still fired, so the hook looked like it worked.
+BINARY=$(git diff --cached --numstat --diff-filter=ACMR 2>/dev/null \
+         | awk -F'\t' '$1 == "-" && $2 == "-" { print $3 }')
+
+declare -a HITS=()
+
+while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+
+    if [[ "$f" =~ $PATH_RULES ]]; then
+        HITS+=("$f — commercial path")
+        continue
+    fi
+
+    if [[ "$f" =~ $SELF_PATHS ]]; then
+        continue
+    fi
+
+    # Exact match against a file that lives in the commercial repo.
+    if [[ -n "$COMMERCIAL_HASHES" ]]; then
+        blob=$(git rev-parse ":$f" 2>/dev/null)
+        if [[ -n "$blob" ]] && grep -qxF -- "$blob" <<< "$COMMERCIAL_HASHES"; then
+            HITS+=("$f — byte-identical to a file in the commercial repo")
+            continue
+        fi
+    fi
+
+    if [[ -n "$BINARY" ]] && grep -qxF -- "$f" <<< "$BINARY"; then
+        continue
+    fi
+
+    # The STAGED blob, not the working copy: what is about to be committed is
+    # the index's version, and the two can differ.
+    content=$(git show ":$f" 2>/dev/null) || continue
+
+    for m in "${CONTENT_MARKERS[@]}"; do
+        if grep -qF -- "$m" <<< "$content"; then
+            HITS+=("$f — contains '$m'")
+            break
+        fi
+    done
+done <<< "$staged"
+
+if (( ${#HITS[@]} == 0 )); then
+    exit 0
+fi
+
+{
+    echo ""
+    echo "${RED}Commit refused: this looks like commercial source, and this repo is public.${NC}"
+    echo ""
+    for h in "${HITS[@]}"; do echo "    ${YEL}$h${NC}"; done
+    echo ""
+    echo "  This repository publishes under MIT. Pro and Enterprise belong in the"
+    echo "  private commercial repository."
+    echo ""
+    echo "  If a commercial file reached this working tree through the symlinked"
+    echo "  lib/ or tests/, move it into the commercial repo's own src/ instead —"
+    echo "  those two directories ARE this repo, so writing there publishes."
+    echo ""
+    echo "  ${CYN}Genuinely a false positive?${NC} Commit with --no-verify, then open"
+    echo "  scripts/hooks/pre-commit and remove the marker that misfired, so the"
+    echo "  next person is not trained to bypass the hook."
+    echo ""
+} >&2
+exit 1
