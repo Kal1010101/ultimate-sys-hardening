@@ -1,4 +1,4 @@
-The script offers 24 hardening actions, each selectable from the menu, including:
+The script offers 22 hardening actions, each selectable from the menu, including:
 
 Updates system packages
 
