@@ -70,7 +70,7 @@ It helps others find it and motivates continued development.
 ` ` `bash
 $ head -20 features.txt
 
-The script performs all 28 hardening actions:
+The script offers 22 hardening actions, each selectable from the menu, including:
 
 Updates system packages
 
@@ -146,6 +146,6 @@ sudo ./src/free/ultimate_hardening.sh --revert
 # Revert only SUID/SGID permissions
 sudo ./src/free/ultimate_hardening.sh --revert-suid
 
-# Interactive revert is also available via menu option #28
+# Interactive revert is also available from the menu
 sudo ./src/free/ultimate_hardening.sh
-# Then select option 28 from the menu
+# Then press R (full revert) or S (SUID/SGID only)
