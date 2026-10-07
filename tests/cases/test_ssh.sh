@@ -13,9 +13,15 @@ assert_file_contains /etc/ssh/sshd_config '^PasswordAuthentication[[:space:]]+no
 assert_file_contains /etc/ssh/sshd_config '^X11Forwarding[[:space:]]+no'          "X11 forwarding disabled"
 assert_file_contains /etc/ssh/sshd_config '^MaxAuthTries[[:space:]]+3'            "MaxAuthTries set to 3"
 
-# The config must be valid — a broken one locks operators out.
+# The config must be valid — a broken one locks operators out. Checked
+# independently of the lib helper; a throwaway key stands in on images
+# (RHEL, Alpine) that only create host keys when sshd first starts.
 if command -v sshd >/dev/null 2>&1; then
-    if sshd -t 2>/dev/null; then
+    hk=()
+    if ! compgen -G '/etc/ssh/ssh_host_*_key' >/dev/null; then
+        kd=$(mktemp -d); ssh-keygen -q -t ed25519 -N '' -f "$kd/k" && hk=(-h "$kd/k")
+    fi
+    if sshd -t "${hk[@]}" 2>/dev/null; then
         pass_msg "sshd -t accepts the hardened config"
     else
         fail "sshd -t REJECTS the hardened config — this would lock users out"
