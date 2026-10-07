@@ -75,7 +75,7 @@ if command -v apt-get >/dev/null 2>&1; then
     apt-get update -qq >/dev/null 2>&1
     apt-get install -y --no-install-recommends bash procps iproute2 openssh-server >/dev/null 2>&1
 elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y --setopt=install_weak_deps=False bash procps-ng iproute openssh-server >/dev/null 2>&1
+    dnf install -y --setopt=install_weak_deps=False bash procps-ng iproute openssh-server findutils >/dev/null 2>&1
 elif command -v apk >/dev/null 2>&1; then
     apk add --no-cache bash procps iproute2 openssh >/dev/null 2>&1
 elif command -v pacman >/dev/null 2>&1; then

@@ -59,6 +59,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/repo:ro" -e UH_TEST=1 "${{ matrix.distro }}" sh -c '
             command -v bash >/dev/null || apk add --no-cache -q bash
+            command -v find >/dev/null || dnf install -y -q findutils
             printf "Q\n" | timeout 300 bash /repo/src/free/ultimate_hardening.sh --dry-run --auto-mode'
 
       - name: Integration suite (fresh container per case)

@@ -202,6 +202,7 @@ show_menu() {
 
 main() {
     check_root
+    check_base_tools
 
     if [[ "$REVERT_MODE" == true ]];      then full_system_revert;  exit 0; fi
     if [[ "$REVERT_SUID_ONLY" == true ]]; then undo_suid_hardening; exit 0; fi
