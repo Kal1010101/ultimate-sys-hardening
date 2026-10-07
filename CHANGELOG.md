@@ -23,6 +23,9 @@ and the project follows [Semantic Versioning](https://semver.org).
 - The update check now refuses a `UH_UPDATE_REPO` that is not `owner/repo`
   before building the API URL. Its test had passed only where curl was
   missing.
+- A host without `find` (e.g. the rockylinux:8 image) listed no restore
+  points instead of erroring. The tool now refuses to start when `find`,
+  `awk`, `sed`, `grep` or `sort` is missing, and names it.
 - Multi-distro CI never got past package install on 8 of 11 images and ran
   every case in one shared container. It now runs `tests/run.sh` per
   distro, one fresh container per case. EOL Debian 11 dropped.
