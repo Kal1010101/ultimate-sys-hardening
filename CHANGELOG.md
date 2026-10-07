@@ -17,6 +17,15 @@ and the project follows [Semantic Versioning](https://semver.org).
   pruned.
 
 ### Fixed
+- SSH hardening was rolled back on RHEL-family and Alpine hosts where sshd
+  had never started: `sshd -t` failed for want of host keys, not the
+  config. Validation now uses a throwaway key there; no real keys are made.
+- The update check now refuses a `UH_UPDATE_REPO` that is not `owner/repo`
+  before building the API URL. Its test had passed only where curl was
+  missing.
+- Multi-distro CI never got past package install on 8 of 11 images and ran
+  every case in one shared container. It now runs `tests/run.sh` per
+  distro, one fresh container per case. EOL Debian 11 dropped.
 - `backup_file()` never created a per-run copy on a file's first-ever
   backup, only the permanent genesis copy — de-duplication was checking
   the wrong order.
