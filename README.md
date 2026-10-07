@@ -257,4 +257,4 @@ Security issues go through [SECURITY.md](SECURITY.md), not the public tracker.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Commercial use of the free tier is unrestricted.
+MIT — see [LICENSE](LICENSE).
