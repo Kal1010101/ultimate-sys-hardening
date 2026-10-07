@@ -193,5 +193,19 @@ else
     fail "UH_TRUST_LIB=1 did not silence the warning"
 fi
 
+# --- a missing base tool stops the run instead of reading as "nothing found" -
+# PATH is set after sourcing core.sh, which would otherwise prepend /usr/bin.
+bin="$TMP/bin"; mkdir -p "$bin"
+for c in awk sed grep sort; do ln -s "$(command -v "$c")" "$bin/$c"; done
+out=$(bash -c "source '$REPO/lib/core.sh'; PATH='$bin'; check_base_tools; echo REACHED" 2>&1) || true
+if grep -q 'Missing required command(s): find' <<< "$out" && ! grep -q REACHED <<< "$out"; then
+    pass_msg "a missing find stops the run and is named"
+else
+    fail "check_base_tools did not stop on a missing find: $out"
+fi
+out=$(bash -c "source '$REPO/lib/core.sh'; check_base_tools; echo REACHED" 2>&1) || true
+grep -q REACHED <<< "$out" && pass_msg "all base tools present: the check passes" \
+    || fail "check_base_tools refused a complete system: $out"
+
 rm -rf "$TMP"
 finish

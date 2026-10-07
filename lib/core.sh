@@ -191,6 +191,20 @@ check_root() {
     fi
 }
 
+# Modules and revert call these with 2>/dev/null, so a missing one reads as
+# "nothing found" (e.g. no restore points) rather than an error. Refuse to
+# start instead. Seen on the rockylinux:8 image, which ships without find.
+check_base_tools() {
+    local c missing=()
+    for c in find awk sed grep sort; do
+        command -v "$c" >/dev/null 2>&1 || missing+=("$c")
+    done
+    (( ${#missing[@]} == 0 )) && return 0
+    echo -e "${RED}${CROSS_MARK} Missing required command(s): ${missing[*]}${NC}" >&2
+    echo -e "${CYAN}Install them (find is in the findutils package) and re-run.${NC}" >&2
+    exit 1
+}
+
 # ------------------------------------------------------------------- backup --
 create_backup_dir() {
     [[ "$BACKUP_CREATED" == true ]] && return 0
