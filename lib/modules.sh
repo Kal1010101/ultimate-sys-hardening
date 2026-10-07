@@ -126,7 +126,7 @@ EOF
     mkdir -p /run/sshd 2>/dev/null || true
 
     # Validate before restarting — a bad config must never lock the operator out.
-    if sshd -t 2>/dev/null; then
+    if sshd_config_valid; then
         restart_sshd
         log_success "SSH hardened (13 settings) and daemon restarted"
     else

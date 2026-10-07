@@ -307,6 +307,24 @@ restart_sshd() {
     return 0
 }
 
+# `sshd -t` also exits non-zero when no host key exists yet, which is normal
+# where sshd has never started: RHEL and Alpine create keys on first service
+# start, and image builds (examples/packer) must not bake keys in. Validate
+# against a throwaway key in that case rather than generating real ones.
+sshd_config_valid() {
+    if compgen -G '/etc/ssh/ssh_host_*_key' >/dev/null; then
+        sshd -t 2>/dev/null
+        return
+    fi
+    local keydir rc
+    keydir=$(mktemp -d) || return 1
+    ssh-keygen -q -t ed25519 -N '' -f "$keydir/k" >/dev/null 2>&1 \
+        && sshd -t -h "$keydir/k" 2>/dev/null
+    rc=$?
+    rm -rf "$keydir"
+    return "$rc"
+}
+
 # ------------------------------------------------- dependency resolution ------
 #  Preflight: resolve every module's packages BEFORE the first module writes
 #  anything, so an unobtainable dependency is reported up front instead of
