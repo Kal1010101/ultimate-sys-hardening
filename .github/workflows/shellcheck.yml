@@ -30,29 +30,8 @@ jobs:
       - name: ShellCheck — helper scripts
         run: shellcheck --severity=warning -x -e SC2034 -e SC1091 -e SC2154 scripts/*.sh tests/*.sh tests/lib/*.sh tests/cases/*.sh
 
-  # The old "Tier test suite" job here called tests/test_free.sh,
-  # tests/test_pro.sh, tests/test_enterprise.sh — unit-style checks against a
-  # module set (apply_grub_password, run_deep_scan, ...) that predates the
-  # lib/ refactor and no longer exists. Those files were removed as stale;
-  # the real integration suite lives in tests/cases/ and runs below via
-  # tests/run.sh in Docker (ubuntu-latest ships Docker preinstalled).
-  integration-tests:
-    name: Integration tests (tests/run.sh)
-    runs-on: ubuntu-latest
-    # A single distro's 11 cases each apply real hardening (package installs
-    # included), so this comfortably clears an hour on a cold apt cache —
-    # 30 min is a sane backstop against a genuine hang, not the expected time.
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run integration suite in Docker (debian:12)
-        run: ./tests/run.sh --distro debian:12
-        # tests/run.sh exits with the failed-case count, so a non-zero exit
-        # here fails the job naturally — no extra assertion needed.
-        # The full 5-distro matrix (--all-distros) is deliberately not run on
-        # every push/PR — 5x the Docker pulls and package installs would make
-        # this job the slowest thing in CI for marginal per-PR signal. Run it
-        # by hand (`./tests/run.sh --all-distros`) before a release, or wire
-        # it to a schedule/workflow_dispatch trigger if broader per-PR
-        # coverage becomes worth the wait.
+      # Not distro-dependent, and the matrix's minimal containers have no git,
+      # so it would only ever skip there. The integration suite per distro is
+      # in test-matrix.yml.
+      - name: Publication guard
+        run: REPO_ROOT="$PWD" bash tests/cases/test_publication_guard.sh
