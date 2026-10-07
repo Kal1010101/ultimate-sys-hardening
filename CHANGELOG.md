@@ -26,6 +26,9 @@ and the project follows [Semantic Versioning](https://semver.org).
 - A host without `find` (e.g. the rockylinux:8 image) listed no restore
   points instead of erroring. The tool now refuses to start when `find`,
   `awk`, `sed`, `grep` or `sort` is missing, and names it.
+- The PAM guard test checked nothing on images without `find`, and now
+  excuses a changed PAM file only when the package manager confirms it is
+  byte-identical to its package (a vendor upgrade), never a tool edit.
 - Multi-distro CI never got past package install on 8 of 11 images and ran
   every case in one shared container. It now runs `tests/run.sh` per
   distro, one fresh container per case. EOL Debian 11 dropped.
