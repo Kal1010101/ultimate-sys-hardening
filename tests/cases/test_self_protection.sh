@@ -147,11 +147,27 @@ for bad in 'evil.com/x/../..' 'a/b/c' '/etc/passwd' 'user@host/repo' ''; do
         source '$REPO/lib/core.sh'; source '$REPO/lib/update.sh'
         UH_UPDATE_REPO='$bad'
         check_for_updates" 2>&1) || true
-    if ! grep -qE 'not a valid owner/repo|curl not found' <<< "$out"; then
+    if ! grep -q 'not a valid owner/repo' <<< "$out"; then
         fail "update check accepted a malformed repo: $(printf '%q' "$bad")"
     fi
 done
 pass_msg "the update check refuses anything that is not owner/repo"
+
+# Validation must not refuse real repos. curl is a function stub: core.sh
+# prepends system dirs to PATH, so a PATH stub would be shadowed.
+for good in 'Kal1010101/ultimate-sys-hardening' 'a-b/c.d_e'; do
+    out=$(bash -c "set -uo pipefail
+        source '$REPO/lib/core.sh'; source '$REPO/lib/update.sh'
+        curl() { echo '{\"tag_name\": \"v0.0.1\"}'; }
+        UH_UPDATE_REPO='$good'
+        check_for_updates" 2>&1) || true
+    if grep -q 'not a valid owner/repo' <<< "$out"; then
+        fail "update check refused a legitimate repo: $good"
+    elif ! grep -q 'ahead of the latest tagged release' <<< "$out"; then
+        fail "update check did not reach the version compare for $good: $out"
+    fi
+done
+pass_msg "legitimate owner/repo values still reach the API call"
 
 # --- the library-trust check must actually fire ------------------------------
 # Simulated rather than requiring root: check_lib_trust returns early unless

@@ -29,6 +29,13 @@ _uh_version_cmp() {
     [[ "$a" == "$b" ]] && echo "same" || echo "older"
 }
 
+# GitHub owner (alnum + hyphen, max 39) / repo (alnum . _ -). The value is
+# interpolated into the API URL, so anything else could steer the request.
+_uh_valid_repo() {
+    [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$ ]] || return 1
+    [[ "${1#*/}" != "." && "${1#*/}" != ".." ]]
+}
+
 # Explicitly-invoked only (menu option U, or --check-update) — never
 # called automatically at startup. "No telemetry, no network calls" is a
 # documented trust claim on the project site; the only outbound request
@@ -36,6 +43,10 @@ _uh_version_cmp() {
 #
 # Prints a human-readable result and returns 0 always.
 check_for_updates() {
+    if ! _uh_valid_repo "$UH_UPDATE_REPO"; then
+        log_warning "UH_UPDATE_REPO $(printf '%q' "$UH_UPDATE_REPO") is not a valid owner/repo — skipping update check"
+        return 0
+    fi
     if ! command -v curl >/dev/null 2>&1; then
         log_info "curl not found — skipping update check"
         return 0
