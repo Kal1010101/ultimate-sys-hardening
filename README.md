@@ -155,10 +155,10 @@ that hardens an AMI and fails the build if the score regresses.
 
 ## Tiers
 
-The free tier is MIT licensed, with no expiry and nothing held back for a
-paywall — it's also an early-stage project, and the module set will keep
-growing. Paid tiers add reporting and fleet management on top of the same
-engine.
+The free tier is MIT licensed with no expiry: all 22 hardening modules, the
+CIS checks, dry-run and full revert. It's also an early-stage project, and the
+module set will keep growing. Paid tiers run the same 22 modules and add
+reporting, fleet management and a few extra hardening modules on top.
 
 What the free tier looks like:
 
@@ -188,7 +188,8 @@ What the free tier looks like:
 | | Free | Pro | Enterprise |
 |---|---|---|---|
 | **Price** | $0 | $9/mo · $79/yr | $49/mo (≤10 hosts) |
-| Hardening modules | ✅ | ✅ | ✅ |
+| Hardening modules (22) | ✅ | ✅ | ✅ |
+| Extra hardening modules | — | ✅ | ✅ |
 | CIS checks | ✅ | ✅ | ✅ |
 | Dry-run + revert | ✅ | ✅ | ✅ |
 | HTML compliance reports | — | ✅ | ✅ |

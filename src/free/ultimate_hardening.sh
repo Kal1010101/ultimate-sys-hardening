@@ -5,10 +5,10 @@
 #  CIS-aligned Linux hardening with backup, dry-run, and full revert.
 #
 #  This is the open tier: MIT licensed, with no expiry and no feature clock —
-#  nothing here is held back for a paywall. It's also an early-stage project:
-#  the module set will keep growing, and the Pro/Enterprise tiers build
-#  reporting and fleet tooling on top of this same engine. Issues and PRs
-#  welcome.
+#  all 22 modules, the CIS checks, dry-run and full revert. It's also an
+#  early-stage project: the module set will keep growing, and the
+#  Pro/Enterprise tiers build reporting, fleet tooling and extra modules on
+#  top of this same engine. Issues and PRs welcome.
 #
 #  Usage: sudo ./ultimate_hardening.sh [OPTIONS]
 #

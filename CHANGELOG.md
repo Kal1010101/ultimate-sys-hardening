@@ -55,6 +55,13 @@ and the project follows [Semantic Versioning](https://semver.org).
 - Several `enable_service` callers (firewalld, nftables, audit, apparmor)
   could log success for a service that never started.
 
+### Documentation
+- README, site and script header describe exactly what the free tier
+  includes.
+- Removed `docs/free-tier.md`, an unlinked page with outdated counts,
+  support claims and statistics.
+- Bug report template lists the distributions CI tests.
+
 ### Testing
 - Fixed two bugs in the lab's own attacker-simulation script (SSH key
   handling, console-unban privilege detection) that produced false
