@@ -23,16 +23,18 @@ body:
       label: Operating System
       description: What OS were you running the script on?
       options:
-        - Ubuntu 20.04
         - Ubuntu 22.04
         - Ubuntu 24.04
-        - Debian 11
         - Debian 12
         - Rocky Linux 8
         - Rocky Linux 9
+        - AlmaLinux 8
+        - AlmaLinux 9
         - RHEL 8
         - RHEL 9
+        - Fedora
         - Arch Linux
+        - Alpine Linux
         - Other (please specify)
     validations:
       required: true

@@ -159,10 +159,10 @@ fi
 # --- the feature lists must agree too, whatever words they use ---------------
 # Every check above recognises "<n> modules". The plain-text feature lists say
 # "<n> hardening actions" instead, and that phrasing was never checked:
-# features.txt, docs/features.md and docs/free-tier.md all said 28 while the
+# features.txt and docs/features.md (and a since-removed docs page) all said 28 while the
 # tool had 22 — and the public repo's copy said 28 for code that had 24. One
 # pattern for every phrasing, every doc that states a count.
-for doc in README.md features.txt docs/features.md docs/free-tier.md \
+for doc in README.md features.txt docs/features.md \
            docs/index.html docs/installation.md SECURITY.md CONTRIBUTING.md; do
     [[ -f "$REPO/$doc" ]] || continue
     nums=$(grep -oE '\b[0-9]{1,3} (hardening|security) (actions|modules|features)\b' "$REPO/$doc" \
@@ -178,7 +178,7 @@ for doc in README.md features.txt docs/features.md docs/free-tier.md \
 done
 
 # --- and must not send a reader to a menu option that does not exist ---------
-# docs/free-tier.md told readers to revert via "menu option #28" — the old
+# A since-removed docs page told readers to revert via "menu option #28" — the old
 # monolith's numbering. The refactored menu stops well short of 28, so that
 # instruction pressed a key that does nothing. The upper bound is read from the
 # free tier's own dispatch, so adding a menu entry never needs this test edited.
@@ -186,7 +186,7 @@ free="$REPO/src/free/ultimate_hardening.sh"
 if [[ -f "$free" ]]; then
     maxopt=$(grep -oE '^[[:space:]]+[0-9]{1,2}\)' "$free" | tr -dc '0-9\n' | sort -n | tail -1)
     stale=""
-    for doc in README.md features.txt docs/features.md docs/free-tier.md \
+    for doc in README.md features.txt docs/features.md \
                docs/index.html docs/installation.md docs/mfa.md SECURITY.md CONTRIBUTING.md; do
         [[ -f "$REPO/$doc" ]] || continue
         for n in $(grep -oiE '\boption #?[0-9]{1,2}\b' "$REPO/$doc" | grep -oE '[0-9]+$'); do
