@@ -60,6 +60,22 @@ CONTENT_MARKERS=(
 staged=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null)
 [[ -n "$staged" ]] || exit 0
 
+# Env files with credentials never enter the repository (scripts/hooks/env-guard.sh;
+# pre-push enforces the same on push).
+# shellcheck source=scripts/hooks/env-guard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/env-guard.sh" 2>/dev/null \
+    || { echo "pre-commit: scripts/hooks/env-guard.sh is missing — refusing to continue" >&2; exit 1; }
+env_refused=""
+while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    reason=$(env_guard_check "$f" "$(git show ":$f" 2>/dev/null)") || env_refused+="    $reason"$'\n'
+done <<< "$staged"
+if [[ -n "$env_refused" ]]; then
+    echo "${RED}pre-commit: refusing env files:${NC}" >&2
+    printf '%s' "$env_refused" >&2
+    exit 1
+fi
+
 # ---------------------------------------------------------------------------
 # Exact-content check against the commercial repo.
 #

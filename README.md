@@ -140,6 +140,11 @@ sudo ./src/free/ultimate_hardening.sh [OPTIONS]
   --help           Show this help
 ```
 
+Settings such as the USB storage blacklist, backup location and retention, and
+the remote syslog destination are environment variables. They are listed with
+their defaults in [`examples/.env.example`](examples/.env.example); pass one
+directly with `sudo UH_USB_STORAGE_BLACKLIST=false ./src/free/ultimate_hardening.sh`.
+
 ## CI and image builds
 
 `--cis-only` exits after printing a machine-readable score, which makes it usable
