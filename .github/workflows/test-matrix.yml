@@ -14,7 +14,7 @@ on:
 jobs:
   test:
     name: Test on ${{ matrix.distro }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # debian:12 takes ~9 min here; dnf distros are slower. The cap stops a
     # hang from burning GitHub's 6h default.
     timeout-minutes: 90
@@ -42,7 +42,7 @@ jobs:
     # fresh container, exactly as it does locally.
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Syntax check
         run: |
