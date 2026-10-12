@@ -63,6 +63,8 @@ and the project follows [Semantic Versioning](https://semver.org).
 - Removed `docs/free-tier.md`, an unlinked page with outdated counts,
   support claims and statistics.
 - Bug report template lists the distributions CI tests.
+- README screenshots are rendered from the same generated output as the
+  site's terminal windows (`docs/build-readme-shots.sh`).
 
 ### Testing
 - Fixed two bugs in the lab's own attacker-simulation script (SSH key
