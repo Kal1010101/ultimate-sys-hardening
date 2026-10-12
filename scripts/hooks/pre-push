@@ -1,0 +1,40 @@
+#!/bin/bash
+# =============================================================================
+#  pre-push — env files with credentials never leave this machine
+#
+#  Applies scripts/hooks/env-guard.sh to every file each pushed commit adds or
+#  changes, and to every env-named file in the tip being pushed. Catches what
+#  pre-commit cannot: `git add -f`, `commit --no-verify`, and files committed
+#  before the rule existed.
+# =============================================================================
+set -uo pipefail
+# shellcheck source=scripts/hooks/env-guard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/env-guard.sh" 2>/dev/null \
+    || { echo "pre-push: scripts/hooks/env-guard.sh is missing — refusing to continue" >&2; exit 1; }
+ZERO=0000000000000000000000000000000000000000
+refused=""
+check_at() {  # $1 = commit, $2 = path
+    local r
+    r=$(env_guard_check "$2" "$(git show "$1:$2" 2>/dev/null)") || refused+="$(git rev-parse --short "$1")  $r"$'\n'
+}
+while read -r _lref lsha _rref rsha; do
+    [[ "$lsha" == "$ZERO" ]] && continue
+    if [[ "$rsha" == "$ZERO" ]]; then
+        range=$(git rev-list "$lsha" --not --remotes 2>/dev/null)
+    else
+        range=$(git rev-list "$rsha..$lsha" 2>/dev/null)
+    fi
+    for c in $range; do
+        while IFS= read -r f; do [[ -n "$f" ]] && check_at "$c" "$f"; done \
+            < <(git diff-tree --root --no-commit-id --name-only -r --diff-filter=ACMR "$c" | grep -E "$ENV_NAME_RE")
+    done
+    while IFS= read -r f; do [[ -n "$f" ]] && check_at "$lsha" "$f"; done \
+        < <(git ls-tree -r --name-only "$lsha" | grep -E "$ENV_NAME_RE")
+done
+refused=$(sort -u <<< "$refused" | grep -v '^\s*$')
+if [[ -n "$refused" ]]; then
+    echo "pre-push: refusing to push env files:" >&2
+    sed 's/^/    /' <<< "$refused" >&2
+    exit 1
+fi
+exit 0

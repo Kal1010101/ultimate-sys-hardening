@@ -6,6 +6,15 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+- `examples/.env.example` lists every setting with its default; the
+  README's Usage section points to it.
+
+### Security
+- Git hooks refuse real env files (`.env`, `.env.local`, `*.env`, `.envrc`)
+  in commits and pushes, and refuse a `.env.example`-style template that
+  has a value filled in for a password, token, secret or key.
+
 ## [2.4.0] — 2026-10-11
 
 A reliability and safety release: a hardening run should never leave a machine

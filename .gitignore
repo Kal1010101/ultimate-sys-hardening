@@ -1,5 +1,17 @@
 .env
-*.env.local
+.env.*
+*.env
+*.env.*
+.envrc
+# templates without credentials are allowed (hooks check their contents)
+!.env.example
+!.env.sample
+!.env.template
+!.env.dist
+!*.env.example
+!*.env.sample
+!*.env.template
+!*.env.dist
 __pycache__/
 *.pyc
 

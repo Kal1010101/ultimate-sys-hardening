@@ -32,6 +32,7 @@ git config user.name  "UH Test"
 git config commit.gpgsign false
 mkdir -p scripts/hooks
 cp "$HOOK" scripts/hooks/pre-commit
+cp "$REPO/scripts/hooks/env-guard.sh" scripts/hooks/env-guard.sh
 chmod +x scripts/hooks/pre-commit
 git config core.hooksPath scripts/hooks
 
