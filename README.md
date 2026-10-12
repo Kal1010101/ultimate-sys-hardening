@@ -67,7 +67,7 @@ from the same compliance checks `--cis-only` runs:
 | 12 | Disable services | Safe | 20 unnecessary services |
 | 13 | AppArmor / SELinux | Medium | Enforce mode |
 | 14 | etckeeper | Safe | Git version control for `/etc` |
-| 15 | Boot security | Safe | GRUB permissions, USB storage blacklist |
+| 15 | Boot security | Safe | GRUB permissions, USB storage blacklist (`UH_USB_STORAGE_BLACKLIST=false` skips it) |
 | 16 | GRUB password | **High** | PBKDF2 bootloader password; interactive only |
 | 17 | Docker security | Medium | userns-remap, inter-container comms off, log rotation |
 | 18 | ModSecurity | Medium | WAF + core rule set, only if Apache/httpd is present |
@@ -220,6 +220,7 @@ Honest scope — including the gaps.
 | PCI-DSS / HIPAA / ANSSI / others | Scanning available (Enterprise) wherever the distro's SSG content ships that profile — `--scap-list-profiles` shows which. |
 | Exception register | Available (Pro) — accepted risks with a justification and a review date |
 | TLS log forwarding | Available — all tiers, module 21 |
+| USB / removable media | All-or-nothing — module 15 blocks every USB storage device, or none with `UH_USB_STORAGE_BLACKLIST=false`. No per-device allow-list. |
 | NIST SP 800-70 | Roadmap |
 | Ansible role | Roadmap |
 
