@@ -15,6 +15,8 @@ and the project follows [Semantic Versioning](https://semver.org).
 - Backup retention: per-run backup directories now prune after
   `UH_BACKUP_RETENTION_DAYS` (default 90). Genesis backups are never
   pruned.
+- `UH_USB_STORAGE_BLACKLIST=false` skips module 15's USB storage
+  blacklist, for hosts that need USB disks. Default unchanged.
 
 ### Fixed
 - SSH hardening was rolled back on RHEL-family and Alpine hosts where sshd

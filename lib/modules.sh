@@ -892,8 +892,19 @@ apply_boot_secure() {
         log_warning "GRUB hardening is Linux-specific — skipping on ${DISTRO_TYPE}"
         return 0
     fi
+    # UH_USB_STORAGE_BLACKLIST=false leaves USB storage usable (for hosts that
+    # need USB disks). Anything other than true/false keeps the blacklist.
+    local usb_bl="${UH_USB_STORAGE_BLACKLIST:-true}"
+    if [[ "$usb_bl" != true && "$usb_bl" != false ]]; then
+        log_warning "UH_USB_STORAGE_BLACKLIST='$usb_bl' is not true/false — keeping the USB storage blacklist"
+        usb_bl=true
+    fi
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would restrict GRUB config permissions and blacklist USB storage"
+        if [[ "$usb_bl" == true ]]; then
+            log_dry "Would restrict GRUB config permissions and blacklist USB storage"
+        else
+            log_dry "Would restrict GRUB config permissions (USB storage blacklist off: UH_USB_STORAGE_BLACKLIST=false)"
+        fi
         return 0
     fi
 
@@ -906,8 +917,15 @@ apply_boot_secure() {
         chmod 600 "$cfg" 2>/dev/null && log_info "  locked: $cfg" || true
     done
 
-    if [[ -d /etc/modprobe.d ]]; then
-        cat > /etc/modprobe.d/99-hardening-usb.conf << 'EOF'
+    # UH_MODPROBE_DIR is a test hook (see test_kmod_blacklist.sh); unset it is
+    # /etc/modprobe.d.
+    local md="${UH_MODPROBE_DIR:-/etc/modprobe.d}"
+    if [[ "$usb_bl" == false ]]; then
+        log_info "  USB storage blacklist skipped (UH_USB_STORAGE_BLACKLIST=false)"
+        [[ -f "$md/99-hardening-usb.conf" ]] && \
+            log_warning "  An earlier run's USB storage blacklist is still in place — revert this module to remove it"
+    elif [[ -d "$md" ]]; then
+        cat > "$md/99-hardening-usb.conf" << 'EOF'
 install usb-storage /bin/true
 blacklist usb-storage
 EOF
