@@ -6,6 +6,13 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [2.4.0] — 2026-10-11
+
+A reliability and safety release: a hardening run should never leave a machine
+worse off than it found it — not half-configured, not unable to boot, and never
+reporting success when it failed. Found and fixed against real Debian, Rocky,
+and Alpine VMs.
+
 ### Added
 - Per-module revert: selecting an already-applied module from the
   interactive menu now reverts it instead of re-applying. 18 of 22
@@ -17,6 +24,25 @@ and the project follows [Semantic Versioning](https://semver.org).
   pruned.
 - `UH_USB_STORAGE_BLACKLIST=false` skips module 15's USB storage
   blacklist, for hosts that need USB disks. Default unchanged.
+- **Preflight dependency resolution.** Before anything is changed, each
+  module's packages are resolved for the platform, what can be installed is
+  installed, and anything the enabled repositories cannot supply is named (for
+  example, packages that live in EPEL on RHEL). Runs automatically before an
+  apply, and standalone with `--preflight` — a "will this work here?" check
+  that changes nothing.
+- `--safe-only` — with `--auto-mode`, skip the two High-risk modules (9, 16).
+- **Choose which backup to revert to.** `--revert` now offers an interactive
+  picker of restore points (each labelled with its tier, version, and date);
+  `--revert-to <date|timestamp|genesis|latest>` selects one non-interactively;
+  and `--list-backups` prints them. The default is unchanged — restore to the
+  true original (genesis) state. The menu's revert entries are consolidated
+  under one **R) Revert options** submenu (full revert, SUID/SGID-only, or
+  revert to a specific dated backup).
+
+### Changed
+- **The firewall module is platform-aware.** Module 3 selects the firewall the
+  system actually ships — firewalld on RHEL/SUSE, ufw on Debian, nftables
+  elsewhere — and writes nftables rules that persist across a reboot.
 
 ### Fixed
 - SSH hardening was rolled back on RHEL-family and Alpine hosts where sshd
@@ -56,6 +82,32 @@ and the project follows [Semantic Versioning](https://semver.org).
   every time; now skipped when byte-identical to the last capture.
 - Several `enable_service` callers (firewalld, nftables, audit, apparmor)
   could log success for a service that never started.
+- **Unattended updates could leave a machine unbootable.** After a kernel
+  upgrade, module 1 now verifies the kernel that will boot next has a matching
+  boot image, rebuilds it if it is stale, and — if it cannot — refuses to
+  report success and warns not to reboot. Previously a kernel upgrade on Alpine
+  left the initramfs behind and the machine failed its next boot.
+- **A single failing module aborted the entire run.** Modules now run through a
+  wrapper that records the failure and continues, then reports what did and did
+  not complete, instead of stopping silently and leaving the system
+  half-hardened.
+- **The firewall module aborted the run on RHEL.** Module 3 assumed `ufw`; a
+  RHEL host without it stopped the run at module 3.
+- A `SIGPIPE`-under-`pipefail` bug that could corrupt the CIS score.
+- A second `SIGPIPE` bug that made ModSecurity read as "not installed".
+- The interactive menu no longer drops you out of the session when one module
+  fails — menu actions use the same no-abort path as automated runs.
+
+### Security
+Because the tool runs as root, this release closes gaps in its own footprint:
+- `PATH` is pinned to the system directories, so a binary planted earlier in
+  `PATH` cannot be what root executes.
+- The run log (which lists every file touched and the SUID inventory) is now
+  created `0600`, and the backup directory `0700` — no longer world-readable.
+- The remote-syslog destination and the update-check repository are validated
+  before use, closing two injection paths.
+- A warning is printed if the shared library was loaded from a directory
+  writable by someone other than root or the invoking user.
 
 ### Documentation
 - README, site and script header describe exactly what the free tier
@@ -77,64 +129,6 @@ and the project follows [Semantic Versioning](https://semver.org).
   ran the full module suite on each. Void Linux and Gentoo have no
   cloud-init image and can't be added without a manual OS install.
 - Regenerated stale screenshots in `docs/images/`.
-
-## [2.4.0] — 2026-09-21
-
-A reliability and safety release: a hardening run should never leave a machine
-worse off than it found it — not half-configured, not unable to boot, and never
-reporting success when it failed. Found and fixed against real Debian, Rocky,
-and Alpine VMs.
-
-### Fixed
-- **Unattended updates could leave a machine unbootable.** After a kernel
-  upgrade, module 1 now verifies the kernel that will boot next has a matching
-  boot image, rebuilds it if it is stale, and — if it cannot — refuses to
-  report success and warns not to reboot. Previously a kernel upgrade on Alpine
-  left the initramfs behind and the machine failed its next boot.
-- **A single failing module aborted the entire run.** Modules now run through a
-  wrapper that records the failure and continues, then reports what did and did
-  not complete, instead of stopping silently and leaving the system
-  half-hardened.
-- **The firewall module aborted the run on RHEL.** Module 3 assumed `ufw`; a
-  RHEL host without it stopped the run at module 3.
-- A `SIGPIPE`-under-`pipefail` bug that could corrupt the CIS score.
-- A second `SIGPIPE` bug that made ModSecurity read as "not installed".
-- The interactive menu no longer drops you out of the session when one module
-  fails — menu actions use the same no-abort path as automated runs.
-
-### Added
-- **Preflight dependency resolution.** Before anything is changed, each
-  module's packages are resolved for the platform, what can be installed is
-  installed, and anything the enabled repositories cannot supply is named (for
-  example, packages that live in EPEL on RHEL). Runs automatically before an
-  apply, and standalone with `--preflight` — a "will this work here?" check
-  that changes nothing.
-- `--safe-only` — with `--auto-mode`, skip the two High-risk modules (9, 16).
-- **Choose which backup to revert to.** `--revert` now offers an interactive
-  picker of restore points (each labelled with its tier, version, and date);
-  `--revert-to <date|timestamp|genesis|latest>` selects one non-interactively;
-  and `--list-backups` prints them. The default is unchanged — restore to the
-  true original (genesis) state. The menu's revert entries are consolidated
-  under one **R) Revert options** submenu (full revert, SUID/SGID-only, or
-  revert to a specific dated backup).
-
-### Changed
-- **The firewall module is platform-aware.** Module 3 selects the firewall the
-  system actually ships — firewalld on RHEL/SUSE, ufw on Debian, nftables
-  elsewhere — and writes nftables rules that persist across a reboot.
-
-### Security
-Because the tool runs as root, this release closes gaps in its own footprint:
-- `PATH` is pinned to the system directories, so a binary planted earlier in
-  `PATH` cannot be what root executes.
-- The run log (which lists every file touched and the SUID inventory) is now
-  created `0600`, and the backup directory `0700` — no longer world-readable.
-- The remote-syslog destination and the update-check repository are validated
-  before use, closing two injection paths.
-- A warning is printed if the shared library was loaded from a directory
-  writable by someone other than root or the invoking user.
-
-### Testing
 - A KVM lab provisions real Debian, Rocky, and Alpine guests, applies
   hardening, and **reboots each guest** to prove the machine survives — which
   is how the boot-chain bug above was found.
