@@ -318,6 +318,11 @@ _fw_nftables() {
         accept 2>/dev/null || true
     nft add rule  inet uh_filter input tcp dport '{ 22, 80, 443 }' accept 2>/dev/null || true
 
+    if ! nft list chain inet uh_filter input 2>/dev/null | grep -q 'policy drop'; then
+        log_warning "nftables could not load the firewall rules — nothing was applied. If a kernel update is waiting for a reboot, reboot and run module 3 again"
+        return 0
+    fi
+
     # Persist OUR table only. `nft list ruleset` would freeze whatever else is
     # loaded right now (Docker's rules, fail2ban's bans) into a boot file.
     # `table X` then `delete table X` is the idiom that makes reloading the file
@@ -483,6 +488,16 @@ maxretry = 3
 bantime  = 7200
 backend  = ${backend}
 EOF
+
+    if [[ -f /etc/fail2ban/filter.d/alpine-sshd.conf ]]; then
+        cat > /etc/fail2ban/filter.d/alpine-sshd.local << 'EOF'
+[Definition]
+failregex = Failed [-/\w]+ for .* from <HOST> port \d* ssh2
+            sshd(?:\.pam)?\[.*\]: Invalid user .* from <HOST> port \d*
+            sshd(?:\.pam)?\[.*\]: Received disconnect from <HOST> port \d*:[0-9]+:  \[preauth\]
+            sshd(?:\.pam)?\[.*\]: Disconnected from invalid user .* <HOST> port \d* \[preauth\]
+EOF
+    fi
 
     enable_service fail2ban
     if is_service_active fail2ban; then

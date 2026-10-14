@@ -18,13 +18,15 @@ trap 'rm -rf "$W"' EXIT
 export LOG_FILE="$W/run.log"
 
 run_fw() {   # $1 = shell run before the module (e.g. LEGACY=1)
-    : > "$W/calls"; rm -f "$W/conf"
+    : > "$W/calls"; rm -f "$W/conf"; : > "$LOG_FILE"
     bash -c "set -uo pipefail
         source '$REPO/lib/core.sh'; source '$REPO/lib/platform.sh'; source '$REPO/lib/modules.sh'
         DRY_RUN=false; DISTRO_TYPE=alpine; UH_NFT_CONF='$W/conf'
-        backup_file() { :; }; count_fix() { :; }; enable_service() { :; }; is_service_active() { return 0; }
+        backup_file() { :; }; count_fix() { echo counted >> '$W/calls'; }; enable_service() { :; }; is_service_active() { return 0; }
         nft() {
             echo \"NFT \$*\" >> '$W/calls'
+            [[ -n \"\${NFT_BROKEN:-}\" ]] && return 1
+            if [[ \"\$*\" == 'list chain inet uh_filter input' ]]; then echo 'type filter hook input priority filter; policy drop;'; fi
             if [[ \"\$*\" == 'list chain ip filter INPUT' && -n \"\${LEGACY:-}\" ]]; then
                 echo 'tcp dport { 22, 80, 443 } accept'
             fi
@@ -73,5 +75,14 @@ fi
 run_fw "export LEGACY=1"
 assert_output_contains "$(calls)" 'delete table ip filter' \
     "the legacy IPv4-only table (recognised by its combined accept) is removed so its drop policy cannot linger"
+
+run_fw "export NFT_BROKEN=1"
+[[ -e "$W/conf" ]] && fail "an empty ruleset was written to the boot file when nft could not load it" \
+                   || pass_msg "nothing is persisted when nft cannot load the rules"
+grep -q '^counted$' "$W/calls" && fail "a fix was counted although no rule was applied" \
+                               || pass_msg "no fix is counted when nft cannot load the rules"
+grep -q 'nftables: default-drop' "$LOG_FILE" && fail "success was reported although no rule was applied" \
+                                             || pass_msg "no success is claimed when nft cannot load the rules"
+assert_output_contains "$(cat "$LOG_FILE")" 'nftables could not load the firewall rules' "and it says so"
 
 finish

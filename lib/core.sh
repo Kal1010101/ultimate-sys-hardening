@@ -451,6 +451,7 @@ UH_TOOL_CREATED_PATHS=(
     "/etc/modprobe.d/disable-unused-protocols.conf"
     "/etc/profile.d/hardening-umask.sh"
     "/etc/fail2ban/jail.local"
+    "/etc/fail2ban/filter.d/alpine-sshd.local"
     "/etc/ssh/sshd_config.d/00-ultimate-hardening.conf"
     "/etc/docker/daemon.json"
 )
