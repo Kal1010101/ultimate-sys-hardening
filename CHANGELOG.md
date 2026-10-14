@@ -4,7 +4,7 @@ All notable changes to Ultimate Hardening (free tier) are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com),
 and the project follows [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [2.4.1] — 2026-10-14
 
 ### Added
 - `examples/.env.example` lists every setting with its default; the
@@ -157,4 +157,5 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
+[2.4.1]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.1
 [2.4.0]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.0
