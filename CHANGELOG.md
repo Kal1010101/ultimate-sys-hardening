@@ -4,6 +4,14 @@ All notable changes to Ultimate Hardening (free tier) are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com),
 and the project follows [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Fixed
+- Firewall (nftables): no longer reports success when the rules could not be
+  loaded, and no longer saves an empty ruleset for the next boot.
+- Fail2Ban on Alpine: the SSH jail now matches Alpine's `sshd.pam` log lines,
+  so repeated failed logins are banned.
+
 ## [2.4.1] — 2026-10-14
 
 ### Added
