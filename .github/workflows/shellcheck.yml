@@ -11,6 +11,10 @@ on:
 # step that lints src/pro/* would fail on a clean clone of this repo. The
 # private repo runs the equivalent checks against lib/ from here plus its own
 # tier scripts.
+#
+# Runner policy: pin runs-on to ubuntu-24.04 and actions to a major tag, never
+# ubuntu-latest (GitHub moved it to Ubuntu 26 on 2026-10-19). Trial ubuntu-26.04
+# on a branch before switching; bump runners and actions deliberately.
 jobs:
   shellcheck:
     name: ShellCheck

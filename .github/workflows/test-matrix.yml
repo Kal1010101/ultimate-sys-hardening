@@ -11,6 +11,11 @@ on:
 # This repository is the FREE tier only. Pro and Enterprise live in a separate
 # private repository and are deliberately not referenced here — a step that
 # ran src/pro/* would fail the whole matrix on a clean clone of this repo.
+#
+# Runner policy: pin runs-on to ubuntu-24.04 and actions to a major tag, never
+# ubuntu-latest. GitHub moved ubuntu-latest to Ubuntu 26 on 2026-10-19; a pinned
+# runner is unaffected. To move up, trial ubuntu-26.04 on a branch first and bump
+# deliberately — runners and actions change on purpose here, not on autopilot.
 jobs:
   test:
     name: Test on ${{ matrix.distro }}
