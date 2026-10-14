@@ -90,7 +90,7 @@ declare -A MOD_REVERT_FILES=(
     # tool wrote it, so revert_backed_up_file() correctly deletes it rather
     # than trying to restore a backup that was never taken.
     [ssh]="/etc/ssh/sshd_config /etc/ssh/sshd_config.d/00-ultimate-hardening.conf"
-    [fail2ban]="/etc/fail2ban/jail.local"
+    [fail2ban]="/etc/fail2ban/jail.local /etc/fail2ban/filter.d/alpine-sshd.local"
     [kernel]="/etc/sysctl.d/99-hardening.conf"
     [audit]="/etc/audit/rules.d/99-hardening.rules"
     [password]="/etc/login.defs"
