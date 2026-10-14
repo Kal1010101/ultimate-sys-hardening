@@ -212,8 +212,121 @@ splice distro  "$(block_distro  | ansi_to_html)"
 splice modules "$(block_modules | ansi_to_html)"
 splice cis     "$(block_cis     | ansi_to_html lines)"
 
-if [[ -f "$COMMERCIAL/src/pro/ultimate-hardening-pro.sh" ]]; then
-    echo "  (commercial repo linked — tier blocks would build here)"
+# --- the Pro menu, rendered to a PNG (not spliced into the page) -------------
+# The site shows the Pro menu as an image (docs/images/menu-pro.png), never as
+# selectable HTML text, so the paid feature labels are not published in this
+# public page's source. Those labels live only in the commercial repo, so this
+# runs only when that repo is linked alongside, and nothing paid is written into
+# THIS public script: the real show_menu is read out of the private Pro tier at
+# build time (the same way the publication guard loads its markers from a
+# private file), its side effects are stubbed, and only its drawing is captured.
+PRO_SRC="$COMMERCIAL/src/pro/ultimate-hardening-pro.sh"
+
+# Draw the real Pro menu with demo module states and no interactive read. show_menu
+# draws the whole menu and only then reads a choice; a read stub that exits right
+# there captures the draw and stops before the prompt or any dispatch.
+block_pro() {
+    ( cd "$REPO" && COMMERCIAL="$COMMERCIAL" PRO_SRC="$PRO_SRC" bash -c "$PREAMBLE"'
+        source "$COMMERCIAL/src/shared/pro.sh"
+        source "$COMMERCIAL/src/shared/hardening-commercial.sh"
+        demo_states
+        clear()                { :; }
+        read()                 { exit 0; }   # stop the moment the menu is drawn
+        refresh_module_states() { :; }       # keep demo states; a real probe needs root
+        uh_display_host()      { printf "server01"; }
+        DISTRO_TYPE=rhel
+        DRY_RUN=true
+        # Define the real show_menu from the private Pro script — its labels come
+        # from there, never from this file. The function is delimited by its own
+        # "show_menu() {" opener and the first column-0 "}".
+        eval "$(sed -n '"'"'/^show_menu() {/,/^}/p'"'"' "$PRO_SRC")"
+        show_menu
+    ' )
+}
+
+# A compact copy of build-readme-shots.sh'"'"'s SVG term renderer, for this one
+# block. build-readme-shots.sh reads its blocks out of index.html; the Pro block
+# is deliberately not there, so it is rendered straight from the captured HTML
+# here instead. Kept separate so the working README-shot pipeline is untouched.
+pro_png() {
+    local body="$1" title="$2" out="$3"
+    command -v rsvg-convert >/dev/null 2>&1 || {
+        echo "  menu-pro  SKIP (rsvg-convert/librsvg not installed)"; return 0; }
+    local tmp; tmp=$(mktemp -d);
+    cat > "$tmp/render.py" <<'PY'
+import html, re, sys
+body, title, out = sys.argv[1:4]
+FS, LH, PAD, BAR = 13.0, 1.5, 18.0, 31.0
+CW = 0.6021 * FS
+MONO = "DejaVu Sans Mono, Noto Color Emoji, monospace"
+COL = {"c-g": "#3fb950", "c-c": "#39c5cf", "c-a": "#d29922",
+       "c-w": "#e6edf3", "c-f": "#6e7d8d", "c-r": "#f85149"}
+SPAN = re.compile(r'<span class="(c-[a-z])">(.*?)</span>', re.S)
+EMOJI = {"✅": "✔ ", "⚠️": "⚠ ", "\U0001f4ca": "▸ "}
+def syms(t):
+    for k, v in EMOJI.items(): t = t.replace(k, v)
+    return t
+def segments(line):
+    o, pos = [], 0
+    for m in SPAN.finditer(line):
+        if m.start() > pos: o.append((None, line[pos:m.start()]))
+        o.append((m.group(1), m.group(2))); pos = m.end()
+    if pos < len(line): o.append((None, line[pos:]))
+    return [(c, syms(html.unescape(t))) for c, t in o]
+rows = [segments(l) for l in body.split("\n")]
+cols = max((len("".join(t for _, t in r)) for r in rows), default=1)
+W = round(cols * CW + 2 * PAD + 4)
+H = round(BAR + 2 * PAD + len(rows) * FS * LH)
+e = html.escape
+s = ['<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">' % (W, H),
+     '<defs><clipPath id="c"><rect width="%d" height="%d" rx="10"/></clipPath></defs>' % (W, H),
+     '<g clip-path="url(#c)"><rect width="%d" height="%d" fill="#0b0f14"/>' % (W, H),
+     '<rect width="%d" height="%d" fill="#161b22"/>' % (W, BAR),
+     '<line x1="0" y1="%.1f" x2="%d" y2="%.1f" stroke="#232c38"/></g>' % (BAR - .5, W, BAR - .5),
+     '<rect x=".5" y=".5" width="%d" height="%d" rx="10" fill="none" stroke="#232c38"/>' % (W - 1, H - 1)]
+for i, c in enumerate(("#f85149", "#d29922", "#3fb950")):
+    s.append('<circle cx="%.1f" cy="15.5" r="5.5" fill="%s"/>' % (19.5 + i * 18, c))
+s.append('<text x="69" y="20" font-family="%s" font-size="12" fill="#6e7d8d">%s</text>' % (MONO, e(title)))
+for i, r in enumerate(rows):
+    y = BAR + PAD + i * FS * LH + (FS * LH + FS * .72) / 2
+    spans = "".join('<tspan fill="%s">%s</tspan>' % (COL.get(c, "#9aa7b4"), e(t)) for c, t in r if t)
+    s.append('<text x="%.1f" y="%.1f" xml:space="preserve" font-family="%s" font-size="%g" fill="#9aa7b4">%s</text>'
+             % (PAD, y, MONO, FS, spans))
+s.append("</svg>")
+open(out, "w", encoding="utf-8").write("\n".join(s))
+PY
+    python3 -I "$tmp/render.py" "$body" "$title" "$tmp/menu-pro.svg"
+    rsvg-convert --zoom 2 -o "$out" "$tmp/menu-pro.svg"
+    # Keep index.html's <img> dimensions in step with the PNG the renderer just
+    # produced (natural pixels halved back from the 2x zoom), so it is never
+    # stretched. python reads the PNG header rather than shelling out to identify.
+    python3 -I - "$HTML" "$out" <<'PY'
+import io, struct, sys, re
+html_path, png = sys.argv[1:3]
+with open(png, "rb") as f:
+    f.read(16); w, h = struct.unpack(">II", f.read(8))
+w, h = w // 2, h // 2
+s = io.open(html_path, encoding="utf-8").read()
+new = re.sub(r'(images/menu-pro\.png"[^>]*?)width="\d+" height="\d+"',
+             r'\g<1>width="%d" height="%d"' % (w, h), s, count=1)
+if new != s:
+    io.open(html_path, "w", encoding="utf-8").write(new)
+    print("  menu-pro  %dx%d (index.html img sized to match)" % (w, h))
+else:
+    print("  menu-pro  %dx%d" % (w, h))
+PY
+    rm -rf "$tmp"
+}
+
+if [[ -f "$PRO_SRC" ]]; then
+    if [[ "$MODE" == "--check" ]]; then
+        # The PNG is binary and rsvg output is not guaranteed byte-stable, so
+        # --check does not diff it; it just notes it is a release-build step.
+        echo "  menu-pro  commercial linked (regenerate: ./docs/build-terminals.sh)"
+    else
+        pro_png "$(block_pro | ansi_to_html)" "ultimate-hardening-pro — menu" \
+                "$REPO/docs/images/menu-pro.png"
+    fi
 else
-    echo "  (commercial repo not linked — tier blocks left as they are)"
+    echo "  menu-pro  commercial repo not linked — left as it is"
 fi
