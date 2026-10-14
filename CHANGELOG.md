@@ -10,10 +10,20 @@ and the project follows [Semantic Versioning](https://semver.org).
 - `examples/.env.example` lists every setting with its default; the
   README's Usage section points to it.
 
+### Changed
+- The publication guard reads its content-marker list from an external
+  file rather than embedding it in the hook; where the file is absent the
+  hook skips that check and still runs its path and blob-hash rules.
+- README screenshots sized down and kept to a consistent width.
+
 ### Security
 - Git hooks refuse real env files (`.env`, `.env.local`, `*.env`, `.envrc`)
   in commits and pushes, and refuse a `.env.example`-style template that
   has a value filled in for a password, token, secret or key.
+
+### CI
+- Workflows pin the Ubuntu runner to 24.04 and actions to a major tag,
+  with the upgrade policy documented (trial 26.04 on a branch first).
 
 ## [2.4.0] — 2026-10-11
 
