@@ -11,6 +11,8 @@ and the project follows [Semantic Versioning](https://semver.org).
   loaded, and no longer saves an empty ruleset for the next boot.
 - Fail2Ban on Alpine: the SSH jail now matches Alpine's `sshd.pam` log lines,
   so repeated failed logins are banned.
+- Boot security (module 15) shows N/A, not "disable", on hosts without GRUB
+  when `UH_USB_STORAGE_BLACKLIST=false` leaves it nothing to apply.
 
 ## [2.4.1] — 2026-10-14
 
