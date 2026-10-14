@@ -71,4 +71,13 @@ assert_output_contains "$out" 'blacklist off' "a dry run with the switch off say
 out=$(run_mod "DRY_RUN=true")
 assert_output_contains "$out" 'blacklist USB storage' "a default dry run says it would blacklist USB storage"
 
+if [[ -e /boot/grub/grub.cfg || -e /boot/grub2/grub.cfg ]]; then
+    echo "  ⏭️  SKIP: this host has a grub.cfg — the no-GRUB status fallback cannot be exercised here"
+else
+    st=$(bash -c "source '$REPO/lib/core.sh'; source '$REPO/lib/platform.sh'; source '$REPO/lib/modules.sh'; source '$REPO/lib/menu.sh'
+        UH_USB_STORAGE_BLACKLIST=false; module_probe_state boot" 2>/dev/null | tail -1)
+    [[ "$st" == na ]] && pass_msg "with no GRUB and the blacklist switched off, module 15 reports N/A" \
+                      || fail "module 15 status with no GRUB and UH_USB_STORAGE_BLACKLIST=false: '$st', want na"
+fi
+
 finish

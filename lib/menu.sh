@@ -246,7 +246,11 @@ module_probe_state() {
                 # blacklist. Fall back to that, or the tag can never flip to
                 # [enable] and the revert this module has is unreachable from
                 # the menu. Confirmed live on uh-alpine.
-                [[ -f /etc/modprobe.d/99-hardening-usb.conf ]] && echo on || echo off
+                if [[ "${UH_USB_STORAGE_BLACKLIST:-true}" == false ]]; then
+                    echo na
+                else
+                    [[ -f /etc/modprobe.d/99-hardening-usb.conf ]] && echo on || echo off
+                fi
             fi ;;
         grubpw)
             grep -qE '^[[:space:]]*password_pbkdf2' /etc/grub.d/40_custom 2>/dev/null \
