@@ -25,6 +25,7 @@ PRICING.md
 HANDOFF.md
 VM-TEST-PLAN.md
 CHANGELOG.local.md
+scripts/hooks/publication-markers.local
 
 
 _to_delete/

@@ -25,37 +25,60 @@ RED=$'\033[0;31m'; YEL=$'\033[1;33m'; CYN=$'\033[0;36m'; NC=$'\033[0m'
 # Paths that are commercial by location.
 PATH_RULES='^(src/pro/|src/enterprise/|src/shared/|LICENSE-PRO\.md$|PRICING\.md$)'
 
-# Identifiers that appear in commercial source and nowhere in this repo.
-# Chosen empirically: every one was checked against all tracked files here and
-# produced zero hits. Deliberately NOT included — they read as commercial but
-# occur legitimately in this repo, and blocking them would train people to use
-# --no-verify, which is worse than no hook at all:
-#   "LICENSE-PRO"                  the free LICENSE points at it
-#   "src/pro/…", "src/enterprise/…"  tests/cases/test_module_count.sh and
-#                                    test_module_isolation.sh iterate the tiers
-#                                    by path and skip the absent ones
-# The guard's own files necessarily QUOTE the markers, so scanning them would
-# block the guard from ever being committed — checked, and it did: neither the
-# hook nor its test could be committed before this exemption existed. They are
-# exempt from the CONTENT scan only; the path rules above still apply to them.
+# Identifiers that appear in commercial source and nowhere in this repo are the
+# CONTENT heuristic. The LIST itself is paid intel — the paid function names and
+# tier constants — so it is NOT hard-coded here, where this public MIT repo would
+# publish it in cleartext. It is loaded at run time from a marker file that lives
+# in the private commercial repo (or a gitignored local fallback), resolved in
+# order:
+#   $UH_PUBLICATION_MARKERS                         explicit path override
+#   <commercial repo>/ci/publication-markers.txt    the private list (default)
+#   <free repo>/scripts/hooks/publication-markers.local   gitignored fallback
+# One marker per line; blank lines and #-comments are ignored; each is matched
+# as a literal substring. New paid feature names are added to that file as part
+# of the feature workflow, never here.
+#
+# When no marker file is found — CI, a contributor's clone — the content
+# heuristic is simply inert. That is the same gap the exact blob-hash check below
+# has without the commercial repo, and the hash check is the real guard anyway;
+# the content list only ever caught bash tier source. Deliberately never markers,
+# because they occur legitimately here and blocking them trains people onto
+# --no-verify: "LICENSE-PRO" (the free LICENSE points at it) and the bare tier
+# paths (test_module_count.sh / test_module_isolation.sh iterate the tiers by
+# path and skip the absent ones).
+#
+# The guard's own two files are exempt from the CONTENT scan — they name the
+# resolution mechanism but hold no markers themselves, yet a future edit could
+# reintroduce one, and a guard that blocks its own commit just teaches bypass.
+# The path rules above still apply to them.
 SELF_PATHS='^(scripts/hooks/pre-commit|tests/cases/test_publication_guard\.sh)$'
 
-CONTENT_MARKERS=(
-    'tier_config_defaults'      'tier_post_autofix'      'tier_report_prescan'
-    'tier_report_sections'      'tier_report_postrun'
-    'run_openscap_scan'         'show_dashboard'         'apply_policy'
-    'db_init'                   'db_record_run'
-    'export_nist_crosswalk'     'nist_controls_for_module'
-    'lock_ai_directories'       'send_email_notification' 'setup_schedule'
-    'collect_open_ports'        'collect_failed_logins'   'load_config_file'
-    'run_remote'
-    'UH_TIER="pro"'             'UH_TIER="enterprise"'    'UH_TIER_LABEL'
-    # Commercial TOOLING, not tier source. ci/test_no_duplicate_functions.sh
-    # names no tier function, so the identifiers above missed it entirely —
-    # and a commercial test file written through the symlinked tests/ is
-    # precisely the leak that already happened once.
-    'COMMERCIAL_ROOT'
-)
+# Resolve and load the marker file. Kept as a function so the test can reuse the
+# exact same resolution order rather than second-guessing it.
+_uh_markers_file() {
+    local repo_root commercial
+    if [[ -n "${UH_PUBLICATION_MARKERS:-}" && -r "$UH_PUBLICATION_MARKERS" ]]; then
+        printf '%s\n' "$UH_PUBLICATION_MARKERS"; return 0
+    fi
+    commercial="${UH_COMMERCIAL_REPO:-$(cd "$(git rev-parse --show-toplevel 2>/dev/null)/.." 2>/dev/null && pwd)/ultimate-hardening-commercial}"
+    if [[ -r "$commercial/ci/publication-markers.txt" ]]; then
+        printf '%s\n' "$commercial/ci/publication-markers.txt"; return 0
+    fi
+    repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+    if [[ -n "$repo_root" && -r "$repo_root/scripts/hooks/publication-markers.local" ]]; then
+        printf '%s\n' "$repo_root/scripts/hooks/publication-markers.local"; return 0
+    fi
+    return 1
+}
+
+CONTENT_MARKERS=()
+if markers_file="$(_uh_markers_file)"; then
+    while IFS= read -r line; do
+        line="${line%%#*}"                    # strip trailing comment
+        line="${line#"${line%%[![:space:]]*}"}"; line="${line%"${line##*[![:space:]]}"}"
+        [[ -n "$line" ]] && CONTENT_MARKERS+=("$line")
+    done < "$markers_file"
+fi
 
 staged=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null)
 [[ -n "$staged" ]] || exit 0
@@ -79,9 +102,10 @@ fi
 # ---------------------------------------------------------------------------
 # Exact-content check against the commercial repo.
 #
-# The identifier list below is a heuristic and only ever caught bash tier
-# source. Measured against the real commercial repo, staging each of its files
-# under an innocent name: 21 of 27 got through — the Python dashboard modules,
+# The identifier list (loaded above from the private marker file) is a heuristic
+# and only ever caught bash tier source. Measured against the real commercial
+# repo, staging each of its files under an innocent name: 21 of 27 got through —
+# the Python dashboard modules,
 # the HTML/CSS/JS, the examples, ci.yml, the tier READMEs, PRICING.md. A guard
 # that catches 6 of 27 is worse than none, because it feels like protection.
 #
@@ -161,6 +185,11 @@ while IFS= read -r f; do
     if [[ -n "$BINARY" ]] && grep -qxF -- "$f" <<< "$BINARY"; then
         continue
     fi
+
+    # No marker file on this machine — the content heuristic is inert here, as
+    # documented above. Skip the per-marker scan rather than tripping set -u on
+    # an empty array under old bash.
+    (( ${#CONTENT_MARKERS[@]} )) || continue
 
     # The STAGED blob, not the working copy: what is about to be committed is
     # the index's version, and the two can differ.
