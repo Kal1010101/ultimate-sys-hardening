@@ -11,9 +11,7 @@ and the project follows [Semantic Versioning](https://semver.org).
   README's Usage section points to it.
 
 ### Changed
-- The publication guard reads its content-marker list from an external
-  file rather than embedding it in the hook; where the file is absent the
-  hook skips that check and still runs its path and blob-hash rules.
+- Pre-commit hook clean-up.
 - README screenshots sized down and kept to a consistent width.
 
 ### Security
