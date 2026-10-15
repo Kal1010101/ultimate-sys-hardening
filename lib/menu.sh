@@ -737,5 +737,6 @@ dispatch_module_choice() {
         revert_module "$key"
     else
         run_module "$key" "$apply_fn"
+        if [[ "$key" == updates ]]; then offer_reboot_if_required; fi
     fi
 }

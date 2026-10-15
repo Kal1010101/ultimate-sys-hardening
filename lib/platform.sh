@@ -613,6 +613,18 @@ _rebuild_boot_image() {
     esac
 }
 
+running_kernel_has_modules() {
+    is_linux || return 0
+    local root="${UH_BOOTCHECK_ROOT:-}" running="${UH_BOOTCHECK_RUNNING:-$(uname -r)}"
+    [[ -d "$root/lib/modules/$running" ]]
+}
+
+kernel_update_pending() {
+    [[ "${DISTRO_TYPE:-}" == alpine ]] && command -v apk >/dev/null 2>&1 || return 1
+    local out; out=$(apk version -l '<' 2>/dev/null || true)
+    grep -qE '^linux-(lts|virt|edge|rpi)-[0-9]' <<<"$out"
+}
+
 # $1 = the kernel list captured BEFORE the upgrade. Checks every kernel that
 # appeared since, plus the kernel that boots next — so a breakage left by an
 # earlier run is caught too, which is the state that sat unnoticed for nine
