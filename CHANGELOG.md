@@ -4,6 +4,14 @@ All notable changes to Ultimate Hardening (free tier) are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com),
 and the project follows [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Documentation
+- Install commands in the README, SECURITY.md and the site check out the
+  latest release tag instead of `main`; the README says how to upgrade.
+- The site's install commands now run from the repository root.
+- SECURITY.md lists 2.4.x as the supported version.
+
 ## [2.4.2] — 2026-10-15
 
 ### Fixed
