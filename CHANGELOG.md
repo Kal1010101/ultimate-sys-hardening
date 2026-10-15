@@ -6,6 +6,12 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+- Alpine: a kernel update pending before module 1 is reported up front, and
+  an upgrade that removes the running kernel's modules is flagged. Interactive
+  runs offer to reboot at the end; unattended runs never reboot, say a reboot
+  is required, and exit with status 10.
+
 ### Documentation
 - Install commands in the README, SECURITY.md and the site check out the
   latest release tag instead of `main`; the README says how to upgrade.
