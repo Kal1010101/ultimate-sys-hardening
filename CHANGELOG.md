@@ -13,6 +13,10 @@ and the project follows [Semantic Versioning](https://semver.org).
   so repeated failed logins are banned.
 - Boot security (module 15) shows N/A, not "disable", on hosts without GRUB
   when `UH_USB_STORAGE_BLACKLIST=false` leaves it nothing to apply.
+- Service hints in warnings name the right command on OpenRC and other
+  non-systemd hosts.
+- Dry run: a package lookup that times out is reported as "not checked"
+  instead of stalling the run.
 
 ## [2.4.1] — 2026-10-14
 
