@@ -278,7 +278,7 @@ _fw_firewalld() {
             log_warning "firewalld default zone is '$zone', not 'drop', after a retry — check: firewall-cmd --get-default-zone"
         fi
     else
-        log_warning "firewalld was configured but is not running — check: systemctl status firewalld"
+        log_warning "firewalld was configured but is not running — check: $(service_status_hint firewalld)"
     fi
 }
 
@@ -352,7 +352,7 @@ _fw_nftables() {
         log_success "nftables: default-drop inbound (IPv4 and IPv6), SSH/80/443 accepted (persisted)"
     else
         log_success "nftables: default-drop inbound (IPv4 and IPv6), SSH/80/443 accepted (active now)"
-        log_warning "nftables service is not running — this ruleset will NOT survive a reboot; check: systemctl status nftables"
+        log_warning "nftables service is not running — this ruleset will NOT survive a reboot; check: $(service_status_hint nftables)"
     fi
 }
 
@@ -504,7 +504,7 @@ EOF
         log_success "Fail2Ban active: SSH jail bans for 2h after 3 failures"
         count_fix
     else
-        log_warning "fail2ban was configured but is not running — check: systemctl status fail2ban"
+        log_warning "fail2ban was configured but is not running — check: $(service_status_hint fail2ban)"
     fi
 }
 
@@ -648,7 +648,7 @@ EOF
         log_success "Auditd configured with 17 audit rules"
         count_fix
     else
-        log_warning "Audit rules written but auditd is not running — check: systemctl status auditd"
+        log_warning "Audit rules written but auditd is not running — check: $(service_status_hint auditd)"
     fi
 }
 
@@ -860,7 +860,7 @@ apply_apparmor() {
             log_success "AppArmor enabled, profiles set to enforce"
             count_fix
         else
-            log_warning "AppArmor profiles were set but the service is not running — check: systemctl status apparmor"
+            log_warning "AppArmor profiles were set but the service is not running — check: $(service_status_hint apparmor)"
         fi
     elif command -v sestatus >/dev/null 2>&1; then
         backup_file /etc/selinux/config

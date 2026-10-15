@@ -408,7 +408,7 @@ undo_disabled_services() {
 
     local inv; inv=$(find /root -name 'disabled_services.txt' -type f 2>/dev/null | sort | tail -1)
     if [[ -z "$inv" ]]; then
-        log_error "No disabled-services inventory found — cannot revert. Re-enable manually: systemctl enable --now <service>"
+        log_error "No disabled-services inventory found — cannot revert. Re-enable manually: $(service_enable_hint "<service>")"
         return 1
     fi
     [[ "$DRY_RUN" == true ]] && { log_dry "Would re-enable and start services listed in $inv"; return 0; }
@@ -551,5 +551,5 @@ full_system_revert() {
 
     log_success "Reverted $restored files from $BACKUP_DIR"
     log_warning "Disabled services are NOT re-enabled automatically."
-    log_info    "Re-enable any you need with: systemctl enable --now <service>"
+    log_info    "Re-enable any you need with: $(service_enable_hint "<service>")"
 }

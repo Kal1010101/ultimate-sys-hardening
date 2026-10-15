@@ -120,5 +120,31 @@ else
     fail "tried to install a package it had just reported as unavailable"
 fi
 
+# --- a dry run against a mirror that never answers reports "not checked" ------
+if command -v timeout >/dev/null 2>&1; then
+    stub="${TMPDIR:-/tmp}/uh_preflight_stub_$$"; mkdir -p "$stub"
+    printf '#!/bin/sh\nsleep 5\n' > "$stub/dnf"; chmod +x "$stub/dnf"
+    t0=$SECONDS
+    slow=$(bash -c "set -euo pipefail; $_lib
+        PATH='$stub':\$PATH
+        DISTRO_TYPE=rhel; DRY_RUN=true; UH_PREFLIGHT_TIMEOUT=1
+        get_package_manager() { echo dnf; }
+        package_installed() { return 1; }
+        preflight_dependencies
+        echo 'REACHED-END'" 2>&1) || true
+    took=$((SECONDS - t0))
+    rm -rf "$stub"
+    assert_output_contains "$slow" 'mirrors unreachable — not checked' \
+        "dry run reports an unreachable mirror as not checked"
+    if ! grep -qE 'all [0-9]+ dependencies resolved|not available from the configured' <<< "$slow"; then
+        pass_msg "an unassessed lookup is never reported as resolved or missing"
+    else
+        fail "a timed-out lookup was reported as a verdict"
+    fi
+    assert_output_contains "$slow" 'REACHED-END' "a timed-out lookup does not abort the caller"
+    [[ $took -lt 4 ]] && pass_msg "lookups stop after the first timeout (${took}s)" \
+                      || fail "preflight kept querying an unreachable mirror (${took}s)"
+fi
+
 rm -f "$LOG_FILE"
 finish
