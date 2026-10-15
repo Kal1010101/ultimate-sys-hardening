@@ -36,7 +36,7 @@ sudo ./src/free/ultimate_hardening.sh --revert
 ## Quick start
 
 ```bash
-git clone --branch v2.4.2 https://github.com/Kal1010101/ultimate-sys-hardening.git
+git clone --branch v2.4.3 https://github.com/Kal1010101/ultimate-sys-hardening.git
 cd ultimate-sys-hardening
 chmod +x src/free/ultimate_hardening.sh
 sudo ./src/free/ultimate_hardening.sh
