@@ -298,6 +298,20 @@ is_service_active() {
     fi
 }
 
+service_status_hint() {
+    if _has_systemd; then printf 'systemctl status %s' "$1"
+    elif _has_openrc; then printf 'rc-service %s status' "$1"
+    else printf 'service %s status' "$1"
+    fi
+}
+
+service_enable_hint() {
+    if _has_systemd; then printf 'systemctl enable --now %s' "$1"
+    elif _has_openrc; then printf 'rc-update add %s default && rc-service %s start' "$1" "$1"
+    else printf 'service %s start' "$1"
+    fi
+}
+
 # SSH daemon is named differently across distros; try both.
 restart_sshd() {
     restart_service sshd || restart_service ssh || {
@@ -397,23 +411,32 @@ package_installed() {
 
 # 2 means "cannot tell" and is treated by the caller as "let the install try",
 # never as "missing".
+# 3 means the lookup timed out (--dry-run only): not checked.
 package_available() {
-    local pkg="$1" rc=1 cand
+    local pkg="$1" rc=1 cand out t=()
+    if [[ "${DRY_RUN:-false}" == true ]] && command -v timeout >/dev/null 2>&1; then
+        t=(timeout "${UH_PREFLIGHT_TIMEOUT:-20}")
+    fi
     case "$(get_package_manager)" in
         apt)
             # `apt-cache search`/`show` exit 0 for unknown names; only the
             # policy Candidate line is reliable.
-            cand=$(apt-cache policy "$pkg" 2>/dev/null | awk '/Candidate:/ && !d {print $2; d=1}')
-            [[ -n "$cand" && "$cand" != "(none)" ]] && rc=0 ;;
-        dnf)    dnf -q list --available "$pkg" >/dev/null 2>&1 && rc=0 ;;
-        yum)    yum -q list available "$pkg" >/dev/null 2>&1 && rc=0 ;;
-        zypper) zypper --non-interactive -q info "$pkg" >/dev/null 2>&1 && rc=0 ;;
-        pacman) pacman -Si "$pkg" >/dev/null 2>&1 && rc=0 ;;
-        apk)    [[ -n "$(apk search -e "$pkg" 2>/dev/null)" ]] && rc=0 ;;
-        xbps)   xbps-query -R "$pkg" >/dev/null 2>&1 && rc=0 ;;
-        *)      rc=2 ;;
+            out=$(${t[@]+"${t[@]}"} apt-cache policy "$pkg" 2>/dev/null); rc=$?
+            cand=$(awk '/Candidate:/ && !d {print $2; d=1}' <<<"$out")
+            [[ $rc -ne 124 && $rc -ne 143 ]] && { rc=1; [[ -n "$cand" && "$cand" != "(none)" ]] && rc=0; } ;;
+        dnf)    ${t[@]+"${t[@]}"} dnf -q list --available "$pkg" >/dev/null 2>&1; rc=$? ;;
+        yum)    ${t[@]+"${t[@]}"} yum -q list available "$pkg" >/dev/null 2>&1; rc=$? ;;
+        zypper) ${t[@]+"${t[@]}"} zypper --non-interactive -q info "$pkg" >/dev/null 2>&1; rc=$? ;;
+        pacman) ${t[@]+"${t[@]}"} pacman -Si "$pkg" >/dev/null 2>&1; rc=$? ;;
+        apk)
+            out=$(${t[@]+"${t[@]}"} apk search -e "$pkg" 2>/dev/null); rc=$?
+            [[ $rc -ne 124 && $rc -ne 143 ]] && { rc=1; [[ -n "$out" ]] && rc=0; } ;;
+        xbps)   ${t[@]+"${t[@]}"} xbps-query -R "$pkg" >/dev/null 2>&1; rc=$? ;;
+        *)      return 2 ;;
     esac
-    return "$rc"
+    [[ ${#t[@]} -gt 0 ]] && [[ $rc -eq 124 || $rc -eq 143 ]] && return 3
+    [[ $rc -eq 0 ]] && return 0
+    return 1
 }
 
 # Without this, apt and apk answer "unavailable" for everything on a fresh
@@ -452,7 +475,8 @@ preflight_dependencies() {
         log_warning "Preflight: could not refresh the package index — the answers below come from the index already on disk"
     fi
 
-    local key pkg avail checked=0
+    local key pkg avail checked=0 unreachable=false
+    local -a unchecked=()
     while IFS=: read -r key pkg; do
         [[ -n "$key" && -n "$pkg" ]] || continue
         checked=$((checked + 1))
@@ -460,7 +484,16 @@ preflight_dependencies() {
             log_info "  ok       $key: $pkg already installed"
             continue
         fi
+        if [[ "$unreachable" == true ]]; then
+            unchecked+=("$key:$pkg")
+            continue
+        fi
         avail=0; package_available "$pkg" || avail=$?
+        if [[ $avail -eq 3 ]]; then
+            unreachable=true
+            unchecked+=("$key:$pkg")
+            continue
+        fi
         if [[ $avail -eq 1 ]]; then
             log_warning "  missing  $key: $pkg is not available from the configured repositories"
             UH_PREFLIGHT_MISSING+=("$key:$pkg")
@@ -482,13 +515,16 @@ preflight_dependencies() {
         fi
     done < <(module_dependencies)
 
+    if [[ ${#unchecked[@]} -gt 0 ]]; then
+        log_warning "Preflight: mirrors unreachable — not checked: ${unchecked[*]}"
+    fi
     if [[ ${#UH_PREFLIGHT_MISSING[@]} -gt 0 ]]; then
         log_warning "Preflight: ${#UH_PREFLIGHT_MISSING[@]} package(s) cannot be obtained — these modules will skip: ${UH_PREFLIGHT_MISSING[*]}"
         case "${DISTRO_TYPE:-}" in
             rhel)   log_info "  Hint: fail2ban, rkhunter and etckeeper live in EPEL, not the base repositories" ;;
             alpine) log_info "  Hint: aide and rkhunter are outside main/community — enable the testing repository" ;;
         esac
-    else
+    elif [[ ${#unchecked[@]} -eq 0 ]]; then
         log_success "Preflight: all $checked dependencies resolved"
     fi
     return 0
