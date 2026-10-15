@@ -71,13 +71,13 @@ why that module no longer exists.
 
 | Version | Supported |
 |---------|-----------|
-| 2.0.x   | Yes |
-| < 2.0   | No |
+| 2.4.x   | Yes |
+| < 2.4   | No |
 
 ## Verifying before you run
 
 ```bash
-git clone https://github.com/Kal1010101/ultimate-sys-hardening.git
+git clone --branch v2.4.2 https://github.com/Kal1010101/ultimate-sys-hardening.git
 cd ultimate-sys-hardening
 
 # Read it
