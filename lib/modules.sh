@@ -18,9 +18,13 @@
 apply_system_updates() {
     log_message "${GEAR} [1/22] System Updates"
 
-    local kernels_before=""
+    local kernels_before="" had_modules=false
+    if kernel_update_pending; then
+        log_warning "A kernel update is pending. Installing it removes the running kernel's modules, so the firewall and Fail2Ban may not load until you reboot"
+    fi
     if [[ "$DRY_RUN" != true ]]; then
         kernels_before=$(installed_kernel_versions)
+        running_kernel_has_modules && had_modules=true
     fi
 
     update_packages
@@ -41,6 +45,10 @@ apply_system_updates() {
     if [[ "$DRY_RUN" != true ]] && ! verify_boot_chain "$kernels_before"; then
         log_error "Packages were upgraded, but the next boot would fail (see above). Do NOT reboot until that is fixed."
         return 1
+    fi
+    if [[ "$had_modules" == true ]] && ! running_kernel_has_modules; then
+        UH_REBOOT_REQUIRED=true
+        log_warning "The upgrade removed the running kernel's modules — the firewall and Fail2Ban cannot load new kernel modules until you reboot"
     fi
 
     log_success "System packages updated"
@@ -1499,6 +1507,34 @@ EOF
 # price of not stopping the other 21, and it is why the set -e contract above
 # is a contract rather than a convenience.
 UH_MODULE_FAILED=()
+UH_REBOOT_REQUIRED=false
+UH_EXIT_REBOOT_REQUIRED=10
+
+offer_reboot_if_required() {
+    [[ "${UH_REBOOT_REQUIRED:-false}" == true ]] || return 0
+    [[ "${UH_DEFER_REBOOT_OFFER:-false}" == true ]] && return 0
+    if [[ "${DRY_RUN:-false}" == true ]]; then
+        return 0
+    fi
+    if [[ "${AUTO_MODE:-false}" == true ]] || [[ ! -t 0 ]]; then
+        log_warning "REBOOT REQUIRED: the kernel was upgraded during this run. Reboot, then run the Firewall (3) and Fail2Ban (4) modules again. Unattended runs never reboot."
+        return 0
+    fi
+    if confirm "The kernel was upgraded. Reboot now? Afterwards run the Firewall (3) and Fail2Ban (4) modules again"; then
+        log_info "Rebooting"
+        reboot
+    else
+        log_warning "Reboot later, then run the Firewall (3) and Fail2Ban (4) modules again"
+    fi
+}
+
+uh_exit_status() {
+    if [[ "${UH_REBOOT_REQUIRED:-false}" == true ]]; then
+        printf '%s' "$UH_EXIT_REBOOT_REQUIRED"
+    else
+        printf '0'
+    fi
+}
 
 run_module() {
     local key="$1" fn="$2" rc=0
@@ -1529,11 +1565,13 @@ report_module_results() {
 
     if [[ $n -eq 0 ]]; then
         log_success "$scope - $FIXES_APPLIED fixes applied, all modules completed"
+        offer_reboot_if_required
         return 0
     fi
 
     log_warning "$scope - $FIXES_APPLIED fixes applied, $n module(s) did not complete: ${UH_MODULE_FAILED[*]}"
     log_warning "Run those modules individually from the menu to see the failure in full."
+    offer_reboot_if_required
     return 0
 }
 

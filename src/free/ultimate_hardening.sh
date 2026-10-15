@@ -93,6 +93,9 @@ Examples:
   sudo $0 --cis-only               Score the system, change nothing
   sudo $0 --revert                 Undo the most recent run
 
+Exit status: 0 done; 10 done, but the kernel was upgraded and a reboot is
+required (unattended runs never reboot).
+
 This tier is the hardening engine. Pro adds compliance reports, scheduled
 runs, and email alerts; Enterprise adds a multi-host dashboard, remote deploy,
 policy-as-code, drift detection, and OpenSCAP. See README.md.
@@ -221,7 +224,7 @@ main() {
             apply_all_modules
         fi
         run_cis_checks
-        exit 0
+        exit "$(uh_exit_status)"
     fi
 
     # The update check is explicitly-invoked only (menu option U, or
