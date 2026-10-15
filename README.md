@@ -36,11 +36,15 @@ sudo ./src/free/ultimate_hardening.sh --revert
 ## Quick start
 
 ```bash
-git clone https://github.com/Kal1010101/ultimate-sys-hardening.git
+git clone --branch v2.4.2 https://github.com/Kal1010101/ultimate-sys-hardening.git
 cd ultimate-sys-hardening
 chmod +x src/free/ultimate_hardening.sh
 sudo ./src/free/ultimate_hardening.sh
 ```
+
+This checks out the latest release, not `main`. To upgrade later:
+`git fetch --tags && git checkout v<new version>` (see
+[Releases](https://github.com/Kal1010101/ultimate-sys-hardening/releases)).
 
 Running it with no flags opens an interactive menu. Nothing is applied without
 confirmation.
