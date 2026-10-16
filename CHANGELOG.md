@@ -4,6 +4,11 @@ All notable changes to Ultimate Hardening (free tier) are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com),
 and the project follows [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Documentation
+- The website's version badge shows the current release.
+
 ## [2.4.3] — 2026-10-15
 
 ### Fixed
