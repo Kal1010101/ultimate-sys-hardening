@@ -511,9 +511,9 @@ EOF
         cat > /etc/fail2ban/filter.d/alpine-sshd.local << 'EOF'
 [Definition]
 failregex = Failed [-/\w]+ for .* from <HOST> port \d* ssh2
-            sshd(?:\.pam)?\[.*\]: Invalid user .* from <HOST> port \d*
-            sshd(?:\.pam)?\[.*\]: Received disconnect from <HOST> port \d*:[0-9]+:  \[preauth\]
-            sshd(?:\.pam)?\[.*\]: Disconnected from invalid user .* <HOST> port \d* \[preauth\]
+            sshd(?:-session)?(?:\.pam)?\[.*\]: Invalid user .* from <HOST> port \d*
+            sshd(?:-session)?(?:\.pam)?\[.*\]: Received disconnect from <HOST> port \d*:[0-9]+:  \[preauth\]
+            sshd(?:-session)?(?:\.pam)?\[.*\]: Disconnected from invalid user .* <HOST> port \d* \[preauth\]
 EOF
     fi
 

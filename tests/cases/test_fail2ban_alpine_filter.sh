@@ -25,9 +25,9 @@ touch "$W/f2b/filter.d/alpine-sshd.conf"
 run_f2b
 if [[ -f "$L" ]]; then
     pass_msg "with Alpine's alpine-sshd filter present, an override is written"
-    n=$(grep -c 'sshd(?:\\.pam)?\\\[' "$L")
-    [[ "$n" -eq 3 ]] && pass_msg "all three sshd patterns accept sshd.pam" \
-                     || fail "expected 3 sshd(?:\\.pam)? patterns, found $n"
+    n=$(grep -c 'sshd(?:-session)?(?:\\.pam)?\\\[' "$L")
+    [[ "$n" -eq 3 ]] && pass_msg "all three sshd patterns accept sshd.pam and sshd-session" \
+                     || fail "expected 3 sshd(?:-session)?(?:\\.pam)? patterns, found $n"
 else
     fail "no alpine-sshd.local was written although alpine-sshd.conf exists"
 fi
@@ -37,12 +37,13 @@ if command -v python3 >/dev/null 2>&1 && [[ -f "$L" ]]; then
 import re, sys
 text = open(sys.argv[1]).read().split("failregex =", 1)[1]
 pats = [p.strip().replace("<HOST>", r"(?P<host>\S+)") for p in text.strip().splitlines() if p.strip()]
-line = "host1 auth.info sshd.pam[8873]: Invalid user admin from 192.0.2.9 port 57070"
-print(sum(1 for p in pats if re.search(p, line)))
+lines = ["host1 auth.info sshd.pam[8873]: Invalid user admin from 192.0.2.9 port 57070",
+         "host1 auth.info sshd-session.pam[8432]: Invalid user admin from 192.0.2.9 port 56848"]
+print(min(sum(1 for p in pats if re.search(p, l)) for l in lines))
 PY
 )
-    [[ "${m:-0}" -ge 1 ]] && pass_msg "a real Alpine sshd.pam log line is matched" \
-                          || fail "the override does not match an Alpine sshd.pam log line"
+    [[ "${m:-0}" -ge 1 ]] && pass_msg "real Alpine sshd.pam and sshd-session.pam log lines are matched" \
+                          || fail "the override does not match an Alpine sshd.pam or OpenSSH 10 sshd-session.pam log line"
 fi
 
 rm -f "$W/f2b/filter.d/alpine-sshd.conf"
