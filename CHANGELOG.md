@@ -6,6 +6,11 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+- CIS checks: the uncommon protocol and filesystem checks no longer report
+  blacklisted kernel modules as loadable on hosts with a large module
+  configuration.
+
 ### Documentation
 - The website's version badge shows the current release.
 - The paid-tier lists on the site and in the README name every paid feature.
