@@ -84,18 +84,36 @@ fi
 BOOTSTRAP
 }
 
+# The bootstrap packages are installed once per image into a prepared copy,
+# keeping the package manager's cache, so each case still starts from a fresh
+# container without downloading them again. Empty if preparing failed; the
+# cases then bootstrap themselves as before.
+PREPARED=""
+prepare_image() {
+    local image="$1" name tag
+    name="uh-prep-$$-$RANDOM"
+    tag="uh-test-prepared:$(printf '%s' "$image" | tr -c 'a-zA-Z0-9_.-' '-')"
+    PREPARED=""
+    if docker run --name "$name" "$image" /bin/sh -c "$(bootstrap_cmd)" >/dev/null 2>&1 \
+       && docker commit "$name" "$tag" >/dev/null 2>&1; then
+        PREPARED="$tag"
+    fi
+    docker rm -f "$name" >/dev/null 2>&1 || true
+}
+
 run_case_in_docker() {
     local case_file="$1" image="$2"
     local case_name; case_name=$(basename "$case_file" .sh | sed 's/^test_//')
 
     printf "  %-22s %-18s " "$case_name" "$image"
 
-    local output
+    local output start="exec bash"
+    [[ -n "$PREPARED" ]] || start="$(bootstrap_cmd); exec bash"
     output=$(docker run --rm \
         -v "$REPO_ROOT:/repo:ro" \
         -e "UH_TEST=1" \
-        "$image" \
-        /bin/sh -c "$(bootstrap_cmd); exec bash /repo/tests/cases/$(basename "$case_file")" 2>&1)
+        "${PREPARED:-$image}" \
+        /bin/sh -c "$start /repo/tests/cases/$(basename "$case_file")" 2>&1)
     local rc=$?
 
     case $rc in
@@ -156,7 +174,11 @@ else
                 continue
             }
         fi
+        echo -n "  preparing... "
+        prepare_image "$image"
+        [[ -n "$PREPARED" ]] && echo "done" || echo -e "${YELLOW}failed — each case bootstraps itself${NC}"
         while IFS= read -r c; do run_case_in_docker "$c" "$image"; done < <(list_cases)
+        [[ -n "$PREPARED" ]] && docker rmi -f "$PREPARED" >/dev/null 2>&1
     done
 fi
 
