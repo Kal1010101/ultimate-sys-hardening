@@ -77,7 +77,7 @@ why that module no longer exists.
 ## Verifying before you run
 
 ```bash
-git clone --branch v2.4.3 https://github.com/Kal1010101/ultimate-sys-hardening.git
+git clone --branch v2.4.4 https://github.com/Kal1010101/ultimate-sys-hardening.git
 cd ultimate-sys-hardening
 
 # Read it
