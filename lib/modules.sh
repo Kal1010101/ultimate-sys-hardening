@@ -1587,6 +1587,43 @@ report_module_results() {
 
 
 # --- Aggregate ---------------------------------------------------------------
+# Ban and unban a documentation address (RFC 5737 / RFC 3849) once, so the
+# kernel modules Fail2Ban's ban action needs are loaded before a kernel
+# upgrade removes the running kernel's modules from disk.
+_fail2ban_preload_ban_action() {
+    [[ "$DRY_RUN" == true ]] && return 0
+    command -v fail2ban-client >/dev/null 2>&1 && is_service_active fail2ban || return 0
+    local i ip
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        fail2ban-client status sshd >/dev/null 2>&1 && break
+        sleep 0.5
+    done
+    for ip in 192.0.2.1 2001:db8::1; do
+        fail2ban-client set sshd banip "$ip"   >>"$LOG_FILE" 2>&1 || true
+        fail2ban-client set sshd unbanip "$ip" >>"$LOG_FILE" 2>&1 || true
+    done
+    log_info "Fail2Ban's ban action was run once against a documentation address, so bans keep working after the kernel upgrade"
+}
+
+# A pending kernel upgrade removes the running kernel's modules, and what is
+# not loaded by then cannot load until the reboot. The firewall and Fail2Ban
+# go first in that case.
+_run_first_four_modules() {
+    if kernel_update_pending; then
+        log_info "A kernel update is pending — applying the firewall and Fail2Ban before system updates, so both keep working until you reboot"
+        run_module firewall  apply_firewall
+        run_module fail2ban  apply_fail2ban
+        _fail2ban_preload_ban_action
+        run_module updates   apply_system_updates
+        run_module ssh       apply_ssh_hardening
+    else
+        run_module updates   apply_system_updates
+        run_module ssh       apply_ssh_hardening
+        run_module firewall  apply_firewall
+        run_module fail2ban  apply_fail2ban
+    fi
+}
+
 # Every module, including the High-risk one (module 9, SUID/SGID hardening).
 apply_all_modules() {
     log_message "${ROCKET} Applying all 22 hardening modules (including High risk)"
@@ -1598,10 +1635,7 @@ apply_all_modules() {
     # partway through a half-hardened system.
     preflight_dependencies
 
-    run_module updates   apply_system_updates
-    run_module ssh       apply_ssh_hardening
-    run_module firewall  apply_firewall
-    run_module fail2ban  apply_fail2ban
+    _run_first_four_modules
     run_module perms     apply_permission_hardening
     run_module kernel    apply_kernel_hardening
     run_module audit     apply_audit_config
@@ -1643,10 +1677,7 @@ apply_safe_modules() {
     # partway through a half-hardened system.
     preflight_dependencies
 
-    run_module updates   apply_system_updates
-    run_module ssh       apply_ssh_hardening
-    run_module firewall  apply_firewall
-    run_module fail2ban  apply_fail2ban
+    _run_first_four_modules
     run_module perms     apply_permission_hardening
     run_module kernel    apply_kernel_hardening
     run_module audit     apply_audit_config
