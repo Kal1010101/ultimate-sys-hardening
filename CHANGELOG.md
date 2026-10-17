@@ -19,6 +19,12 @@ and the project follows [Semantic Versioning](https://semver.org).
 - Alpine 3.22: Fail2Ban recognises failed SSH logins again; OpenSSH 10 logs
   them as `sshd-session`, which the filter did not match.
 
+### Changed
+- Alpine: when a kernel update is pending, applying all modules sets up the
+  firewall and Fail2Ban before system updates, and runs Fail2Ban's ban action
+  once against a documentation address, so the firewall and new bans keep
+  working until the reboot.
+
 ### Documentation
 - The website's version badge shows the current release.
 - The paid-tier lists on the site and in the README name every paid feature.
