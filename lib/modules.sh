@@ -230,6 +230,16 @@ _fw_ufw() {
     count_fix
 }
 
+# firewall-cmd --reload drops every runtime rule, fail2ban's bans included,
+# while fail2ban goes on listing those addresses as banned. Restarting its
+# jails re-applies the active bans from its database.
+_fw_firewalld_reload() {
+    firewall-cmd --reload >>"$LOG_FILE" 2>&1 || true
+    if command -v fail2ban-client >/dev/null 2>&1 && is_service_active fail2ban; then
+        fail2ban-client reload --restart >>"$LOG_FILE" 2>&1 || true
+    fi
+}
+
 _fw_firewalld() {
     enable_service firewalld >/dev/null 2>&1 || true
 
@@ -261,7 +271,7 @@ _fw_firewalld() {
     firewall-cmd --permanent --add-service=ssh   >>"$LOG_FILE" 2>&1 || true
     firewall-cmd --permanent --add-service=http  >>"$LOG_FILE" 2>&1 || true
     firewall-cmd --permanent --add-service=https >>"$LOG_FILE" 2>&1 || true
-    firewall-cmd --reload                        >>"$LOG_FILE" 2>&1 || true
+    _fw_firewalld_reload
 
     # Verify the zone change actually took rather than trusting firewall-
     # cmd's own exit code. One retry before giving an honest warning — the
@@ -270,7 +280,7 @@ _fw_firewalld() {
     local zone; zone=$(firewall-cmd --get-default-zone 2>/dev/null)
     if [[ "$zone" != "drop" ]]; then
         firewall-cmd --set-default-zone=drop >>"$LOG_FILE" 2>&1 || true
-        firewall-cmd --reload >>"$LOG_FILE" 2>&1 || true
+        _fw_firewalld_reload
         zone=$(firewall-cmd --get-default-zone 2>/dev/null)
     fi
 
