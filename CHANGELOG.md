@@ -8,6 +8,9 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ### Documentation
 - The website's version badge shows the current release.
+- The paid-tier lists on the site and in the README name every paid feature.
+- The README and SECURITY.md mention the optional update check.
+- The README and the site list the distros CI actually tests.
 
 ## [2.4.3] — 2026-10-15
 
