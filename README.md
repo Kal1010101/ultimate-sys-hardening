@@ -86,7 +86,8 @@ You're being asked to run a script as root that rewrites SSH and firewall config
 Here's what it does and doesn't do:
 
 - **No telemetry.** No analytics, no phone-home. The only outbound traffic
-  is your own package manager.
+  is your own package manager, plus the update check if you run it from the
+  menu (one request to the public GitHub API).
 - **Backup before write.** Everything modified is copied to
   `/root/hardening_backup_<timestamp>_<tier>/` before the first change, with a
   manifest recording which tier and version wrote it.
@@ -198,18 +199,24 @@ What the free tier looks like:
 |---|---|---|---|
 | **Price** | $0 | $9/mo · $79/yr | $49/mo (≤10 hosts) |
 | Hardening modules (22) | ✅ | ✅ | ✅ |
-| Extra hardening modules | — | ✅ | ✅ |
+| Extra hardening modules: SSH rate limiting, sshd resource caps, USB device control | — | ✅ | ✅ |
+| AI directory lock-down | — | ✅ | ✅ |
 | CIS checks | ✅ | ✅ | ✅ |
 | Dry-run + revert | ✅ | ✅ | ✅ |
 | HTML compliance reports | — | ✅ | ✅ |
 | Open ports / failed logins | — | ✅ | ✅ |
 | Exception register (waivers) | — | ✅ | ✅ |
+| Intrusion activity report + new-ban alerts | — | ✅ | ✅ |
+| Asset inventory + SBOM export (CycloneDX / SPDX) | — | ✅ | ✅ |
+| CVE exposure report | — | ✅ | ✅ |
 | Scheduled runs + email | — | ✅ | ✅ |
 | Multi-host dashboard | — | — | ✅ |
 | Remote SSH deploy | — | — | ✅ |
 | Policy-as-code + drift | — | — | ✅ |
 | JSON / CSV export | — | — | ✅ |
 | OpenSCAP integration | — | — | ✅ |
+| GitOps policy delivery + signed approvals | — | — | ✅ |
+| Host tags (per-role policy) | — | — | ✅ |
 
 [Full comparison →](https://Kal1010101.github.io/ultimate-sys-hardening/#pricing)
 
@@ -228,8 +235,10 @@ Honest scope — including the gaps.
 | DISA STIG | **Scanning** available (Enterprise) — `--scap-profile stig` against the distro's SSG content. STIG-specific remediation is not mapped. |
 | PCI-DSS / HIPAA / ANSSI / others | Scanning available (Enterprise) wherever the distro's SSG content ships that profile — `--scap-list-profiles` shows which. |
 | Exception register | Available (Pro) — accepted risks with a justification and a review date |
+| Vulnerability exposure | Available (Pro) — CVEs affecting the installed packages, from your own package manager's repository metadata (RHEL family, SUSE). Debian/Ubuntu metadata has no CVE IDs, so they need the opt-in `--cve-feeds` download. Optional ranking by CISA KEV and EPSS (`--cve-enrich`, also opt-in). |
+| SBOM | Available (Pro) — CycloneDX 1.5 or SPDX 2.3 JSON |
 | TLS log forwarding | Available — all tiers, module 21 |
-| USB / removable media | All-or-nothing — module 15 blocks every USB storage device, or none with `UH_USB_STORAGE_BLACKLIST=false`. No per-device allow-list. |
+| USB / removable media | Free: all-or-nothing — module 15 blocks every USB storage device, or none with `UH_USB_STORAGE_BLACKLIST=false`. Pro/Enterprise: per-device allow-list on usbguard — devices connected at setup keep working, new ones are blocked (where the distro packages usbguard). |
 | NIST SP 800-70 | Roadmap |
 | Ansible role | Roadmap |
 
@@ -243,8 +252,9 @@ Honest scope — including the gaps.
 
 ## Contributing
 
-Issues and PRs welcome. Every push runs ShellCheck and `bash -n` against Debian,
-Ubuntu, Fedora, and Alpine — please make sure both pass locally first:
+Issues and PRs welcome. Every push runs ShellCheck, and the integration suite
+in a fresh container on each of 10 distros (Ubuntu, Debian, Rocky, AlmaLinux,
+Fedora, Arch, Alpine) — please make sure both pass locally first:
 
 ```bash
 # the same invocation CI uses
