@@ -13,6 +13,11 @@ and the project follows [Semantic Versioning](https://semver.org).
 - Firewall (firewalld): applying module 3 no longer lifts the bans fail2ban
   has in place; its jails are restarted after the firewall reload so every
   active ban is applied again.
+- Alpine: a kernel upgrade that removes the running kernel's modules is now
+  detected (the old module directory can survive with a stray file in it),
+  so unattended runs exit with status 10 and say a reboot is required.
+- Alpine 3.22: Fail2Ban recognises failed SSH logins again; OpenSSH 10 logs
+  them as `sshd-session`, which the filter did not match.
 
 ### Documentation
 - The website's version badge shows the current release.
