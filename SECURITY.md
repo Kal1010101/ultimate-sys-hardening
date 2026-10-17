@@ -31,7 +31,7 @@ It is designed to be auditable before you run it. Concretely:
 
 | Behaviour | Guarantee |
 |-----------|-----------|
-| Network calls | None, except your own package manager. No telemetry, no license check, no phone-home. |
+| Network calls | None, except your own package manager and the update check if you run it from the menu (one request to the public GitHub API). No telemetry, no license check, no phone-home. |
 | Backups | Every modified file is copied to `/root/hardening_backup_<timestamp>/` before the first write. |
 | Revert | `--revert` restores SSH, sysctl, and permissions. `--revert-suid` restores SUID/SGID bits from a recorded inventory. |
 | Preview | `--dry-run` prints every intended change and exits without writing. |
