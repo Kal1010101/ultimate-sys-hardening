@@ -613,10 +613,12 @@ _rebuild_boot_image() {
     esac
 }
 
+# The directory alone is not enough: on Alpine an upgrade removes the module
+# tree but leaves /lib/modules/<running>/ behind with one leftover file.
 running_kernel_has_modules() {
     is_linux || return 0
     local root="${UH_BOOTCHECK_ROOT:-}" running="${UH_BOOTCHECK_RUNNING:-$(uname -r)}"
-    [[ -d "$root/lib/modules/$running" ]]
+    [[ -d "$root/lib/modules/$running/kernel" || -f "$root/lib/modules/$running/modules.dep" ]]
 }
 
 kernel_update_pending() {

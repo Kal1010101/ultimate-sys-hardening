@@ -2,7 +2,7 @@
 source "${REPO_ROOT:-/repo}/tests/lib/assert.sh"
 REPO="${REPO_ROOT:-/repo}"
 
-W="${TMPDIR:-/tmp}/uh_reboot_$$"; rm -rf "$W"; mkdir -p "$W/root/lib/modules/6.6.30-0-virt"
+W="${TMPDIR:-/tmp}/uh_reboot_$$"; rm -rf "$W"; mkdir -p "$W/root/lib/modules/6.6.30-0-virt/kernel"
 trap 'rm -rf "$W"' EXIT
 export LOG_FILE="$W/run.log"
 
@@ -29,7 +29,12 @@ out=$(mod1 "rm -rf '$W/root/lib/modules/6.6.30-0-virt'")
 grep -q 'FLAG=true STATUS=10' <<<"$out" && grep -q "removed the running kernel's modules" <<<"$out" \
     && pass_msg "an upgrade that removes the running kernel's modules marks a reboot as required (exit 10)" \
     || fail "in-run kernel removal: $out"
-mkdir -p "$W/root/lib/modules/6.6.30-0-virt"
+mkdir -p "$W/root/lib/modules/6.6.30-0-virt/kernel"
+out=$(mod1 "rm -rf '$W/root/lib/modules/6.6.30-0-virt/kernel'; echo -virt > '$W/root/lib/modules/6.6.30-0-virt/initramfs-suffix'")
+grep -q 'FLAG=true STATUS=10' <<<"$out" \
+    && pass_msg "Alpine: an upgrade that leaves only a stray file in the old module directory is flagged too" \
+    || fail "leftover module directory: $out"
+rm -rf "$W/root/lib/modules/6.6.30-0-virt"; mkdir -p "$W/root/lib/modules/6.6.30-0-virt/kernel"
 out=$(mod1 ":")
 grep -q 'FLAG=false STATUS=0' <<<"$out" && pass_msg "an upgrade that keeps them does not" || fail "no-kernel upgrade: $out"
 rm -rf "$W/root/lib/modules"
