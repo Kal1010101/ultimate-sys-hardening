@@ -103,4 +103,25 @@ assert_file_absent "$fs_conf" "a dry run writes no filesystems file"
 out=$(run_mod "DRY_RUN=true; _squashfs_required() { return 0; }")
 assert_output_contains "$out" 'squashfs' "a dry run on a snapd host says squashfs will be left alone"
 
+# --- the CIS check reads a large modprobe config correctly ------------------
+# A real host's `modprobe --showconfig` runs to tens of thousands of lines.
+# Piped into `grep -q` under pipefail, grep stops at an early match, modprobe
+# dies of SIGPIPE and the pipeline fails, so a blacklisted module read as
+# loadable.
+cis=$(bash -c "set -uo pipefail
+    source '$REPO/lib/core.sh'; source '$REPO/lib/platform.sh'; source '$REPO/lib/modules.sh'; source '$REPO/lib/cis.sh'
+    DISTRO_TYPE=debian; _squashfs_required() { return 1; }
+    modprobe() {
+        [[ \"\$1\" == --showconfig ]] || return 0
+        for m in dccp sctp rds tipc cramfs freevxfs hfs hfsplus jffs2 squashfs udf; do echo \"blacklist \$m\"; done
+        local i; for ((i = 0; i < 40000; i++)); do echo \"alias pci:v\${i}d* some_driver\"; done
+    }
+    run_cis_checks" 2>&1)
+assert_output_contains "$cis" 'Uncommon protocols blacklisted' "the CIS check reports the protocol set"
+if grep -q 'Loadable:' <<<"$cis"; then
+    fail "blacklisted modules read as loadable when modprobe --showconfig is large: $(grep 'Loadable:' <<<"$cis" | head -1)"
+else
+    pass_msg "blacklisted modules pass the CIS check even with a large modprobe config"
+fi
+
 finish

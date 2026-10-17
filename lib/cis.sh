@@ -241,7 +241,8 @@ run_cis_checks() {
     # a host that blacklists these somewhere else still passes. squashfs is
     # excluded when snapd needs it, matching what module 19 will actually do.
     if is_linux && command -v modprobe >/dev/null 2>&1; then
-        local _m _missing _set
+        local _m _missing _set _modcfg
+        _modcfg=$(modprobe --showconfig 2>/dev/null || true)
         # The sets live in lib/modules.sh, which every tier sources first. Guarded
         # anyway so sourcing cis.sh on its own cannot trip `set -u`.
         for _set in "protocols:${UH_BLACKLIST_PROTOCOLS[*]:-}" "filesystems:${UH_BLACKLIST_FILESYSTEMS[*]:-}"; do
@@ -249,8 +250,7 @@ run_cis_checks() {
             _missing=""
             for _m in ${_set#*:}; do
                 [[ "$_m" == "squashfs" ]] && declare -F _squashfs_required >/dev/null && _squashfs_required && continue
-                modprobe --showconfig 2>/dev/null \
-                    | grep -qE "^(blacklist|install)[[:space:]]+${_m}([[:space:]]|$)" \
+                grep -qE "^(blacklist|install)[[:space:]]+${_m}([[:space:]]|$)" <<<"$_modcfg" \
                     || _missing+="${_m} "
             done
             if [[ -z "$_missing" ]]; then
