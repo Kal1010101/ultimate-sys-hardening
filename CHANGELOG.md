@@ -10,6 +10,9 @@ and the project follows [Semantic Versioning](https://semver.org).
 - CIS checks: the uncommon protocol and filesystem checks no longer report
   blacklisted kernel modules as loadable on hosts with a large module
   configuration.
+- Firewall (firewalld): applying module 3 no longer lifts the bans fail2ban
+  has in place; its jails are restarted after the firewall reload so every
+  active ban is applied again.
 
 ### Documentation
 - The website's version badge shows the current release.
