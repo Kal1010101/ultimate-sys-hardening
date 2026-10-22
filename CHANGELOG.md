@@ -4,6 +4,12 @@ All notable changes to Ultimate Hardening (free tier) are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com),
 and the project follows [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Documentation
+- The paid-tier lists on the site and in the README include the compromise
+  indicator scan.
+
 ## [2.4.4] — 2026-10-17
 
 ### Fixed
