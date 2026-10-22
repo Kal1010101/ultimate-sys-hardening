@@ -207,11 +207,13 @@ What the free tier looks like:
 | Open ports / failed logins | — | ✅ | ✅ |
 | Exception register (waivers) | — | ✅ | ✅ |
 | Intrusion activity report + new-ban alerts | — | ✅ | ✅ |
+| Compromise indicator scan + baseline + scheduled email | — | ✅ | ✅ |
 | Asset inventory + SBOM export (CycloneDX / SPDX) | — | ✅ | ✅ |
 | CVE exposure report | — | ✅ | ✅ |
 | Scheduled runs + email | — | ✅ | ✅ |
 | Multi-host dashboard | — | — | ✅ |
 | Remote SSH deploy | — | — | ✅ |
+| Fleet compromise-scan view + remote scan | — | — | ✅ |
 | Policy-as-code + drift | — | — | ✅ |
 | JSON / CSV export | — | — | ✅ |
 | OpenSCAP integration | — | — | ✅ |
@@ -237,6 +239,7 @@ Honest scope — including the gaps.
 | Exception register | Available (Pro) — accepted risks with a justification and a review date |
 | Vulnerability exposure | Available (Pro) — CVEs affecting the installed packages, from your own package manager's repository metadata (RHEL family, SUSE). Debian/Ubuntu metadata has no CVE IDs, so they need the opt-in `--cve-feeds` download. Optional ranking by CISA KEV and EPSS (`--cve-enrich`, also opt-in). |
 | SBOM | Available (Pro) — CycloneDX 1.5 or SPDX 2.3 JSON |
+| Compromise detection | Available (Pro) — read-only indicator-of-compromise scan with a baseline, so later runs show only what changed. It runs on the host it checks, so a root-level rootkit can hide from it; for high assurance, check from trusted boot media. Enterprise adds a per-host view in the dashboard and `--remote` scans. |
 | TLS log forwarding | Available — all tiers, module 21 |
 | USB / removable media | Free: all-or-nothing — module 15 blocks every USB storage device, or none with `UH_USB_STORAGE_BLACKLIST=false`. Pro/Enterprise: per-device allow-list on usbguard — devices connected at setup keep working, new ones are blocked (where the distro packages usbguard). |
 | NIST SP 800-70 | Roadmap |
