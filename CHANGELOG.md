@@ -6,6 +6,10 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Documentation
+- README: an "About this project" section, the exact CI distro list, and a
+  Changelog link.
+
 ## [2.4.5] — 2026-10-22
 
 ### Fixed

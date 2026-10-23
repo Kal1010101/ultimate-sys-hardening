@@ -12,9 +12,38 @@
 [Website](https://Kal1010101.github.io/ultimate-sys-hardening/) ·
 [Security policy](SECURITY.md) ·
 [Packer example](examples/packer/) ·
-[Releases](https://github.com/Kal1010101/ultimate-sys-hardening/releases)
+[Releases](https://github.com/Kal1010101/ultimate-sys-hardening/releases) ·
+[Changelog](CHANGELOG.md)
 
 </div>
+
+---
+
+## About this project
+
+Ultimate Hardening is a one-person open-source project: a Bash tool that audits a
+Linux host against CIS-aligned checks, applies the fixes, and can put everything
+back. It started as a personal tool and is built the way I would want a tool that
+runs as root on my own servers to be built.
+
+**What it demonstrates**
+
+- **Safe automation of risky changes.** Every file is backed up before the first
+  write, the original state is kept separately, `--dry-run` shows each change
+  first, and `--revert` restores it. SSH config is validated with `sshd -t` and
+  rolled back automatically if it fails.
+- **Portability, tested rather than claimed.** 22 modules across 8 Linux families
+  (plus macOS and the BSDs, detected and adapted); every push runs the
+  integration suite in a fresh container on each of 10 distro images, plus
+  ShellCheck. The tests apply real hardening and assert the system actually
+  changed.
+- **Learning from failure in public.** An early version broke a login screen on an
+  eCryptfs system; PAM modification was removed entirely and the reason is
+  written down in [SECURITY.md](SECURITY.md). Fixes are recorded in the
+  [changelog](CHANGELOG.md).
+- **Honest scope.** The "Standards coverage" table says what is available, what is
+  coming soon, and what is not certified.
+- **Plain, reviewable code.** Plain Bash, MIT licensed, no telemetry, no phone-home.
 
 ---
 
@@ -166,8 +195,8 @@ that hardens an AMI and fails the build if the score regresses.
 ## Tiers
 
 The free tier is MIT licensed with no expiry: all 22 hardening modules, the
-CIS checks, dry-run and full revert. It's also an early-stage project, and the
-module set will keep growing. Paid tiers run the same 22 modules and add
+CIS checks, dry-run and full revert. It is actively developed: tagged releases,
+a changelog, and a module set that keeps growing. Paid tiers run the same 22 modules and add
 reporting, fleet management and a few extra hardening modules on top.
 
 What the free tier looks like:
@@ -256,8 +285,9 @@ Honest scope — including the gaps.
 ## Contributing
 
 Issues and PRs welcome. Every push runs ShellCheck, and the integration suite
-in a fresh container on each of 10 distros (Ubuntu, Debian, Rocky, AlmaLinux,
-Fedora, Arch, Alpine) — please make sure both pass locally first:
+in a fresh container on each of 10 distro images (Ubuntu 22.04 and 24.04,
+Debian 12, Rocky 8 and 9, AlmaLinux 8 and 9, Fedora 40, Arch, Alpine) — please
+make sure both pass locally first:
 
 ```bash
 # the same invocation CI uses
@@ -273,7 +303,9 @@ bash -n lib/*.sh src/free/*.sh
 
 `tests/run.sh` applies real hardening inside a container and asserts the system
 actually changed, which is the difference between "the script parses" and "the
-script works". Tests that stub a command must stub it with a shell **function**:
+script works". Bootstrap packages are installed once per distro image and
+reused, so each case starts from a clean container without reinstalling them.
+Tests that stub a command must stub it with a shell **function**:
 `lib/core.sh` prepends the system directories to `PATH` when it is sourced, so a
 stub directory put on `PATH` beforehand is shadowed by the real binary.
 
