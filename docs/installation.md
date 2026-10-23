@@ -1,6 +1,6 @@
 # Installation
 
-This repository is the free tier. Pro and Enterprise are separate products —
+This repository is the free tier. Pro and Enterprise (coming soon) are separate products —
 see [PRICING.md](https://Kal1010101.github.io/ultimate-sys-hardening/#pricing).
 
 ## Quick install
