@@ -6,6 +6,8 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [2.4.5] — 2026-10-22
+
 ### Fixed
 - SSH hardening: the login banner no longer writes through a symlinked
   `/etc/issue.net` into the distribution's own file (Fedora links it to
@@ -228,6 +230,7 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
+[2.4.5]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.5
 [2.4.4]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.4
 [2.4.3]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.3
 [2.4.2]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.2
