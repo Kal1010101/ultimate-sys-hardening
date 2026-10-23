@@ -533,6 +533,16 @@ full_system_revert() {
     rm -f /etc/modprobe.d/disable-unused-filesystems.conf 2>/dev/null || true
     rm -f /etc/profile.d/hardening-umask.sh 2>/dev/null || true
 
+    # Links the hardening replaced with regular files (see
+    # backup_file_for_rewrite). They are a genesis record, so a point-in-time
+    # restore leaves them alone.
+    if [[ "$have_genesis" == true && -f "$BACKUP_GENESIS_DIR/symlinks.txt" ]]; then
+        local lpath _ltarget
+        while IFS='|' read -r lpath _ltarget; do
+            [[ -n "$lpath" ]] && restore_recorded_symlink "$lpath" && bump restored
+        done < "$BACKUP_GENESIS_DIR/symlinks.txt"
+    fi
+
     # Compilers chmod'd by module 20 — restore their recorded original modes.
     local cinv="$BACKUP_DIR/compiler_original_perms.txt"
     [[ -f "$BACKUP_GENESIS_DIR/files$cinv" ]] && cinv="$BACKUP_GENESIS_DIR/files$cinv"

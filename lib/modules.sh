@@ -85,6 +85,7 @@ apply_ssh_hardening() {
     set_config "PrintLastLog"                    "yes"             "$cfg"
     set_config "Banner"                          "/etc/issue.net"  "$cfg"
 
+    backup_file_for_rewrite /etc/issue.net
     echo "Authorized access only. All activity is monitored and logged." \
         > /etc/issue.net 2>/dev/null || true
 

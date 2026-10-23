@@ -6,6 +6,14 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+- SSH hardening: the login banner no longer writes through a symlinked
+  `/etc/issue.net` into the distribution's own file (Fedora links it to
+  `/usr/lib/issue.net`). The link is replaced by a regular file, the original
+  `/etc/issue.net` is backed up, and revert restores it as a link or a file.
+  On a Fedora host hardened by an earlier version,
+  `dnf reinstall fedora-release-common` puts the vendor file back.
+
 ### Documentation
 - The paid-tier lists on the site and in the README include the compromise
   indicator scan.

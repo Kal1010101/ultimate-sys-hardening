@@ -385,6 +385,57 @@ backup_file() {
     return 0
 }
 
+# Some config paths are symlinks into a package's own files: Fedora ships
+# /etc/issue.net -> ../usr/lib/issue.net, owned by fedora-release-common.
+# Writing through the link edited that package file under /usr, with no backup,
+# so revert never restored it and the next package update quietly replaced it.
+# backup_file() cannot help: cp -a stores the link itself, and every restore
+# path only looks for regular files. So the link is recorded in genesis
+# instead (path|target, first capture wins) and removed, and the module writes
+# a regular file in its place. Revert puts the link back.
+_genesis_symlink_target() {
+    local rec="$BACKUP_GENESIS_DIR/symlinks.txt"
+    [[ -f "$rec" ]] || return 1
+    awk -F'|' -v p="$1" '$1 == p { print $2; found = 1; exit } END { exit !found }' "$rec"
+}
+
+# Call instead of backup_file() right before a module rewrites a file wholesale.
+backup_file_for_rewrite() {
+    local f="$1" t
+    [[ "$DRY_RUN" == true ]] && { log_dry "Would back up $f"; return 0; }
+    if [[ -L "$f" ]]; then
+        t=$(readlink "$f")
+        if [[ "$SKIP_BACKUP" != true ]] && ! _genesis_symlink_target "$f" >/dev/null; then
+            mkdir -p "$BACKUP_GENESIS_DIR" 2>/dev/null && chmod 700 "$BACKUP_GENESIS_DIR" 2>/dev/null
+            printf '%s|%s\n' "$f" "$t" >> "$BACKUP_GENESIS_DIR/symlinks.txt" 2>/dev/null \
+                || log_warning "Could not record the original symlink $f -> $t (revert will not restore it)"
+            printf '%s|%s|v%s|%s (symlink to %s)\n' \
+                "$(date '+%Y-%m-%d %H:%M:%S')" "${UH_TIER}" "${UH_VERSION}" "$f" "$t" \
+                >> "$BACKUP_GENESIS_DIR/genesis_manifest.txt" 2>/dev/null || true
+        fi
+        rm -f "$f" 2>/dev/null || { log_warning "Could not replace the symlink $f"; return 1; }
+        return 0
+    fi
+    # A regular file standing where genesis recorded a link is our own earlier
+    # output; backing it up would seed genesis with hardened content.
+    _genesis_symlink_target "$f" >/dev/null && return 0
+    backup_file "$f"
+}
+
+# Put back a link recorded by backup_file_for_rewrite(). Returns 1 when none
+# was recorded for $1, so callers fall through to the normal file restore.
+restore_recorded_symlink() {
+    local f="$1" t
+    t=$(_genesis_symlink_target "$f") || return 1
+    [[ "$DRY_RUN" == true ]] && { log_dry "Would restore $f as a symlink to $t"; return 0; }
+    if rm -f "$f" 2>/dev/null && ln -s "$t" "$f" 2>/dev/null; then
+        log_success "Restored: $f (symlink to $t)"
+    else
+        log_warning "Could not restore $f as a symlink to $t"
+    fi
+    return 0
+}
+
 # Restore a file previously captured by backup_file. Prefers the genesis
 # copy (the true original) and falls back to the current-run BACKUP_DIR
 # copy only if genesis has nothing for this path (e.g. a host that ran
@@ -467,6 +518,7 @@ _is_tool_created_path() {
 revert_backed_up_file() {
     local target="$1"
     [[ -f "$target" ]] || return 0   # nothing to revert
+    restore_recorded_symlink "$target" && return 0
     [[ "$DRY_RUN" == true ]] && { log_dry "Would revert $target"; return 0; }
 
     if _is_tool_created_path "$target"; then
