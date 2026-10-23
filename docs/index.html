@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ultimate Hardening — CIS-aligned Linux security automation</title>
-<meta name="description" content="Open-source Linux hardening automation for Ubuntu, RHEL, Arch and SUSE. 22 security modules, dry-run preview, full revert, PAM-safe. Pro and Enterprise tiers add reporting, scheduling, OpenSCAP CIS/STIG scanning and multi-host compliance.">
+<meta name="description" content="Open-source Linux hardening automation for Ubuntu, RHEL, Arch and SUSE. 22 security modules, dry-run preview, full revert, PAM-safe. The Pro tier adds reporting and scheduling; Enterprise (coming soon) adds OpenSCAP CIS/STIG scanning and multi-host compliance.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>">
 <style>
   :root{
@@ -460,7 +460,7 @@
       <div class="card"><h3><span class="ico">🧬</span> PAM-safe by design</h3>
         <p>Password policy is written to <code class="inline">/etc/security/pwquality.conf</code> — never by hand-editing <code class="inline">/etc/pam.d/*</code>. It also skips when multiple display-manager PAM profiles are detected.</p></div>
       <div class="card"><h3><span class="ico">📡</span> No telemetry, no phone-home</h3>
-        <p>Nothing is ever sent anywhere about your hosts. In the free tier the only outbound request is the optional, explicitly-invoked update check against the GitHub API. The paid tiers can additionally <em>download</em> public vulnerability data — your distro's security feed, and the CISA KEV and EPSS lists — but only when you pass <code class="inline">--cve-feeds</code> or <code class="inline">--cve-enrich</code>, which are off by default. Those are inbound fetches of public files; no query carries anything identifying. Enterprise GitOps fetches policy only from the git repository you name.</p></div>
+        <p>Nothing is ever sent anywhere about your hosts. In the free tier the only outbound request is the optional, explicitly-invoked update check against the GitHub API. The paid tiers can additionally <em>download</em> public vulnerability data — your distro's security feed, and the CISA KEV and EPSS lists — but only when you pass <code class="inline">--cve-feeds</code> or <code class="inline">--cve-enrich</code>, which are off by default. Those are inbound fetches of public files; no query carries anything identifying. Enterprise GitOps (coming soon) fetches policy only from the git repository you name.</p></div>
       <div class="card"><h3><span class="ico">🔍</span> Readable and reviewed</h3>
         <p>Plain Bash, MIT licensed, ShellCheck-clean in CI on every push, tested in fresh containers on 10 distros across the Debian, RHEL, Fedora, Arch and Alpine families.</p></div>
     </div>
@@ -487,9 +487,9 @@
     <div class="grid g3" style="margin-bottom:26px">
       <div class="card"><h3><span class="ico">📊</span> CIS-aligned</h3>
         <p>Built-in checks follow CIS Benchmark guidance for Linux. This is alignment, not a CIS certification, and the built-in scorer is not an accredited assessment.</p></div>
-      <div class="card"><h3><span class="ico">🎯</span> OpenSCAP scanning <span class="badge ok" style="margin-left:4px">Enterprise</span></h3>
+      <div class="card"><h3><span class="ico">🎯</span> OpenSCAP scanning <span class="badge ok" style="margin-left:4px">Enterprise</span><span class="badge" style="margin-left:4px">Coming soon</span></h3>
         <p>Runs <code class="inline">oscap</code> against the official SCAP Security Guide, so you get a real, assessable result under a CIS <em>or</em> DISA STIG profile — not our interpretation of one.</p></div>
-      <div class="card"><h3><span class="ico">🗺️</span> NIST 800-53 crosswalk <span class="badge ok" style="margin-left:4px">Enterprise</span></h3>
+      <div class="card"><h3><span class="ico">🗺️</span> NIST 800-53 crosswalk <span class="badge ok" style="margin-left:4px">Enterprise</span><span class="badge" style="margin-left:4px">Coming soon</span></h3>
         <p>Maps each hardening module to the NIST SP 800-53 Rev. 5 controls it contributes to, and reports how many are in place on this host right now. Exports to JSON and CSV, and appears in the HTML compliance report. A mapping and a configuration record — not an assessment, and not a claim of compliance.</p></div>
     </div>
 
@@ -544,7 +544,7 @@
         <h3>Pro</h3>
         <div class="price">$9<span> /month</span></div>
         <div class="tier-for">One admin, many machines</div>
-          <div class="price-note">or $79/year (save 27%). Single admin, unlimited personal &amp; client servers.</div>
+          <div class="price-note">or $79/year (save 27%). Single admin, up to 10 hosts (your own or your clients').</div>
         <ul>
           <li class="inherit">Everything in Free</li>
           <li>One-command auto-fix of CIS findings</li>
@@ -566,7 +566,7 @@
       </div>
 
       <div class="tier">
-        <div class="tier-tag">Fleets &amp; compliance</div>
+        <div class="tier-tag">Coming soon</div>
         <h3>Enterprise</h3>
         <div class="price">$49<span> /month</span></div>
         <div class="tier-for">A fleet someone audits</div>
@@ -585,7 +585,7 @@
           <li>Fleet-wide syslog: one collector, every host</li>
           <li>Priority support</li>
         </ul>
-        <a class="btn btn-ghost" href="mailto:ultimate-sys-hardening@protonmail.com?subject=Ultimate%20Hardening%20Enterprise">Talk to us</a>
+        <a class="btn btn-ghost" href="mailto:ultimate-sys-hardening@protonmail.com?subject=Ultimate%20Hardening%20Enterprise">Coming soon — get notified</a>
       </div>
 
     </div>
@@ -594,7 +594,7 @@
     <div class="tablewrap">
       <table>
         <thead>
-          <tr><th>Capability</th><th>Free</th><th>Pro</th><th>Enterprise</th></tr>
+          <tr><th>Capability</th><th>Free</th><th>Pro</th><th>Enterprise (coming soon)</th></tr>
         </thead>
         <tbody>
           <tr><td class="feat">Hardening modules</td><td class="y">22</td><td class="y">22</td><td class="y">22</td></tr>
@@ -649,7 +649,7 @@
     <div class="callout" style="margin-top:26px">
       <strong>Honest scope notes.</strong>
       <b>CIS-aligned is not CIS-certified.</b> The built-in checks follow CIS guidance
-      but are not an accredited assessment; use the Enterprise OpenSCAP scan against
+      but are not an accredited assessment; the Enterprise OpenSCAP scan (coming soon) runs against
       official SCAP content for an auditor-recognised result.
       <b>The NIST crosswalk is a mapping, not an assessment.</b> It records which
       modules contribute to a control and how many are in place here. A control is
@@ -686,7 +686,7 @@
 
     <details><summary>Is this CIS certified?</summary>
       <p>No, and anything claiming otherwise deserves scrutiny. The built-in checks are CIS-<em>aligned</em>.
-      For an assessable, auditor-recognised CIS or DISA STIG result, the Enterprise tier runs OpenSCAP
+      For an assessable, auditor-recognised CIS or DISA STIG result, the Enterprise tier (coming soon) runs OpenSCAP
       against the official SCAP Security Guide content.</p></details>
 
     <details><summary>What distributions are supported?</summary>
@@ -704,16 +704,16 @@
       feed, <code class="inline">--cve-enrich</code> for the CISA KEV catalogue and EPSS scores. Both
       are off unless passed, and both are plain downloads: nothing is uploaded, and the request
       contains no host identifier, package list or licence key.</p>
-      <p>Enterprise GitOps (<code class="inline">--gitops</code>) clones and fetches policy from the git
+      <p>Enterprise GitOps (coming soon; <code class="inline">--gitops</code>) clones and fetches policy from the git
       repository you point it at, and nowhere else.</p>
       <p>The free tier is MIT-licensed — source is on GitHub.</p></details>
 
-    <details><summary>How does Enterprise host counting work?</summary>
-      <p>A host is any machine you scan, harden or track in the dashboard. The base tier covers 10 hosts,
+    <details><summary>How will Enterprise host counting work?</summary>
+      <p>Enterprise is coming soon. A host is any machine you scan, harden or track in the dashboard. The base tier covers 10 hosts,
       additional hosts are $3/month each, and the flat $149/month plan covers up to 50. Above that,
       get in touch and we will size it.</p></details>
 
-    <details><summary>Can I try Pro or Enterprise before buying?</summary>
+    <details><summary>Can I try Pro before buying?</summary>
       <p>Yes — get in touch and we will set up a trial. The free tier is also a genuine product rather
       than a crippled demo, so you can validate the hardening itself before paying for the
       automation layer.</p></details>

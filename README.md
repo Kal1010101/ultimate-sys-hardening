@@ -195,7 +195,7 @@ What the free tier looks like:
 <sub><i>Click any shot to open it full size.</i></sub>
 </div>
 
-| | Free | Pro | Enterprise |
+| | Free | Pro | Enterprise (coming soon) |
 |---|---|---|---|
 | **Price** | $0 | $9/mo · $79/yr | $49/mo (≤10 hosts) |
 | Hardening modules (22) | ✅ | ✅ | ✅ |
@@ -230,16 +230,16 @@ Honest scope — including the gaps.
 |----------|--------|
 | CIS Benchmarks | CIS-**aligned** checks. Not a certified CIS-CAT implementation. |
 | Automated remediation | Available |
-| Continuous compliance / drift | Available (Enterprise) |
-| OpenSCAP | Available (Enterprise) — wraps `oscap`, folds results into reports |
+| Continuous compliance / drift | Coming soon (Enterprise) |
+| OpenSCAP | Coming soon (Enterprise) — wraps `oscap`, folds results into reports |
 | Packer / Terraform | Available — [example included](examples/packer/) |
-| Fleet scale | Small fleets (tens of hosts). Remote deploy is a sequential SSH loop. |
-| DISA STIG | **Scanning** available (Enterprise) — `--scap-profile stig` against the distro's SSG content. STIG-specific remediation is not mapped. |
-| PCI-DSS / HIPAA / ANSSI / others | Scanning available (Enterprise) wherever the distro's SSG content ships that profile — `--scap-list-profiles` shows which. |
+| Fleet scale | Coming soon (Enterprise) — small fleets (tens of hosts). Remote deploy is a sequential SSH loop. |
+| DISA STIG | **Scanning** coming soon (Enterprise) — `--scap-profile stig` against the distro's SSG content. STIG-specific remediation is not mapped. |
+| PCI-DSS / HIPAA / ANSSI / others | Scanning coming soon (Enterprise) wherever the distro's SSG content ships that profile — `--scap-list-profiles` shows which. |
 | Exception register | Available (Pro) — accepted risks with a justification and a review date |
 | Vulnerability exposure | Available (Pro) — CVEs affecting the installed packages, from your own package manager's repository metadata (RHEL family, SUSE). Debian/Ubuntu metadata has no CVE IDs, so they need the opt-in `--cve-feeds` download. Optional ranking by CISA KEV and EPSS (`--cve-enrich`, also opt-in). |
 | SBOM | Available (Pro) — CycloneDX 1.5 or SPDX 2.3 JSON |
-| Compromise detection | Available (Pro) — read-only indicator-of-compromise scan with a baseline, so later runs show only what changed. It runs on the host it checks, so a root-level rootkit can hide from it; for high assurance, check from trusted boot media. Enterprise adds a per-host view in the dashboard and `--remote` scans. |
+| Compromise detection | Available (Pro) — read-only indicator-of-compromise scan with a baseline, so later runs show only what changed. It runs on the host it checks, so a root-level rootkit can hide from it; for high assurance, check from trusted boot media. Enterprise (coming soon) adds a per-host view in the dashboard and `--remote` scans. |
 | TLS log forwarding | Available — all tiers, module 21 |
 | USB / removable media | Free: all-or-nothing — module 15 blocks every USB storage device, or none with `UH_USB_STORAGE_BLACKLIST=false`. Pro/Enterprise: per-device allow-list on usbguard — devices connected at setup keep working, new ones are blocked (where the distro packages usbguard). |
 | NIST SP 800-70 | Roadmap |

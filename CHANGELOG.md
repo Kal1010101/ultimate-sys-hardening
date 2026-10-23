@@ -9,6 +9,8 @@ and the project follows [Semantic Versioning](https://semver.org).
 ### Documentation
 - The paid-tier lists on the site and in the README include the compromise
   indicator scan.
+- The Pro tier covers up to 10 hosts (your own or your clients'), and
+  Enterprise is marked as coming soon.
 
 ## [2.4.4] — 2026-10-17
 
