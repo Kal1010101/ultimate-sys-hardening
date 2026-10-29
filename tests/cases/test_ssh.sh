@@ -33,11 +33,17 @@ if command -v sshd >/dev/null 2>&1; then
     else
         fail "sshd -t REJECTS the hardened config — this would lock users out"
     fi
-    eff=$(sshd -T "${hk[@]}" 2>/dev/null)
-    for kv in "permitrootlogin no" "passwordauthentication no" "x11forwarding no" "allowtcpforwarding no"; do
-        grep -qx "$kv" <<< "$eff" && pass_msg "sshd runs with $kv${vendor:+ despite a vendor drop-in}" \
-                                  || fail "sshd does not run with $kv (got: $(grep "^${kv% *} " <<< "$eff"))"
-    done
+    err=$(mktemp)
+    eff=$(sshd -T "${hk[@]}" 2>"$err")
+    if [[ -z "$eff" ]]; then
+        fail "sshd -T printed no settings: $(head -c 300 "$err")"
+    else
+        for kv in "permitrootlogin no" "passwordauthentication no" "x11forwarding no" "allowtcpforwarding no"; do
+            grep -qx "$kv" <<< "$eff" && pass_msg "sshd runs with $kv${vendor:+ despite a vendor drop-in}" \
+                                      || fail "sshd does not run with $kv (got: $(grep "^${kv% *} " <<< "$eff"))"
+        done
+    fi
+    rm -f "$err"
 fi
 
 n=$(grep -cE '^#[[:space:]]+(X11Forwarding|AllowTcpForwarding)' /etc/ssh/sshd_config)
