@@ -722,28 +722,39 @@ remove_line() {
 }
 
 # Set key/value in a config file, replacing an existing line or appending.
+# Only the global section is touched: from the first active Match line on,
+# settings belong to a Match block (sshd_config) and are the admin's to keep.
+# A key with no global line goes in above that Match line, since below it
+# the setting would apply only inside the block.
 set_config() {
     local key="$1" value="$2" file="$3" sep="${4:- }" tmp rc
     [[ "$DRY_RUN" == true ]] && { log_dry "Would set $key${sep}$value in $file"; return 0; }
     [[ -f "$file" ]] || touch "$file" 2>/dev/null || return 1
-    if grep -qE "^[[:space:]]*${key}([[:space:]]|=)" "$file" 2>/dev/null; then
-        # NOTE: sed's delimiter is `|`, so the pattern below must not contain a
-        # literal `|` — `([[:space:]]|=)` would prematurely end the s/// command
-        # ("unknown option to `s'"). Use a bracket expression instead; it's the
-        # same single-character alternation without the delimiter collision.
-        sed -i -E "s|^[[:space:]]*${key}[[:space:]=].*|${key}${sep}${value}|" "$file" 2>/dev/null || return 1
-    elif grep -qE "^[[:space:]]*#[[:space:]]*${key}([[:space:]]|=)" "$file" 2>/dev/null; then
-        # First commented default only; later ones can sit inside a
-        # commented-out example block, such as sshd_config's Match stanza.
-        tmp=$(mktemp) || return 1
-        awk -v re="^[[:space:]]*#[[:space:]]*${key}[[:space:]=]" -v line="${key}${sep}${value}" \
-            '!done && $0 ~ re { print line; done = 1; next } { print }' "$file" > "$tmp" \
-            && cat "$tmp" > "$file"
-        rc=$?
-        rm -f "$tmp"
-        return "$rc"
-    else
-        echo "${key}${sep}${value}" >> "$file" 2>/dev/null || return 1
-    fi
-    return 0
+    tmp=$(mktemp) || return 1
+    # Pass 1 reads the global section, pass 2 rewrites. With no active line,
+    # only the first commented default is replaced; later ones can sit inside
+    # a commented-out example block, such as sshd_config's Match stanza.
+    awk -v active="^[[:space:]]*${key}[[:space:]=]" \
+        -v commented="^[[:space:]]*#[[:space:]]*${key}[[:space:]=]" \
+        -v match_re="^[[:space:]]*[Mm][Aa][Tt][Cc][Hh][[:space:]]" \
+        -v line="${key}${sep}${value}" '
+        FNR == NR {
+            if ($0 ~ match_re) inblock = 1
+            if (!inblock && $0 ~ active) has_active = 1
+            if (!inblock && $0 ~ commented) has_commented = 1
+            next
+        }
+        FNR == 1 { inblock = 0 }
+        !inblock && $0 ~ match_re {
+            inblock = 1
+            if (!has_active && !has_commented) { print line; done = 1 }
+        }
+        !inblock && has_active && $0 ~ active { print line; next }
+        !inblock && !has_active && !done && $0 ~ commented { print line; done = 1; next }
+        { print }
+        END { if (!has_active && !done) print line }
+    ' "$file" "$file" > "$tmp" && cat "$tmp" > "$file"
+    rc=$?
+    rm -f "$tmp"
+    return "$rc"
 }
