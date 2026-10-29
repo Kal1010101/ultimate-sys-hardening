@@ -6,6 +6,17 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+- Restore and revert put back the SELinux label of every file they copy into
+  place, so a confined sshd can read a restored `sshd_config` again.
+- SSH hardening checks that a running sshd came back after the restart; if it
+  did not, the previous config is restored and the module fails.
+- The sshd drop-in also sets `X11Forwarding no` and `AllowTcpForwarding no`,
+  so a vendor drop-in such as Fedora's `50-redhat.conf` no longer overrides them.
+- Config edits change only the first commented default, so commented example
+  blocks (sshd_config's `Match` stanza) stay commented.
+- Full revert removes the sshd drop-in.
+
 ### Documentation
 - README: an "About this project" section, the exact CI distro list, and a
   Changelog link.

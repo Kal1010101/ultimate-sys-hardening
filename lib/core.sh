@@ -422,6 +422,13 @@ backup_file_for_rewrite() {
     backup_file "$f"
 }
 
+# cp -a carries the backup copy's SELinux label into /etc, and a daemon
+# confined to its own config type then cannot read the file.
+relabel_path() {
+    command -v restorecon >/dev/null 2>&1 || return 0
+    restorecon "$@" >/dev/null 2>&1 || true
+}
+
 # Put back a link recorded by backup_file_for_rewrite(). Returns 1 when none
 # was recorded for $1, so callers fall through to the normal file restore.
 restore_recorded_symlink() {
@@ -429,6 +436,7 @@ restore_recorded_symlink() {
     t=$(_genesis_symlink_target "$f") || return 1
     [[ "$DRY_RUN" == true ]] && { log_dry "Would restore $f as a symlink to $t"; return 0; }
     if rm -f "$f" 2>/dev/null && ln -s "$t" "$f" 2>/dev/null; then
+        relabel_path "$f"
         log_success "Restored: $f (symlink to $t)"
     else
         log_warning "Could not restore $f as a symlink to $t"
@@ -448,6 +456,7 @@ restore_file() {
     [[ -f "$src" ]] || return 1
     [[ "$DRY_RUN" == true ]] && { log_dry "Would restore $target"; return 0; }
     cp -a "$src" "$target" 2>/dev/null || return 1
+    relabel_path "$target"
     log_success "Restored: $target"
     return 0
 }
@@ -537,7 +546,7 @@ revert_backed_up_file() {
     fi
 
     if [[ -n "$src" ]]; then
-        cp -a "$src" "$target" 2>/dev/null && { log_success "Restored: $target"; return 0; }
+        cp -a "$src" "$target" 2>/dev/null && { relabel_path "$target"; log_success "Restored: $target"; return 0; }
         log_warning "Could not restore $target"
         return 1
     fi
@@ -688,15 +697,25 @@ remove_line() {
 
 # Set key/value in a config file, replacing an existing line or appending.
 set_config() {
-    local key="$1" value="$2" file="$3" sep="${4:- }"
+    local key="$1" value="$2" file="$3" sep="${4:- }" tmp rc
     [[ "$DRY_RUN" == true ]] && { log_dry "Would set $key${sep}$value in $file"; return 0; }
     [[ -f "$file" ]] || touch "$file" 2>/dev/null || return 1
-    if grep -qE "^[[:space:]]*#?[[:space:]]*${key}([[:space:]]|=)" "$file" 2>/dev/null; then
+    if grep -qE "^[[:space:]]*${key}([[:space:]]|=)" "$file" 2>/dev/null; then
         # NOTE: sed's delimiter is `|`, so the pattern below must not contain a
         # literal `|` — `([[:space:]]|=)` would prematurely end the s/// command
         # ("unknown option to `s'"). Use a bracket expression instead; it's the
         # same single-character alternation without the delimiter collision.
-        sed -i -E "s|^[[:space:]]*#?[[:space:]]*${key}[[:space:]=].*|${key}${sep}${value}|" "$file" 2>/dev/null || return 1
+        sed -i -E "s|^[[:space:]]*${key}[[:space:]=].*|${key}${sep}${value}|" "$file" 2>/dev/null || return 1
+    elif grep -qE "^[[:space:]]*#[[:space:]]*${key}([[:space:]]|=)" "$file" 2>/dev/null; then
+        # First commented default only; later ones can sit inside a
+        # commented-out example block, such as sshd_config's Match stanza.
+        tmp=$(mktemp) || return 1
+        awk -v re="^[[:space:]]*#[[:space:]]*${key}[[:space:]=]" -v line="${key}${sep}${value}" \
+            '!done && $0 ~ re { print line; done = 1; next } { print }' "$file" > "$tmp" \
+            && cat "$tmp" > "$file"
+        rc=$?
+        rm -f "$tmp"
+        return "$rc"
     else
         echo "${key}${sep}${value}" >> "$file" 2>/dev/null || return 1
     fi
