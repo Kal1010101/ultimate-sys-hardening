@@ -32,5 +32,6 @@ else
 fi
 
 assert_file_absent /etc/sysctl.d/99-hardening.conf "revert removed the sysctl drop-in"
+assert_file_absent /etc/ssh/sshd_config.d/00-ultimate-hardening.conf "revert removed the sshd drop-in"
 
 finish

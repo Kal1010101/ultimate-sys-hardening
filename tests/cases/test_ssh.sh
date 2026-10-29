@@ -4,6 +4,13 @@ source "${REPO_ROOT:-/repo}/tests/lib/assert.sh"
 require_root
 require_file /etc/ssh/sshd_config
 
+printf '#Match User anoncvs\n#\tX11Forwarding no\n#\tAllowTcpForwarding no\n' >> /etc/ssh/sshd_config
+vendor=""
+if [[ -d /etc/ssh/sshd_config.d ]] && grep -qE '^Include[[:space:]]+/etc/ssh/sshd_config\.d/' /etc/ssh/sshd_config; then
+    vendor=/etc/ssh/sshd_config.d/50-vendor-test.conf
+    printf 'X11Forwarding yes\nAllowTcpForwarding yes\n' > "$vendor"
+fi
+
 before=$(checksum /etc/ssh/sshd_config)
 run_hardening --auto-mode --skip-backup >/dev/null
 
@@ -26,7 +33,16 @@ if command -v sshd >/dev/null 2>&1; then
     else
         fail "sshd -t REJECTS the hardened config — this would lock users out"
     fi
+    eff=$(sshd -T "${hk[@]}" 2>/dev/null)
+    for kv in "permitrootlogin no" "passwordauthentication no" "x11forwarding no" "allowtcpforwarding no"; do
+        grep -qx "$kv" <<< "$eff" && pass_msg "sshd runs with $kv${vendor:+ despite a vendor drop-in}" \
+                                  || fail "sshd does not run with $kv (got: $(grep "^${kv% *} " <<< "$eff"))"
+    done
 fi
+
+n=$(grep -cE '^#[[:space:]]+(X11Forwarding|AllowTcpForwarding)' /etc/ssh/sshd_config)
+[[ "$n" -ge 2 ]] && pass_msg "the commented Match example stays commented" \
+                 || fail "the commented Match example lines were uncommented"
 
 # Running twice must not duplicate directives.
 run_hardening --auto-mode --skip-backup >/dev/null

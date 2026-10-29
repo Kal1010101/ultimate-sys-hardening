@@ -59,6 +59,7 @@ apply_system_updates() {
 apply_ssh_hardening() {
     log_message "${LOCK} [2/22] SSH Hardening"
     local cfg="/etc/ssh/sshd_config"
+    local dropin="/etc/ssh/sshd_config.d/00-ultimate-hardening.conf"
 
     if [[ ! -f "$cfg" ]]; then
         log_warning "sshd_config not found — SSH not installed, skipping"
@@ -68,6 +69,9 @@ apply_ssh_hardening() {
         log_dry "Would apply 13 hardened settings to $cfg"
         return 0
     fi
+
+    local was_running=false
+    { is_service_active sshd || is_service_active ssh; } && was_running=true
 
     backup_file "$cfg"
 
@@ -88,6 +92,7 @@ apply_ssh_hardening() {
     backup_file_for_rewrite /etc/issue.net
     echo "Authorized access only. All activity is monitored and logged." \
         > /etc/issue.net 2>/dev/null || true
+    relabel_path "$cfg" /etc/issue.net
 
     # sshd_config uses first-obtained-value-wins: whichever value for a
     # keyword it parses FIRST is the one that applies, and every later
@@ -111,7 +116,6 @@ apply_ssh_hardening() {
     # config on any host with no conflicting drop-in and as a visible record
     # of intent for anyone reading sshd_config directly.
     if [[ -d /etc/ssh/sshd_config.d ]]; then
-        local dropin="/etc/ssh/sshd_config.d/00-ultimate-hardening.conf"
         cat > "$dropin" << 'EOF'
 # Written by Ultimate Hardening. Named to sort first among
 # /etc/ssh/sshd_config.d/*.conf so it wins sshd's first-value-wins parsing
@@ -122,8 +126,11 @@ PasswordAuthentication no
 ChallengeResponseAuthentication no
 PermitEmptyPasswords no
 MaxAuthTries 3
+X11Forwarding no
+AllowTcpForwarding no
 EOF
         chmod 600 "$dropin" 2>/dev/null || true
+        relabel_path "$dropin"
     fi
 
     # sshd -t itself needs /run/sshd (privilege separation) to exist, which a
@@ -135,9 +142,20 @@ EOF
     mkdir -p /run/sshd 2>/dev/null || true
 
     # Validate before restarting — a bad config must never lock the operator out.
+    # sshd -t runs unconfined, so it passes configs the confined daemon is
+    # not allowed to read. Only a running sshd proves the restart worked.
     if sshd_config_valid; then
-        restart_sshd
-        log_success "SSH hardened (13 settings) and daemon restarted"
+        if restart_sshd && { is_service_active sshd || is_service_active ssh; }; then
+            log_success "SSH hardened (13 settings) and daemon restarted"
+        elif [[ "$was_running" == true ]]; then
+            log_error "sshd did not come back after the restart — restoring the previous config"
+            restore_file "$cfg" || log_error "Restore failed. Inspect $cfg manually before disconnecting."
+            rm -f "$dropin" 2>/dev/null || true
+            restart_sshd || log_error "sshd is still down — check $(service_status_hint sshd) before disconnecting"
+            return 1
+        else
+            log_success "SSH hardened (13 settings); sshd is not running, so nothing was restarted"
+        fi
     else
         log_error "sshd config failed validation — restoring backup, no restart"
         restore_file "$cfg" || log_error "Restore failed. Inspect $cfg manually before disconnecting."

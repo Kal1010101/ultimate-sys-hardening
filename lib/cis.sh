@@ -507,7 +507,7 @@ full_system_revert() {
     if [[ "$have_genesis" == true ]]; then
         while IFS= read -r stored; do
             local target="${stored#$BACKUP_GENESIS_DIR/files}"
-            cp -a "$stored" "$target" 2>/dev/null && { log_info "  restored (genesis): $target"; bump restored; } || \
+            cp -a "$stored" "$target" 2>/dev/null && { relabel_path "$target"; log_info "  restored (genesis): $target"; bump restored; } || \
                 log_warning "  could not restore $target"
         done < <(find "$BACKUP_GENESIS_DIR/files" -type f 2>/dev/null)
     fi
@@ -518,7 +518,7 @@ full_system_revert() {
         while IFS= read -r stored; do
             local target="${stored#$BACKUP_DIR/files}"
             [[ -f "$BACKUP_GENESIS_DIR/files$target" ]] && continue  # already restored above
-            cp -a "$stored" "$target" 2>/dev/null && { log_info "  restored (per-run): $target"; bump restored; } || \
+            cp -a "$stored" "$target" 2>/dev/null && { relabel_path "$target"; log_info "  restored (per-run): $target"; bump restored; } || \
                 log_warning "  could not restore $target"
         done < <(find "$BACKUP_DIR/files" -type f 2>/dev/null)
     fi
@@ -532,6 +532,7 @@ full_system_revert() {
     rm -f /etc/modprobe.d/disable-unused-protocols.conf 2>/dev/null || true
     rm -f /etc/modprobe.d/disable-unused-filesystems.conf 2>/dev/null || true
     rm -f /etc/profile.d/hardening-umask.sh 2>/dev/null || true
+    rm -f /etc/ssh/sshd_config.d/00-ultimate-hardening.conf 2>/dev/null || true
 
     # Links the hardening replaced with regular files (see
     # backup_file_for_rewrite). They are a genesis record, so a point-in-time
