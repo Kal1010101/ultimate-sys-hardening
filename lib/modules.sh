@@ -490,29 +490,18 @@ revert_firewall() {
 }
 
 # --- 4. Fail2Ban -------------------------------------------------------------
-apply_fail2ban() {
-    log_message "${SHIELD} [4/22] Fail2Ban"
-    if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would install fail2ban with an SSH jail (3 tries, 2h ban)"
-        return 0
-    fi
-
-    install_package fail2ban || { log_warning "fail2ban unavailable — skipping"; return 0; }
-
+_fail2ban_jail_local() {
     # The sshd jail's default backend reads /var/log/auth.log, which does not
     # exist on a journald-only host (no rsyslog installed) — increasingly the
     # default on modern Debian/Ubuntu cloud images. Without a log source the
     # whole fail2ban daemon fails to start at all (not just the sshd jail),
-    # so enable_service below would report "enabled" for a service that is
-    # actually dead. On a systemd host, reading the journal directly sidesteps
-    # the missing-file problem entirely; on a non-systemd host (e.g. Alpine's
-    # OpenRC) the traditional file-based backend is left as-is.
+    # so apply_fail2ban's enable_service would report "enabled" for a service
+    # that is actually dead. On a systemd host, reading the journal directly
+    # sidesteps the missing-file problem entirely; on a non-systemd host (e.g.
+    # Alpine's OpenRC) the traditional file-based backend is left as-is.
     local backend="auto"
     _has_systemd && backend="systemd"
-
-    backup_file /etc/fail2ban/jail.local
-    mkdir -p /etc/fail2ban 2>/dev/null || true
-    cat > /etc/fail2ban/jail.local << EOF
+    cat << EOF
 [DEFAULT]
 bantime  = 3600
 findtime = 600
@@ -525,6 +514,20 @@ maxretry = 3
 bantime  = 7200
 backend  = ${backend}
 EOF
+}
+
+apply_fail2ban() {
+    log_message "${SHIELD} [4/22] Fail2Ban"
+    if [[ "$DRY_RUN" == true ]]; then
+        log_dry "Would install fail2ban with an SSH jail (3 tries, 2h ban)"
+        return 0
+    fi
+
+    install_package fail2ban || { log_warning "fail2ban unavailable — skipping"; return 0; }
+
+    backup_file /etc/fail2ban/jail.local
+    mkdir -p /etc/fail2ban 2>/dev/null || true
+    _fail2ban_jail_local > /etc/fail2ban/jail.local
 
     if [[ -f /etc/fail2ban/filter.d/alpine-sshd.conf ]]; then
         cat > /etc/fail2ban/filter.d/alpine-sshd.local << 'EOF'
@@ -1080,7 +1083,16 @@ apply_docker_security() {
     create_backup_dir
     backup_file /etc/docker/daemon.json
     mkdir -p /etc/docker 2>/dev/null || true
-    cat > /etc/docker/daemon.json << 'EOF'
+    _docker_daemon_json > /etc/docker/daemon.json
+
+    restart_service docker || log_warning "Could not restart docker — the new daemon.json applies on next restart"
+    log_success "Docker daemon hardened"
+    count_fix
+    return 0
+}
+
+_docker_daemon_json() {
+    cat << 'EOF'
 {
   "userns-remap": "default",
   "icc": false,
@@ -1092,11 +1104,16 @@ apply_docker_security() {
   "live-restore": true
 }
 EOF
+}
 
-    restart_service docker || log_warning "Could not restart docker — the new daemon.json applies on next restart"
-    log_success "Docker daemon hardened"
-    count_fix
-    return 0
+# What a module writes to a file whose name it shares with the admin's own
+# configuration (see UH_SHARED_WRITTEN_PATHS in lib/core.sh).
+tool_written_content() {
+    case "$1" in
+        /etc/fail2ban/jail.local) _fail2ban_jail_local ;;
+        /etc/docker/daemon.json)  _docker_daemon_json ;;
+        *) return 1 ;;
+    esac
 }
 
 # --- 18. ModSecurity WAF -----------------------------------------------------

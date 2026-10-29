@@ -16,6 +16,12 @@ and the project follows [Semantic Versioning](https://semver.org).
 - Config edits change only the first commented default, so commented example
   blocks (sshd_config's `Match` stanza) stay commented.
 - Full revert removes the sshd drop-in.
+- Full revert also removes the Fail2Ban `jail.local` and Docker `daemon.json`
+  the tool wrote, and the uncommon-filesystem blacklist when one module is
+  reverted.
+- Reverting Fail2Ban or Docker hardening no longer deletes a `jail.local` or
+  `daemon.json` that was there before the first run; it is restored, or left
+  alone when it was never changed.
 
 ### Documentation
 - README: an "About this project" section, the exact CI distro list, and a

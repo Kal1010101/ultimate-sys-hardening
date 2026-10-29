@@ -502,6 +502,19 @@ full_system_revert() {
         return 0
     fi
 
+    # Decided before the restore loops below overwrite the live files.
+    local -a drop=()
+    local src sp
+    for sp in "${UH_SHARED_WRITTEN_PATHS[@]}"; do
+        src=""
+        if [[ "$have_genesis" == true && -f "$BACKUP_GENESIS_DIR/files$sp" ]]; then
+            src="$BACKUP_GENESIS_DIR/files$sp"
+        elif [[ -f "${BACKUP_DIR:-}/files$sp" ]]; then
+            src="$BACKUP_DIR/files$sp"
+        fi
+        _holds_only_tool_output "$sp" "$src" && drop+=("$sp")
+    done
+
     # Restore every file captured under genesis first (true originals)...
     local restored=0
     if [[ "$have_genesis" == true ]]; then
@@ -526,13 +539,9 @@ full_system_revert() {
     # Remove files the hardening added rather than modified. Files that
     # existed before are restored from backup above; these are ones the tool
     # created, so there is nothing to restore them to.
-    rm -f /etc/sysctl.d/99-hardening.conf 2>/dev/null || true
-    rm -f /etc/audit/rules.d/99-hardening.rules 2>/dev/null || true
-    rm -f /etc/modprobe.d/99-hardening-usb.conf 2>/dev/null || true
-    rm -f /etc/modprobe.d/disable-unused-protocols.conf 2>/dev/null || true
-    rm -f /etc/modprobe.d/disable-unused-filesystems.conf 2>/dev/null || true
-    rm -f /etc/profile.d/hardening-umask.sh 2>/dev/null || true
-    rm -f /etc/ssh/sshd_config.d/00-ultimate-hardening.conf 2>/dev/null || true
+    for sp in "${UH_TOOL_CREATED_PATHS[@]}" ${drop[@]+"${drop[@]}"}; do
+        rm -f "$sp" 2>/dev/null || true
+    done
 
     # Links the hardening replaced with regular files (see
     # backup_file_for_rewrite). They are a genesis record, so a point-in-time

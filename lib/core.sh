@@ -500,7 +500,7 @@ restore_file() {
 #
 # full_system_revert() already knew about this shape of problem — its own
 # revert doesn't trust backup/genesis lookups for these paths at all, it
-# just unconditionally `rm -f`s a hand-maintained list. Same fix here,
+# just unconditionally `rm -f`s this list. Same fix here,
 # generalized: a path known to be entirely module-output, not a modified
 # pre-existing file, is always deleted, and genesis/per-run backups are
 # never even consulted for it — no lookup to get poisoned by.
@@ -509,12 +509,32 @@ UH_TOOL_CREATED_PATHS=(
     "/etc/audit/rules.d/99-hardening.rules"
     "/etc/modprobe.d/99-hardening-usb.conf"
     "/etc/modprobe.d/disable-unused-protocols.conf"
+    "/etc/modprobe.d/disable-unused-filesystems.conf"
     "/etc/profile.d/hardening-umask.sh"
-    "/etc/fail2ban/jail.local"
     "/etc/fail2ban/filter.d/alpine-sshd.local"
     "/etc/ssh/sshd_config.d/00-ultimate-hardening.conf"
+)
+
+# Files a module also rewrites whole, but under a name an admin may already
+# have used before the first run. One is removed only while it still holds
+# exactly the module's output and no earlier version of it was ever kept;
+# otherwise it is restored or left alone like any other file.
+UH_SHARED_WRITTEN_PATHS=(
+    "/etc/fail2ban/jail.local"
     "/etc/docker/daemon.json"
 )
+
+# $1 = live file, $2 = the backup a revert would restore (may be empty).
+_holds_only_tool_output() {
+    local target="$1" src="${2:-}" ours p shared=false
+    for p in "${UH_SHARED_WRITTEN_PATHS[@]}"; do
+        [[ "$target" == "$p" ]] && shared=true
+    done
+    [[ "$shared" == true && -f "$target" ]] || return 1
+    ours=$(tool_written_content "$target" 2>/dev/null) || return 1
+    [[ "$(cat "$target")" == "$ours" ]] || return 1
+    [[ -z "$src" || "$(cat "$src")" == "$ours" ]]
+}
 
 _is_tool_created_path() {
     local target="$1" p
@@ -543,6 +563,12 @@ revert_backed_up_file() {
         while IFS= read -r d; do
             if [[ -f "$d/files$target" ]]; then src="$d/files$target"; break; fi
         done < <(find "$UH_BACKUP_ROOT" -maxdepth 1 -type d -name 'hardening_backup_*' 2>/dev/null | sort)
+    fi
+
+    if _holds_only_tool_output "$target" "$src"; then
+        rm -f "$target" 2>/dev/null && { log_success "Removed (created by hardening, no earlier version existed): $target"; return 0; }
+        log_warning "Could not remove $target"
+        return 1
     fi
 
     if [[ -n "$src" ]]; then
