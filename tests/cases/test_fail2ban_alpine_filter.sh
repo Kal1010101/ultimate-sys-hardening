@@ -6,7 +6,7 @@ W="${TMPDIR:-/tmp}/uh_f2b_alpine_$$"; rm -rf "$W"; mkdir -p "$W/f2b/filter.d"
 trap 'rm -rf "$W"' EXIT
 export LOG_FILE="$W/run.log"
 
-FN=$(sed -n '/^apply_fail2ban() {/,/^}/p' "$REPO/lib/modules.sh" | sed "s#/etc/fail2ban#$W/f2b#g")
+FN=$(sed -n '/^_fail2ban_jail_local() {/,/^}/p;/^apply_fail2ban() {/,/^}/p' "$REPO/lib/modules.sh" | sed "s#/etc/fail2ban#$W/f2b#g")
 [[ -n "$FN" ]] || { fail "apply_fail2ban not found"; finish; }
 
 run_f2b() {
