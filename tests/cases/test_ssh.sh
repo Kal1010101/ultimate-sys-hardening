@@ -33,14 +33,17 @@ if command -v sshd >/dev/null 2>&1; then
     else
         fail "sshd -t REJECTS the hardened config — this would lock users out"
     fi
+    # OpenSSH 10.4 and later print directive names in mixed case.
     err=$(mktemp)
     eff=$(sshd -T "${hk[@]}" 2>"$err")
     if [[ -z "$eff" ]]; then
         fail "sshd -T printed no settings: $(head -c 300 "$err")"
+    elif ! grep -qi '^permitrootlogin ' <<< "$eff"; then
+        fail "sshd -T printed $(wc -l <<< "$eff") lines but no settings dump: $(head -3 <<< "$eff" | tr '\n' '|') stderr: $(head -c 200 "$err")"
     else
         for kv in "permitrootlogin no" "passwordauthentication no" "x11forwarding no" "allowtcpforwarding no"; do
-            grep -qx "$kv" <<< "$eff" && pass_msg "sshd runs with $kv${vendor:+ despite a vendor drop-in}" \
-                                      || fail "sshd does not run with $kv (got: $(grep "^${kv% *} " <<< "$eff"))"
+            grep -qix "$kv" <<< "$eff" && pass_msg "sshd runs with $kv${vendor:+ despite a vendor drop-in}" \
+                                       || fail "sshd does not run with $kv (got: $(grep -i "^${kv% *} " <<< "$eff"))"
         done
     fi
     rm -f "$err"
