@@ -15,6 +15,8 @@ and the project follows [Semantic Versioning](https://semver.org).
   so a vendor drop-in such as Fedora's `50-redhat.conf` no longer overrides them.
 - Config edits change only the first commented default, so commented example
   blocks (sshd_config's `Match` stanza) stay commented.
+- SSH hardening leaves settings inside active `Match` blocks alone, and adds a
+  missing setting above the first `Match` line instead of inside the last block.
 - Full revert removes the sshd drop-in.
 - Full revert also removes the Fail2Ban `jail.local` and Docker `daemon.json`
   the tool wrote, and the uncommon-filesystem blacklist when one module is
