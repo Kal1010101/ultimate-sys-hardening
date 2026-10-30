@@ -6,6 +6,8 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [2.4.6] — 2026-10-30
+
 ### Fixed
 - Restore and revert put back the SELinux label of every file they copy into
   place, so a confined sshd can read a restored `sshd_config` again.
@@ -24,6 +26,14 @@ and the project follows [Semantic Versioning](https://semver.org).
 - Reverting Fail2Ban or Docker hardening no longer deletes a `jail.local` or
   `daemon.json` that was there before the first run; it is restored, or left
   alone when it was never changed.
+- A relative or root `UH_BACKUP_ROOT` falls back to `/root`, so pruning old
+  backups stays out of the wrong directory.
+- The first-run backup tree is created private (mode 700) at every level.
+- Wildcards in `--revert-to` no longer widen the backup search.
+- Remote syslog over TLS refuses a CA path containing quotes, backslashes or
+  control characters, which would otherwise break the generated `rsyslog.conf`.
+- Config edits refuse a key that is not a plain identifier.
+- `--check-update` strips unsafe characters from the release tag it reads.
 
 ### Documentation
 - README: an "About this project" section, the exact CI distro list, and a
@@ -253,6 +263,7 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
+[2.4.6]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.6
 [2.4.5]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.5
 [2.4.4]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.4
 [2.4.3]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.3
