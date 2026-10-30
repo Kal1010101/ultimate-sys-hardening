@@ -1417,6 +1417,11 @@ apply_remote_syslog() {
             log_error "TLS forwarding needs the collector's CA certificate — set UH_SYSLOG_TLS_CA; nothing changed"
             return 0
         fi
+        local bad_path='[[:cntrl:]"\\]'
+        if [[ "$ca" =~ $bad_path || "$ca_dir" =~ $bad_path ]]; then
+            log_error "Refusing CA path with quotes, backslashes or control characters — it is written into rsyslog.conf; nothing changed"
+            return 0
+        fi
         if [[ ! -f "$ca" ]]; then
             log_error "CA certificate not found: ${ca} — nothing changed"
             return 0

@@ -20,7 +20,22 @@ _lib='source "'"$REPO"'/lib/core.sh"
 out=$(bash -c "set -euo pipefail; $_lib; DISTRO_TYPE=debian module_dependencies" 2>&1) || true
 assert_output_contains "$out" '^fail2ban:fail2ban$'   "debian: fail2ban resolves to its package"
 assert_output_contains "$out" '^audit:auditd$'        "debian: audit resolves to auditd, not audit"
-assert_output_contains "$out" '^apparmor:apparmor-utils$' "debian: apparmor-utils is listed"
+
+# The apparmor entry depends on whether THIS host has aa-status, so pin both
+# answers rather than inherit whatever the image happens to ship.
+no_aa=$(bash -c "set -euo pipefail; $_lib
+    command() { [[ \"\${2:-}\" == aa-status ]] && return 1; builtin command \"\$@\"; }
+    DISTRO_TYPE=debian module_dependencies" 2>&1) || true
+assert_output_contains "$no_aa" '^apparmor:apparmor-utils$' \
+    "debian: apparmor-utils is listed when aa-status is missing"
+has_aa=$(bash -c "set -euo pipefail; $_lib
+    command() { [[ \"\${2:-}\" == aa-status ]] && return 0; builtin command \"\$@\"; }
+    DISTRO_TYPE=debian module_dependencies" 2>&1) || true
+if ! grep -q 'apparmor' <<< "$has_aa"; then
+    pass_msg "debian: apparmor-utils is not listed when aa-status is present"
+else
+    fail "debian: apparmor-utils listed although aa-status is already installed"
+fi
 
 bad=$(printf '%s\n' "$out" | grep -vE '^[a-z0-9]+:[A-Za-z0-9._+-]+$' || true)
 if [[ -z "$bad" ]]; then
