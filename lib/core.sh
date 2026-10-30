@@ -257,7 +257,6 @@ prune_old_backups() {
     [[ "$days" =~ ^[0-9]+$ ]] || { log_warning "UH_BACKUP_RETENTION_DAYS='$days' is not a number — skipping backup prune, using the default next time is safer than guessing"; return 0; }
     local dir pruned=0
     while IFS= read -r dir; do
-        [[ -n "$dir" ]] || continue                  # guard against empty lines from find
         [[ "$dir" == "$BACKUP_DIR" ]] && continue   # never prune the one just created
         rm -rf "$dir" 2>/dev/null && bump pruned
     done < <(find "$UH_BACKUP_ROOT" -maxdepth 1 -type d -name 'hardening_backup_*' -mtime "+${days}" 2>/dev/null)
@@ -308,9 +307,6 @@ _seed_genesis() {
     local src="$1"
     local dest="$BACKUP_GENESIS_DIR/files$src"
     [[ -f "$dest" ]] && return 0
-    # umask 077 ensures every directory created by mkdir -p gets mode 700, not
-    # the ambient 755 a default root shell uses.  Without this, subdirectories
-    # under the genesis tree were world-traversable even though the root was 700.
     ( umask 077; mkdir -p "$(dirname "$dest")" ) 2>/dev/null || return 1
     # create_backup_dir chmods the per-run directory to 700; genesis holds the
     # same class of content and was inheriting the ambient umask instead —
@@ -600,12 +596,8 @@ revert_backed_up_file() {
 # Where per-run backup directories live. A variable so tests can point it at a
 # fixture instead of /root.
 : "${UH_BACKUP_ROOT:=/root}"
-# Reject any value that is not a non-root absolute path: a relative path or /
-# itself passed here reaches `rm -rf "$dir"` inside prune_old_backups() and
-# would have an unbounded blast radius even with the hardening_backup_* glob.
-if [[ ! "$UH_BACKUP_ROOT" =~ ^/.+$ ]] || [[ "$UH_BACKUP_ROOT" == "/" ]]; then
-    [[ "${UH_BACKUP_ROOT}" != "/root" ]] && \
-        log_warning "UH_BACKUP_ROOT='${UH_BACKUP_ROOT}' is not a safe absolute path — falling back to /root"
+if [[ "$UH_BACKUP_ROOT" != /?* ]]; then
+    log_warning "UH_BACKUP_ROOT='${UH_BACKUP_ROOT}' is not an absolute path below / — using /root"
     UH_BACKUP_ROOT=/root
 fi
 
@@ -642,9 +634,7 @@ resolve_revert_target() {
         ""|latest)         find_latest_backup ;;
         genesis|original)  [[ -d "$BACKUP_GENESIS_DIR/files" ]] && echo "$BACKUP_GENESIS_DIR" || return 1 ;;
         /*)                [[ -d "$t" ]] && echo "$t" || return 1 ;;
-        *)  # Strip find(1) glob metacharacters so a value like '*' from --revert-to
-            # cannot widen the name pattern beyond the hardening_backup_ prefix.
-            local t_safe="${t//\*/}"; t_safe="${t_safe//\?/}"
+        *)  local t_safe="${t//\*/}"; t_safe="${t_safe//\?/}"
             t_safe="${t_safe//\[/}";  t_safe="${t_safe//\]/}"
             hit=$(find "$UH_BACKUP_ROOT" -maxdepth 1 -type d -name "hardening_backup_*${t_safe}*" 2>/dev/null | sort | tail -1)
             [[ -n "$hit" ]] && echo "$hit" || return 1 ;;
@@ -746,24 +736,14 @@ set_config() {
     local key="$1" value="$2" file="$3" sep="${4:- }" tmp rc
     [[ "$DRY_RUN" == true ]] && { log_dry "Would set $key${sep}$value in $file"; return 0; }
     [[ -f "$file" ]] || touch "$file" 2>/dev/null || return 1
+    # The key is spliced into an awk regex; awk -v would strip any escaping.
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || { log_error "set_config: refusing key '${key}'"; return 1; }
     tmp=$(mktemp) || return 1
-    # Escape ERE metacharacters in $key before embedding it in the awk regex
-    # patterns. Keys are config identifiers (word characters); in practice none
-    # contain metacharacters today, but a future dynamic caller could pass one,
-    # and an unescaped `.` or `*` would silently match unintended lines.
-    # Only `\` needs to go first to avoid double-escaping.
-    local key_re="${key//\\/\\\\}"
-    key_re="${key_re//./\\.}"; key_re="${key_re//\*/\\*}"
-    key_re="${key_re//+/\\+}"; key_re="${key_re//\?/\\?}"
-    key_re="${key_re//[/\\[}"; key_re="${key_re//]/\\]}"
-    key_re="${key_re//(/\\(}"; key_re="${key_re//)/\\)}"
-    key_re="${key_re//^/\\^}"; key_re="${key_re//$/\\$}"
-    key_re="${key_re//|/\\|}"
     # Pass 1 reads the global section, pass 2 rewrites. With no active line,
     # only the first commented default is replaced; later ones can sit inside
     # a commented-out example block, such as sshd_config's Match stanza.
-    awk -v active="^[[:space:]]*${key_re}[[:space:]=]" \
-        -v commented="^[[:space:]]*#[[:space:]]*${key_re}[[:space:]=]" \
+    awk -v active="^[[:space:]]*${key}[[:space:]=]" \
+        -v commented="^[[:space:]]*#[[:space:]]*${key}[[:space:]=]" \
         -v match_re="^[[:space:]]*[Mm][Aa][Tt][Cc][Hh][[:space:]]" \
         -v line="${key}${sep}${value}" '
         FNR == NR {
