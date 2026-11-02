@@ -186,6 +186,14 @@ else
     pass_msg "your own non-writable checkout produces no warning"
 fi
 
+ln -s "$fakelib" "$TMP/linked-lib"
+out=$(bash -c "$_lib; _uh_euid() { echo 0; }; SUDO_UID=$(id -u); check_lib_trust '$TMP/linked-lib'" 2>&1) || true
+if grep -q 'writable by someone' <<< "$out"; then
+    fail "a symlink to a safe lib warns because of the link's own mode: $out"
+else
+    pass_msg "a symlink to a safe lib produces no warning"
+fi
+
 out=$(bash -c "$_lib; _uh_euid() { echo 0; }; SUDO_UID=99999; UH_TRUST_LIB=1; check_lib_trust '$fakelib'" 2>&1) || true
 if [[ -z "$out" ]]; then
     pass_msg "UH_TRUST_LIB=1 silences it"

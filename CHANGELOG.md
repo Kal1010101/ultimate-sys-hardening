@@ -6,6 +6,25 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+- `--aide-refresh` replaces the AIDE baseline safely: it refuses while AIDE runs,
+  tests the new database and its hash, asks for approval, and keeps a backup.
+- `.deb`, `.rpm`, `.apk` and Arch packages, install-tested in CI and attached to
+  each release.
+
+### Fixed
+- `--aide-refresh` reads the AIDE 0.16 config format used on RHEL 8 and openSUSE
+  Leap 15, and a plain 0.16 database is no longer mistaken for a corrupt one.
+- The library trust warning no longer fires on a symlinked `lib/` because of the
+  link's own mode.
+- AIDE on Arch: the module and preflight say the package is in the AUR, and an
+  AIDE already installed from there is used instead of being skipped.
+- Running the AIDE module again keeps a good baseline instead of accepting every
+  change unread.
+- AIDE setup no longer reports success after a failed or stopped init: an empty
+  or corrupt database is not moved into place, and the menu no longer shows an
+  empty database as active.
+
 ## [2.4.6] — 2026-10-30
 
 ### Fixed

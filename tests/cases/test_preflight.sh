@@ -135,6 +135,49 @@ else
     fail "tried to install a package it had just reported as unavailable"
 fi
 
+# --- Arch has no aide package: say so, and leave an AUR build usable ----------
+_no_aide='command() { [[ "${2:-}" == aide ]] && return 1; builtin command "$@"; }'
+arch_hint=$(bash -c "set -euo pipefail; $_lib
+    DISTRO_TYPE=arch; DRY_RUN=false
+    package_installed() { return 1; }
+    package_available() { return 1; }
+    preflight_dependencies" 2>&1) || true
+assert_output_contains "$arch_hint" 'Arch does not package aide' \
+    "arch: preflight says aide is not packaged"
+arch_skip=$(bash -c "set -euo pipefail; $_lib; $_no_aide
+    DISTRO_TYPE=arch; DRY_RUN=false
+    install_package() { return 1; }
+    apply_aide; echo 'REACHED-END'" 2>&1) || true
+assert_output_contains "$arch_skip" 'install it from the AUR' \
+    "arch: module 10 names the AUR when aide cannot be installed"
+assert_output_contains "$arch_skip" 'REACHED-END' \
+    "arch: the skip does not abort the caller"
+other_skip=$(bash -c "set -euo pipefail; $_lib; $_no_aide
+    DISTRO_TYPE=debian; DRY_RUN=false
+    install_package() { return 1; }
+    apply_aide" 2>&1) || true
+assert_output_contains "$other_skip" 'AIDE unavailable' \
+    "debian: an install failure keeps the general message"
+if [[ $EUID -eq 0 ]]; then
+    aur_stub="${TMPDIR:-/tmp}/uh_aide_stub_$$"; mkdir -p "$aur_stub"
+    printf '#!/bin/sh\nmkdir -p /var/lib/aide\nprintf "@@begin_db\\n@@end_db\\n" > /var/lib/aide/aide.db.new\n' > "$aur_stub/aide"
+    chmod +x "$aur_stub/aide"
+    aur=$(bash -c "set -euo pipefail; $_lib
+        PATH='$aur_stub':\$PATH
+        DISTRO_TYPE=arch; DRY_RUN=false
+        count_fix() { :; }
+        install_package() { echo 'INSTALL-CALLED'; return 1; }
+        apply_aide" 2>&1) || true
+    rm -rf "$aur_stub"; rm -f /etc/cron.daily/aide-check /var/lib/aide/aide.db
+    assert_output_contains "$aur" 'AIDE baseline created' \
+        "arch: an aide already installed from the AUR is used"
+    if ! grep -q 'INSTALL-CALLED' <<< "$aur"; then
+        pass_msg "arch: pacman is not asked for an aide that is already installed"
+    else
+        fail "asked the package manager for an aide that is already installed"
+    fi
+fi
+
 # --- a dry run against a mirror that never answers reports "not checked" ------
 if command -v timeout >/dev/null 2>&1; then
     stub="${TMPDIR:-/tmp}/uh_preflight_stub_$$"; mkdir -p "$stub"

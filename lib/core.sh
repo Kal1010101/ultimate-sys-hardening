@@ -148,8 +148,9 @@ check_lib_trust() {
     local -a risky=()
     for f in "$dir" "$dir"/*.sh; do
         [[ -e "$f" ]] || continue
-        owner=$(stat -c '%u' "$f" 2>/dev/null) || continue
-        mode=$(stat -c '%A' "$f" 2>/dev/null) || continue
+        owner=$(stat -L -c '%u' "$f" 2>/dev/null) || continue
+        # -L: a symlinked lib/ always reads as lrwxrwxrwx, which says nothing
+        mode=$(stat -L -c '%A' "$f" 2>/dev/null) || continue
         # group- or world-writable, whoever owns it
         if [[ "$mode" == ?????w???? || "$mode" == ????????w? ]]; then
             risky+=("$f (mode $mode)")

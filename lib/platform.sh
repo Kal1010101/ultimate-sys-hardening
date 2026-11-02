@@ -523,6 +523,7 @@ preflight_dependencies() {
         case "${DISTRO_TYPE:-}" in
             rhel)   log_info "  Hint: fail2ban, rkhunter and etckeeper live in EPEL, not the base repositories" ;;
             alpine) log_info "  Hint: aide and rkhunter are outside main/community — enable the testing repository" ;;
+            arch)   log_info "  Hint: Arch does not package aide — it is in the AUR" ;;
         esac
     elif [[ ${#unchecked[@]} -eq 0 ]]; then
         log_success "Preflight: all $checked dependencies resolved"

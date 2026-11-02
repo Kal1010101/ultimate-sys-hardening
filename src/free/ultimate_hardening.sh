@@ -66,6 +66,7 @@ source "$LIB_DIR/update.sh"
 CIS_ONLY=false
 REVERT_MODE=false
 REVERT_SUID_ONLY=false
+AIDE_REFRESH=false
 SAFE_ONLY=false
 
 usage() {
@@ -81,6 +82,7 @@ Usage: sudo $0 [OPTIONS]
   --skip-backup   Skip backup creation (disables revert)
   --revert        Restore everything from the most recent backup
   --revert-suid   Restore only SUID/SGID permissions
+  --aide-refresh  Update the AIDE baseline, after showing the changes for approval
   --check-update  Check GitHub for a newer release, then exit
   --version       Print version and exit
   --help          Show this help
@@ -111,6 +113,7 @@ while [[ $# -gt 0 ]]; do
         --cis-only)    CIS_ONLY=true; AUTO_MODE=true ;;
         --revert)      REVERT_MODE=true ;;
         --revert-suid) REVERT_SUID_ONLY=true ;;
+        --aide-refresh) AIDE_REFRESH=true ;;
         --check-update) check_for_updates; exit 0 ;;
         --version)     echo "Ultimate Hardening ${UH_VERSION} (Free)"; exit 0 ;;
         --help|-h)     usage; exit 0 ;;
@@ -209,6 +212,7 @@ main() {
 
     if [[ "$REVERT_MODE" == true ]];      then full_system_revert;  exit 0; fi
     if [[ "$REVERT_SUID_ONLY" == true ]]; then undo_suid_hardening; exit 0; fi
+    if [[ "$AIDE_REFRESH" == true ]];     then aide_refresh;        exit $?; fi
 
     show_distro_menu
 

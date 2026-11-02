@@ -223,7 +223,7 @@ module_probe_state() {
             fi ;;
         aide)
             command -v aide >/dev/null 2>&1 \
-                && { [[ -f /var/lib/aide/aide.db.gz ]] || [[ -f /var/lib/aide/aide.db ]]; } \
+                && { [[ -s /var/lib/aide/aide.db.gz ]] || [[ -s /var/lib/aide/aide.db ]]; } \
                 && echo on || echo off ;;
         rkhunter)
             command -v rkhunter >/dev/null 2>&1 && [[ -f /etc/cron.daily/rkhunter ]] \

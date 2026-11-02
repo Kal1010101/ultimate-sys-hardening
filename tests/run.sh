@@ -73,13 +73,13 @@ set -e
 if command -v apt-get >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq >/dev/null 2>&1
-    apt-get install -y --no-install-recommends bash procps iproute2 openssh-server >/dev/null 2>&1
+    apt-get install -y --no-install-recommends bash procps iproute2 openssh-server gzip openssl >/dev/null 2>&1
 elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y --setopt=install_weak_deps=False bash procps-ng iproute openssh-server findutils >/dev/null 2>&1
+    dnf install -y --setopt=install_weak_deps=False bash procps-ng iproute openssh-server findutils gzip openssl >/dev/null 2>&1
 elif command -v apk >/dev/null 2>&1; then
-    apk add --no-cache bash procps iproute2 openssh >/dev/null 2>&1
+    apk add --no-cache bash procps iproute2 openssh gzip openssl >/dev/null 2>&1
 elif command -v pacman >/dev/null 2>&1; then
-    pacman -Sy --noconfirm bash procps-ng iproute2 openssh >/dev/null 2>&1
+    pacman -Sy --noconfirm bash procps-ng iproute2 openssh gzip openssl >/dev/null 2>&1
 fi
 BOOTSTRAP
 }
@@ -92,7 +92,9 @@ PREPARED=""
 prepare_image() {
     local image="$1" name tag
     name="uh-prep-$$-$RANDOM"
-    tag="uh-test-prepared:$(printf '%s' "$image" | tr -c 'a-zA-Z0-9_.-' '-')"
+    # The PID keeps runs apart: each run removes its tag at the end, which would
+    # fail every remaining case in another run of the same image.
+    tag="uh-test-prepared:$(printf '%s' "$image" | tr -c 'a-zA-Z0-9_.-' '-')-$$"
     PREPARED=""
     if docker run --name "$name" "$image" /bin/sh -c "$(bootstrap_cmd)" >/dev/null 2>&1 \
        && docker commit "$name" "$tag" >/dev/null 2>&1; then

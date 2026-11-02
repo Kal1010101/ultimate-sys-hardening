@@ -169,6 +169,7 @@ sudo ./src/free/ultimate_hardening.sh [OPTIONS]
   --skip-backup    Skip creating the backup directory (disables revert)
   --revert         Restore everything from backup
   --revert-suid    Restore only SUID/SGID permissions
+  --aide-refresh   Update the AIDE baseline, after showing the changes for approval
   --check-update   Check GitHub for a newer release, then exit
   --version        Print version and exit
   --help           Show this help
