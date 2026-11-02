@@ -4,6 +4,23 @@ All notable changes to Ultimate Hardening (free tier) are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com),
 and the project follows [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Documentation
+- README and site: the quick-start example uses `--safe-only`, because `--auto-mode`
+  on its own also strips SUID bits without asking; the FAQ says which High-risk
+  modules prompt and when.
+- `--dry-run` is described as it behaves: with `--auto-mode` it prints the changes
+  and exits, on its own it previews from the menu.
+- README: "SSH can't lock you out" replaced with what the `sshd -t` check does and
+  does not catch.
+- Site: the PAM card said password policy goes to `pwquality.conf`; it is set in
+  `/etc/login.defs` only and PAM is never modified.
+- Site: the supported-distributions FAQ lists all eight Linux families and the
+  Unix/BSD systems; the firewall line names firewalld.
+- "Coming soon" kept only where a reader lands on it on its own; the README's
+  standards table states it once above the table.
+
 ## [2.4.7] — 2026-11-02
 
 ### Added

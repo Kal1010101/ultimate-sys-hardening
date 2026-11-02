@@ -53,10 +53,10 @@ fixes, and keeps a way back. Every file it touches is backed up first, and
 
 ```bash
 # See exactly what it would change — writes nothing
-sudo ./src/free/ultimate_hardening.sh --auto-mode --dry-run
+sudo ./src/free/ultimate_hardening.sh --auto-mode --safe-only --dry-run
 
-# Apply it
-sudo ./src/free/ultimate_hardening.sh --auto-mode
+# Apply it (--safe-only leaves out the two High-risk modules)
+sudo ./src/free/ultimate_hardening.sh --auto-mode --safe-only
 
 # Changed your mind
 sudo ./src/free/ultimate_hardening.sh --revert
@@ -116,7 +116,7 @@ Here's what it does and doesn't do:
 
 - **No telemetry.** No analytics, no phone-home. The only outbound traffic
   is your own package manager, plus the update check if you run it from the
-  menu (one request to the public GitHub API).
+  menu or with `--check-update` (one request to the public GitHub API).
 - **Backup before write.** Everything modified is copied to
   `/root/hardening_backup_<timestamp>_<tier>/` before the first change, with a
   manifest recording which tier and version wrote it.
@@ -129,11 +129,14 @@ Here's what it does and doesn't do:
   profile it added. `--revert-suid` restores just SUID/SGID bits.
 - **Per-module revert.** Any module already applied can be backed out on its
   own from the menu, without reverting the rest.
-- **Dry-run.** `--dry-run` shows every intended change and exits.
+- **Dry-run.** `--auto-mode --dry-run` prints every intended change, modifies
+  nothing and exits. On its own, `--dry-run` opens the menu in preview mode.
 - **PAM untouched.** An early version broke a login screen on an eCryptfs system.
   PAM modification was removed entirely — see [SECURITY.md](SECURITY.md).
-- **SSH can't lock you out.** The config is validated with `sshd -t` and rolled
-  back automatically if it fails.
+- **SSH config is checked before restart.** The config is validated with
+  `sshd -t` and rolled back automatically if it fails. That catches a broken
+  config, not a lost login: root login and password authentication are turned
+  off, so set up key access for a non-root sudo user first.
 - **Dependencies resolved before the first write.** Applying everything checks
   each module's packages up front and names anything it cannot obtain, so you
   find out before the run rather than forty seconds into a half-hardened host.
@@ -254,30 +257,31 @@ What the free tier looks like:
 
 ## Standards coverage
 
-Honest scope — including the gaps.
+Honest scope — including the gaps. Rows marked Pro or Enterprise arrive with
+those tiers, which are coming soon.
 
 | Standard | Status |
 |----------|--------|
 | CIS Benchmarks | CIS-**aligned** checks. Not a certified CIS-CAT implementation. |
 | Automated remediation | Available |
-| Continuous compliance / drift | Coming soon (Enterprise) |
-| OpenSCAP | Coming soon (Enterprise) — wraps `oscap`, folds results into reports |
+| Continuous compliance / drift | Enterprise |
+| OpenSCAP | Enterprise — wraps `oscap`, folds results into reports |
 | Packer / Terraform | Available — [example included](examples/packer/) |
-| Fleet scale | Coming soon (Enterprise) — small fleets (tens of hosts). Remote deploy is a sequential SSH loop. |
-| DISA STIG | **Scanning** coming soon (Enterprise) — `--scap-profile stig` against the distro's SSG content. STIG-specific remediation is not mapped. |
-| PCI-DSS / HIPAA / ANSSI / others | Scanning coming soon (Enterprise) wherever the distro's SSG content ships that profile — `--scap-list-profiles` shows which. |
-| Exception register | Coming soon (Pro) — accepted risks with a justification and a review date |
-| Vulnerability exposure | Coming soon (Pro) — CVEs affecting the installed packages, from your own package manager's repository metadata (RHEL family, SUSE). Debian/Ubuntu metadata has no CVE IDs, so they need the opt-in `--cve-feeds` download. Optional ranking by CISA KEV and EPSS (`--cve-enrich`, also opt-in). |
-| SBOM | Coming soon (Pro) — CycloneDX 1.5 or SPDX 2.3 JSON |
-| Compromise detection | Coming soon (Pro) — read-only indicator-of-compromise scan with a baseline, so later runs show only what changed. It runs on the host it checks, so a root-level rootkit can hide from it; for high assurance, check from trusted boot media. Enterprise (coming soon) adds a per-host view in the dashboard and `--remote` scans. |
+| Fleet scale | Enterprise — small fleets (tens of hosts). Remote deploy is a sequential SSH loop. |
+| DISA STIG | Enterprise **scanning** — `--scap-profile stig` against the distro's SSG content. STIG-specific remediation is not mapped. |
+| PCI-DSS / HIPAA / ANSSI / others | Enterprise scanning wherever the distro's SSG content ships that profile — `--scap-list-profiles` shows which. |
+| Exception register | Pro — accepted risks with a justification and a review date |
+| Vulnerability exposure | Pro — CVEs affecting the installed packages, from your own package manager's repository metadata (RHEL family, SUSE). Debian/Ubuntu metadata has no CVE IDs, so they need the opt-in `--cve-feeds` download. Optional ranking by CISA KEV and EPSS (`--cve-enrich`, also opt-in). |
+| SBOM | Pro — CycloneDX 1.5 or SPDX 2.3 JSON |
+| Compromise detection | Pro — read-only indicator-of-compromise scan with a baseline, so later runs show only what changed. It runs on the host it checks, so a rootkit with root access can still hide from it; for high assurance, check from trusted boot media. Enterprise adds a per-host view in the dashboard and `--remote` scans. |
 | TLS log forwarding | Available — all tiers, module 21 |
-| USB / removable media | Free: all-or-nothing — module 15 blocks every USB storage device, or none with `UH_USB_STORAGE_BLACKLIST=false`. Pro/Enterprise (coming soon): per-device allow-list on usbguard — devices connected at setup keep working, new ones are blocked (where the distro packages usbguard). |
+| USB / removable media | Free: all-or-nothing — module 15 blocks every USB storage device, or none with `UH_USB_STORAGE_BLACKLIST=false`. Pro and Enterprise: per-device allow-list on usbguard — devices connected at setup keep working, new ones are blocked (where the distro packages usbguard). |
 | NIST SP 800-70 | Roadmap |
 | Ansible role | Roadmap |
 
 ## Roadmap
 
-- [ ] DISA STIG remediation mapping (scanning already works — see above)
+- [ ] DISA STIG remediation mapping (STIG scanning comes with Enterprise — see above)
 - [ ] NIST SP 800-70 checklist mapping
 - [ ] Ansible role packaging
 - [ ] Parallel remote deploy (beyond sequential SSH)

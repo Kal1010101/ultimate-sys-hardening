@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ultimate Hardening — CIS-aligned Linux security automation</title>
-<meta name="description" content="Open-source Linux hardening automation for Ubuntu, RHEL, Arch and SUSE. 22 security modules, dry-run preview, full revert, PAM-safe. Pro and Enterprise tiers, coming soon, add reporting, scheduling, OpenSCAP CIS/STIG scanning and multi-host compliance.">
+<meta name="description" content="Open-source Linux hardening automation for Debian, Ubuntu, RHEL, Arch, SUSE, Alpine and more, plus macOS and the BSDs. 22 security modules, dry-run preview, full revert, PAM-safe. Pro and Enterprise tiers, coming soon, add reporting, scheduling, OpenSCAP CIS/STIG scanning and multi-host compliance.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>">
 <style>
   :root{
@@ -367,7 +367,7 @@
       <div class="card"><h3><span class="ico">🔒</span> SSH &amp; access</h3>
         <p>Root login, password auth, empty passwords, X11 and TCP forwarding, MaxAuthTries, login grace and keepalives &mdash; validated with <code class="inline">sshd -t</code> before restart. Plus GRUB password protection.</p></div>
       <div class="card"><h3><span class="ico">🔥</span> Network</h3>
-        <p>nftables/UFW firewall, Fail2Ban, sysctl network hardening, unused protocol blacklisting, remote syslog.</p></div>
+        <p>nftables, UFW or firewalld firewall, Fail2Ban, sysctl network hardening, unused protocol blacklisting, remote syslog.</p></div>
       <div class="card"><h3><span class="ico">📋</span> Auditing</h3>
         <p>auditd rule sets, AIDE file integrity, rkhunter rootkit scanning, etckeeper change tracking.</p></div>
       <div class="card"><h3><span class="ico">⚙️</span> Kernel &amp; filesystem</h3>
@@ -449,15 +449,15 @@
 
     <div class="grid g2">
       <div class="card"><h3><span class="ico">👁️</span> Preview before you commit</h3>
-        <p><code class="inline">--dry-run</code> prints every change the script would make and modifies nothing. Run it first, every time.</p></div>
+        <p><code class="inline">--auto-mode --dry-run</code> prints every change the script would make and modifies nothing; <code class="inline">--dry-run</code> alone previews from the menu. Run it first, every time.</p></div>
       <div class="card"><h3><span class="ico">💾</span> Automatic backups</h3>
         <p>Modified files are copied to a timestamped <code class="inline">/root/hardening_backup_*</code> directory before any edit, including original SUID/SGID permission modes.</p></div>
       <div class="card"><h3><span class="ico">↩️</span> Full revert</h3>
         <p><code class="inline">--revert</code> restores from backup; <code class="inline">--revert-suid</code> rolls back only permission changes. Revert auto-finds the most recent backup.</p></div>
       <div class="card"><h3><span class="ico">🧬</span> PAM-safe by design</h3>
-        <p>Password policy is written to <code class="inline">/etc/security/pwquality.conf</code> — never by hand-editing <code class="inline">/etc/pam.d/*</code>. It also skips when multiple display-manager PAM profiles are detected.</p></div>
+        <p>Password policy is set in <code class="inline">/etc/login.defs</code> only. Nothing under <code class="inline">/etc/pam.d</code> is ever modified.</p></div>
       <div class="card"><h3><span class="ico">📡</span> No telemetry, no phone-home</h3>
-        <p>Nothing is ever sent anywhere about your hosts. In the free tier the only outbound request is the optional, explicitly-invoked update check against the GitHub API. The paid tiers can additionally <em>download</em> public vulnerability data — your distro's security feed, and the CISA KEV and EPSS lists — but only when you pass <code class="inline">--cve-feeds</code> or <code class="inline">--cve-enrich</code>, which are off by default. Those are inbound fetches of public files; no query carries anything identifying. Enterprise GitOps (coming soon) fetches policy only from the git repository you name.</p></div>
+        <p>Nothing is ever sent anywhere about your hosts. In the free tier the only outbound request is the optional, explicitly-invoked update check against the GitHub API. The paid tiers can additionally <em>download</em> public vulnerability data — your distro's security feed, and the CISA KEV and EPSS lists — but only when you pass <code class="inline">--cve-feeds</code> or <code class="inline">--cve-enrich</code>, which are off by default. Those are inbound fetches of public files; no query carries anything identifying. Enterprise GitOps fetches policy only from the git repository you name.</p></div>
       <div class="card"><h3><span class="ico">🔍</span> Readable and reviewed</h3>
         <p>Plain Bash, MIT licensed, ShellCheck-clean in CI on every push, tested in fresh containers on 10 distros across the Debian, RHEL, Fedora, Arch and Alpine families.</p></div>
     </div>
@@ -466,8 +466,8 @@
       <strong>The PAM-safety guarantee exists because it once went wrong.</strong>
       An earlier version edited <code class="inline">/etc/pam.d/common-password</code> directly. On a Mint box
       running KDE Plasma, a later <code class="inline">pam-auth-update</code> run reconciled around that
-      untracked edit and broke the SDDM login. The fix — never hand-edit machine-managed PAM files —
-      is why the current release does it the way it does.
+      untracked edit and broke the SDDM login. The fix was to stop modifying PAM altogether, which is
+      why the current release sets password policy in <code class="inline">/etc/login.defs</code> instead.
     </div>
   </div>
 </section>
@@ -485,7 +485,7 @@
       <div class="card"><h3><span class="ico">📊</span> CIS-aligned</h3>
         <p>Built-in checks follow CIS Benchmark guidance for Linux. This is alignment, not a CIS certification, and the built-in scorer is not an accredited assessment.</p></div>
       <div class="card"><h3><span class="ico">🎯</span> OpenSCAP scanning <span class="badge ok" style="margin-left:4px">Enterprise</span><span class="badge" style="margin-left:4px">Coming soon</span></h3>
-        <p>Runs <code class="inline">oscap</code> against the official SCAP Security Guide, so you get a real, assessable result under a CIS <em>or</em> DISA STIG profile — not our interpretation of one.</p></div>
+        <p>Runs <code class="inline">oscap</code> against the official SCAP Security Guide, so you get a real, assessable result under a CIS <em>or</em> DISA STIG profile — not the tool's own interpretation of one.</p></div>
       <div class="card"><h3><span class="ico">🗺️</span> NIST 800-53 crosswalk <span class="badge ok" style="margin-left:4px">Enterprise</span><span class="badge" style="margin-left:4px">Coming soon</span></h3>
         <p>Maps each hardening module to the NIST SP 800-53 Rev. 5 controls it contributes to, and reports how many are in place on this host right now. Exports to JSON and CSV, and appears in the HTML compliance report. A mapping and a configuration record — not an assessment, and not a claim of compliance.</p></div>
     </div>
@@ -503,8 +503,7 @@
     <div class="eyebrow">Pricing</div>
     <h2>The core hardening is free. The fleet management isn't.</h2>
     <p class="lede" style="margin-bottom:34px">
-      The core hardening is free. What costs money is everything around
-      it: proving the work happened, repeating it on a schedule, and doing it across
+      What costs money is everything around the hardening: proving the work happened, repeating it on a schedule, and doing it across
       more machines than you can log into by hand. One server and an evening? The
       free tier's 22 modules are the same engine the paid tiers run on.
     </p>
@@ -513,7 +512,7 @@
       <button type="button" data-full="images/menu-pro.png" aria-label="Enlarge: the Pro tier menu">
         <img src="images/menu-pro.png" alt="The Pro tier menu: the same 22 free core hardening modules in one panel, and a second panel of Pro-only features including CIS auto-fix, HTML compliance reports, AI directory locking, scheduling and email notifications." loading="lazy" width="729" height="1276">
       </button>
-      <figcaption><b>What the paid tiers add (coming soon)</b>The Pro menu keeps all 22 free modules and adds a second panel. Nothing is taken out of the free tier.</figcaption>
+      <figcaption><b>What the paid tiers add</b>The Pro menu keeps all 22 free modules and adds a second panel. Nothing is taken out of the free tier.</figcaption>
     </figure>
 
     <div class="tiers">
@@ -559,7 +558,7 @@
           <li>Config-file driven runs</li>
           <li>Email support</li>
         </ul>
-        <a class="btn btn-primary" href="mailto:ultimate-sys-hardening@protonmail.com?subject=Ultimate%20Hardening%20Pro">Coming soon — get notified</a>
+        <a class="btn btn-primary" href="mailto:ultimate-sys-hardening@protonmail.com?subject=Ultimate%20Hardening%20Pro">Get notified</a>
       </div>
 
       <div class="tier">
@@ -582,7 +581,7 @@
           <li>Fleet-wide syslog: one collector, every host</li>
           <li>Priority support</li>
         </ul>
-        <a class="btn btn-ghost" href="mailto:ultimate-sys-hardening@protonmail.com?subject=Ultimate%20Hardening%20Enterprise">Coming soon — get notified</a>
+        <a class="btn btn-ghost" href="mailto:ultimate-sys-hardening@protonmail.com?subject=Ultimate%20Hardening%20Enterprise">Get notified</a>
       </div>
 
     </div>
@@ -646,7 +645,7 @@
     <div class="callout" style="margin-top:26px">
       <strong>Honest scope notes.</strong>
       <b>CIS-aligned is not CIS-certified.</b> The built-in checks follow CIS guidance
-      but are not an accredited assessment; the Enterprise OpenSCAP scan (coming soon) runs against
+      but are not an accredited assessment; the Enterprise OpenSCAP scan runs against
       official SCAP content for an auditor-recognised result.
       <b>The NIST crosswalk is a mapping, not an assessment.</b> It records which
       modules contribute to a control and how many are in place here. A control is
@@ -659,7 +658,7 @@
       <b>This is a root-privileged tool that edits live configuration.</b> Two modules are
       marked High risk because SUID stripping and GRUB passwords can leave a machine
       unbootable. Use <code class="inline">--dry-run</code> first, and
-      <code class="inline">--safe-only</code> for everything except those two.
+      <code class="inline">--safe-only</code> to apply everything except those two.
     </div>
   </div>
 </section>
@@ -672,9 +671,10 @@
     <details><summary>Will this break my server?</summary>
       <p>It can — any real hardening tool can, which is why the safety design matters.
       Run <code class="inline">--dry-run</code> first to see every change, keep the automatic backups,
-      and use <code class="inline">--revert</code> if something misbehaves. High-risk modules
-      (SUID stripping, GRUB password) are labelled and require explicit confirmation rather than
-      running as part of the safe defaults.</p></details>
+      and use <code class="inline">--revert</code> if something misbehaves. The two High-risk modules
+      (SUID stripping, GRUB password) are labelled: the menu asks before applying them, and
+      <code class="inline">--safe-only</code> leaves them out of an <code class="inline">--auto-mode</code> run. Without it,
+      <code class="inline">--auto-mode</code> includes SUID stripping; the GRUB password always needs you at the keyboard.</p></details>
 
     <details><summary>Does it work over SSH without locking me out?</summary>
       <p>SSH hardening disables root login and password authentication. If you connect as root with a
@@ -683,12 +683,13 @@
 
     <details><summary>Is this CIS certified?</summary>
       <p>No, and anything claiming otherwise deserves scrutiny. The built-in checks are CIS-<em>aligned</em>.
-      For an assessable, auditor-recognised CIS or DISA STIG result, the Enterprise tier (coming soon) runs OpenSCAP
+      For an assessable, auditor-recognised CIS or DISA STIG result, the Enterprise tier runs OpenSCAP
       against the official SCAP Security Guide content.</p></details>
 
     <details><summary>What distributions are supported?</summary>
-      <p>Debian and Ubuntu, RHEL/CentOS/Fedora/Rocky/AlmaLinux, Arch and Manjaro, and openSUSE/SLES.
-      The script detects your distro or lets you select it, and adapts package manager and service
+      <p>Eight Linux families: Debian/Ubuntu/Mint/Kali/Raspbian, RHEL/CentOS/Fedora/Rocky/AlmaLinux/Amazon,
+      Arch/Manjaro/EndeavourOS/Artix, openSUSE/SLES, Alpine, Void, Gentoo and NixOS. macOS, FreeBSD,
+      OpenBSD, NetBSD and Solaris are detected and adapted, with thinner coverage. The script detects your distro or lets you select it, and adapts package manager and service
       names accordingly.</p></details>
 
     <details><summary>Does it send any data anywhere?</summary>
@@ -701,17 +702,17 @@
       feed, <code class="inline">--cve-enrich</code> for the CISA KEV catalogue and EPSS scores. Both
       are off unless passed, and both are plain downloads: nothing is uploaded, and the request
       contains no host identifier, package list or licence key.</p>
-      <p>Enterprise GitOps (coming soon; <code class="inline">--gitops</code>) clones and fetches policy from the git
+      <p>Enterprise GitOps (<code class="inline">--gitops</code>) clones and fetches policy from the git
       repository you point it at, and nowhere else.</p>
       <p>The free tier is MIT-licensed — source is on GitHub.</p></details>
 
     <details><summary>How will Enterprise host counting work?</summary>
       <p>Enterprise is coming soon. A host is any machine you scan, harden or track in the dashboard. The base tier covers 10 hosts,
       additional hosts are $3/month each, and the flat $149/month plan covers up to 50. Above that,
-      get in touch and we will size it.</p></details>
+      get in touch and I will size it.</p></details>
 
     <details><summary>Can I try Pro before buying?</summary>
-      <p>Pro is coming soon; once it launches, get in touch and we will set up a trial. The free tier is also a genuine product rather
+      <p>Pro is coming soon; once it launches, get in touch and I will set up a trial. The free tier is also a genuine product rather
       than a crippled demo, so you can validate the hardening itself before paying for the
       automation layer.</p></details>
   </div>
