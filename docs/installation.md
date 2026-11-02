@@ -16,6 +16,15 @@ That copies `lib/` and `src/` to `/opt/ultimate-hardening`, links
 command actually runs** before reporting success. If verification fails it
 tells you so rather than leaving a broken command on your PATH.
 
+## Packages
+
+Releases after 2.4.6 attach `.deb`, `.rpm`, `.apk` and Arch packages to the
+[Releases page](https://github.com/Kal1010101/ultimate-sys-hardening/releases). They
+install to `/usr/share/ultimate-hardening` with `ultimate-harden` in `/usr/bin`.
+Installing only places files: it applies no hardening, and removing the package
+leaves your backups in place, so run `--revert` first if you want the changes
+undone. The `.apk` and Arch packages are unsigned: install them with `apk add --allow-untrusted` and `pacman -U`.
+
 ## Run it
 
 ```bash

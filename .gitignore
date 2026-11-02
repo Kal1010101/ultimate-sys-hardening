@@ -12,6 +12,7 @@
 !*.env.sample
 !*.env.template
 !*.env.dist
+dist/
 __pycache__/
 *.pyc
 

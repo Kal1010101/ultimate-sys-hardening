@@ -1,0 +1,22 @@
+# Maintainer: Kal1010101 <ultimate-sys-hardening@protonmail.com>
+pkgname=ultimate-hardening
+pkgver=2.4.6
+pkgrel=1
+pkgdesc='CIS-aligned Linux hardening with backup, dry-run and full revert'
+arch=('any')
+url='https://github.com/Kal1010101/ultimate-sys-hardening'
+license=('MIT')
+depends=('bash')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('9035daa22b51956ce3d12516617bf0a78491cdd0728b402e130494ba74576ee2')
+
+package() {
+    cd "ultimate-sys-hardening-$pkgver"
+    local share="$pkgdir/usr/share/$pkgname"
+    install -Dm755 src/free/ultimate_hardening.sh "$share/src/free/ultimate_hardening.sh"
+    install -Dm644 -t "$share/lib" lib/*.sh
+    install -d "$pkgdir/usr/bin"
+    ln -s "/usr/share/$pkgname/src/free/ultimate_hardening.sh" "$pkgdir/usr/bin/ultimate-harden"
+    install -Dm644 -t "$pkgdir/usr/share/doc/$pkgname" README.md CHANGELOG.md
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

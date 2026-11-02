@@ -1,0 +1,45 @@
+# Free tier as .deb, .rpm, .apk and an Arch package. Built by packaging/build.sh,
+# which sets VERSION and, when a key is available, PACKAGE_SIGNING_KEY.
+#
+# No scriptlets, on purpose: installing only places files. Nothing here runs a
+# module or a package manager, and removing the package leaves backups and
+# revert state alone.
+name: ultimate-hardening
+arch: all
+platform: linux
+version: ${VERSION}
+section: admin
+priority: optional
+maintainer: Kal1010101 <ultimate-sys-hardening@protonmail.com>
+description: CIS-aligned Linux hardening with backup, dry-run and full revert.
+homepage: https://github.com/Kal1010101/ultimate-sys-hardening
+license: MIT
+depends:
+  - bash
+
+contents:
+  - src: src/free/ultimate_hardening.sh
+    dst: /usr/share/ultimate-hardening/src/free/ultimate_hardening.sh
+    file_info: { mode: 0755, owner: root, group: root }
+  - src: lib/*.sh
+    dst: /usr/share/ultimate-hardening/lib/
+    file_info: { mode: 0644, owner: root, group: root }
+  - src: /usr/share/ultimate-hardening/src/free/ultimate_hardening.sh
+    dst: /usr/bin/ultimate-harden
+    type: symlink
+  - src: README.md
+    dst: /usr/share/doc/ultimate-hardening/README.md
+    file_info: { mode: 0644, owner: root, group: root }
+  - src: CHANGELOG.md
+    dst: /usr/share/doc/ultimate-hardening/CHANGELOG.md
+    file_info: { mode: 0644, owner: root, group: root }
+  - src: LICENSE
+    dst: /usr/share/doc/ultimate-hardening/LICENSE
+    file_info: { mode: 0644, owner: root, group: root }
+
+deb:
+  signature:
+    key_file: ${PACKAGE_SIGNING_KEY}
+rpm:
+  signature:
+    key_file: ${PACKAGE_SIGNING_KEY}
