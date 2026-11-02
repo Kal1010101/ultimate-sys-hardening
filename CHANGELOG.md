@@ -4,7 +4,7 @@ All notable changes to Ultimate Hardening (free tier) are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com),
 and the project follows [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [2.4.7] — 2026-11-02
 
 ### Added
 - `--aide-refresh` replaces the AIDE baseline safely: it refuses while AIDE runs,
