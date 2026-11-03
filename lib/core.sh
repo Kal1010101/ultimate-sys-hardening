@@ -342,6 +342,21 @@ _latest_backup_copy() {
     return 0
 }
 
+# True when two files hold the same bytes. cmp is in diffutils, which minimal
+# RHEL-family and Arch images lack; without it every compare failed, so each
+# run copied every file again. The fallback hashes rather than comparing
+# $(< file), which drops trailing newlines and NUL bytes.
+_same_bytes() {
+    if command -v cmp >/dev/null 2>&1; then
+        cmp -s -- "$1" "$2"
+        return
+    fi
+    local first second
+    first=$(sha256sum < "$1" 2>/dev/null) || return 1
+    second=$(sha256sum < "$2" 2>/dev/null) || return 1
+    [[ "$first" == "$second" ]]
+}
+
 # Copy a file into the backup tree, preserving its absolute path structure.
 backup_file() {
     local src="$1"
@@ -371,7 +386,7 @@ backup_file() {
     # necessarily a first-ever capture.
     local prior skip_copy=false
     prior=$(_latest_backup_copy "$src")
-    [[ -n "$prior" ]] && cmp -s "$src" "$prior" && skip_copy=true
+    [[ -n "$prior" ]] && _same_bytes "$src" "$prior" && skip_copy=true
 
     _seed_genesis "$src" || log_warning "Could not seed genesis backup for $src (revert-to-original may be incomplete for this file)"
 
