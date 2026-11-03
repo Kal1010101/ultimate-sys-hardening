@@ -4,7 +4,7 @@ All notable changes to Ultimate Hardening (free tier) are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com),
 and the project follows [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [2.4.8] — 2026-11-03
 
 ### Added
 - AIDE baseline fingerprint: each accepted baseline's SHA-256 is printed, saved
@@ -15,6 +15,11 @@ and the project follows [Semantic Versioning](https://semver.org).
 - `--aide-verify <hash|file>` checks the live AIDE database against a
   fingerprint kept elsewhere (exit 0 match, 1 changed, 2 could not check).
 - `--aide-fingerprint` records the fingerprint of a baseline accepted by hand.
+
+### Fixed
+- Backups on systems without `cmp` (minimal RHEL-family and Arch installs have no
+  diffutils): every run copied every unchanged file again and printed
+  `cmp: command not found`. Files are now compared by checksum there.
 
 ### Documentation
 - README and site: the quick-start example uses `--safe-only`, because `--auto-mode`
@@ -309,6 +314,8 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
+[2.4.8]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.8
+[2.4.7]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.7
 [2.4.6]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.6
 [2.4.5]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.5
 [2.4.4]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.4
