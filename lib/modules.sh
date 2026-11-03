@@ -1134,7 +1134,8 @@ aide_copy_fingerprint_to() {   # <dir> <database> <interactive: true|false>
         target="$dir/aide-fingerprint-$host-$(date +%Y%m%d-%H%M%S)-$RANDOM.txt"
         if ( set -C; cat "$UH_AIDE_FINGERPRINT_FILE" > "$target" ) 2>/dev/null; then
             sync "$target" 2>/dev/null || sync
-            if cmp -s "$UH_AIDE_FINGERPRINT_FILE" "$target"; then
+            # compared in bash: cmp is in diffutils, which minimal RHEL-family images lack
+            if [[ "$(< "$target")" == "$(< "$UH_AIDE_FINGERPRINT_FILE")" ]]; then
                 log_success "Fingerprint saved to $target"
                 log_info "Unmount the drive before unplugging it"
                 return 0

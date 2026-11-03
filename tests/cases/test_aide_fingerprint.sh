@@ -66,7 +66,7 @@ assert_file_absent "$STATE/aide-fingerprint-destination" "prompt skipped: no fol
 
 out=$(run true "$DRIVE"$'\n' "aide_record_fingerprint '$LIVE'")
 copy=$(find "$DRIVE" -name 'aide-fingerprint-*.txt' | head -n 1)
-if [[ -n "$copy" ]] && cmp -s "$copy" "$FP"; then pass_msg "prompt, folder typed: copy written"; else fail "no copy on the drive: $out"; fi
+if [[ -n "$copy" ]] && [[ $(checksum "$copy") == "$(checksum "$FP")" ]]; then pass_msg "prompt, folder typed: copy written"; else fail "no copy on the drive: $out"; fi
 assert_file_contains "$STATE/aide-fingerprint-destination" "$DRIVE" "prompt, folder typed: remembered"
 assert_file_mode "$STATE/aide-fingerprint-destination" 600
 assert_file_contains "$stub_dir/logger.out" "destination set to $DRIVE" "prompt, folder typed: change sent to syslog"
