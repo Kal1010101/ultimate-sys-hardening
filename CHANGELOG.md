@@ -6,6 +6,16 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+- AIDE baseline fingerprint: each accepted baseline's SHA-256 is printed, saved
+  in `/var/lib/ultimate-hardening/aide-fingerprint`, sent to syslog, and
+  optionally copied to a drive folder that is remembered for later runs. A copy
+  is always a new file and never written over an existing one, and unattended
+  runs never copy to the machine's own disk.
+- `--aide-verify <hash|file>` checks the live AIDE database against a
+  fingerprint kept elsewhere (exit 0 match, 1 changed, 2 could not check).
+- `--aide-fingerprint` records the fingerprint of a baseline accepted by hand.
+
 ### Documentation
 - README and site: the quick-start example uses `--safe-only`, because `--auto-mode`
   on its own also strips SUID bits without asking; the FAQ says which High-risk

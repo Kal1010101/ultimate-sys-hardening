@@ -67,6 +67,7 @@ else
     fail "accepted: no backup of the old baseline"
 fi
 assert_file_mode "$LIVE" 600
+assert_file_contains /var/lib/ultimate-hardening/aide-fingerprint "database=$LIVE" "accepted: fingerprint recorded"
 
 reset; write_stub "$GOOD_NEW" 1
 out=$(refresh no); assert_refused "$out" "not accepted"
@@ -125,5 +126,5 @@ assert_output_contains "$out" 'already present, kept' "module re-run: says the b
 assert_file_absent /tmp/uh_init_ran "module re-run: no new init"
 [[ $(checksum "$LIVE") == "$before" ]] && pass_msg "module re-run: baseline unchanged" || fail "module re-run: baseline changed"
 
-rm -f "$DIR"/aide.db* "$CONF" /etc/cron.daily/aide-check; rm -rf "$stub_dir"
+rm -f "$DIR"/aide.db* "$CONF" /etc/cron.daily/aide-check /var/lib/ultimate-hardening/aide-fingerprint; rm -rf "$stub_dir"
 finish

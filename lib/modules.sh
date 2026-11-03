@@ -858,6 +858,12 @@ apply_aide() {
     install_aide_daily_check
 
     log_success "AIDE baseline created, daily integrity check scheduled"
+    # aideinit may have put the database in place itself, under either name
+    if [[ -z "$live_db" ]]; then
+        live_db=/var/lib/aide/aide.db.gz
+        aide_database_is_valid /var/lib/aide/aide.db && live_db=/var/lib/aide/aide.db
+    fi
+    aide_record_fingerprint "$live_db"
     count_fix
 }
 
@@ -993,6 +999,233 @@ aide_refresh() {
         return 1
     fi
     log_success "AIDE baseline replaced: $live_db (previous: ${live_db}.bak-${stamp})"
+    aide_record_fingerprint "$live_db"
+}
+
+# --- AIDE baseline fingerprint ------------------------------------------------
+# The hash AIDE reports for its database, recorded each time a baseline is
+# accepted. The copy kept here only catches mistakes and changes made without
+# root: root can rewrite it together with the database. The copies that count
+# leave the machine: syslog (sent on when remote logging is set up), a drive,
+# or the owner's own notes, checked later with --aide-verify. It is not secret,
+# so it is world-readable, which lets another machine fetch it with plain scp.
+: "${UH_STATE_DIR:=/var/lib/ultimate-hardening}"
+UH_AIDE_FINGERPRINT_FILE="$UH_STATE_DIR/aide-fingerprint"
+UH_AIDE_DESTINATION_FILE="$UH_STATE_DIR/aide-fingerprint-destination"
+UH_AIDE_SYSLOG_TAG="uh-aide-fingerprint"
+UH_AIDE_HASH_RE='^[A-Za-z0-9+/]{43}=$'
+
+# Tests replace this to drive the prompt without a terminal.
+_uh_stdin_is_terminal() { [[ -t 0 ]]; }
+
+# Prints the database AIDE compares against, from the first readable aide.conf.
+aide_live_database() {
+    local candidate db=""
+    for candidate in /etc/aide/aide.conf /etc/aide.conf /usr/local/etc/aide.conf; do
+        [[ -r "$candidate" ]] || continue
+        # AIDE 0.16 (RHEL 8, openSUSE Leap 15) calls database_in just "database".
+        db=$(aide_config_db_path "$candidate" database_in) \
+            || db=$(aide_config_db_path "$candidate" database) || db=""
+        [[ -n "$db" ]] || return 1
+        printf '%s\n' "$db"
+        return 0
+    done
+    return 1
+}
+
+# Records the fingerprint of a baseline that was just accepted, then offers to
+# copy it off the machine. The baseline is already in place, so a problem here
+# is a warning and never fails the run.
+aide_record_fingerprint() {
+    local db="$1" hash host recorded_at tmp
+    hash=$(aide_database_sha256 "$db") || hash=""
+    if [[ ! "$hash" =~ $UH_AIDE_HASH_RE ]]; then
+        log_warning "Could not hash $db, so no AIDE fingerprint was recorded"
+        return 0
+    fi
+    host=$(uname -n)
+    recorded_at=$(date '+%Y-%m-%dT%H:%M:%S%z')
+    if [[ -L "$UH_STATE_DIR" ]] || ! mkdir -p "$UH_STATE_DIR" 2>/dev/null; then
+        log_warning "Could not use $UH_STATE_DIR, so the AIDE fingerprint was not saved on this machine"
+    elif ! tmp=$(mktemp "$UH_STATE_DIR/.aide-fingerprint.XXXXXX"); then
+        log_warning "Could not write in $UH_STATE_DIR, so the AIDE fingerprint was not saved on this machine"
+    elif ! {
+            echo "# AIDE baseline fingerprint, recorded by Ultimate Hardening when the baseline was accepted."
+            echo "# Keep a copy off this machine and check it with: --aide-verify <this file>"
+            echo "host=$host"
+            echo "date=$recorded_at"
+            echo "database=$db"
+            echo "sha256=$hash"
+        } > "$tmp" || ! chmod 644 "$tmp" || ! mv -f "$tmp" "$UH_AIDE_FINGERPRINT_FILE"; then
+        rm -f "$tmp"
+        log_warning "Could not save the AIDE fingerprint to $UH_AIDE_FINGERPRINT_FILE"
+    fi
+    if command -v logger >/dev/null 2>&1; then
+        logger -t "$UH_AIDE_SYSLOG_TAG" -- "host=$host database=$db sha256=$hash" 2>/dev/null || true
+    fi
+
+    echo
+    log_success "AIDE baseline fingerprint: $hash"
+    log_info "Keep a copy somewhere other than this machine. Check the baseline against it with:"
+    log_info "  --aide-verify $hash"
+    if [[ -f "$UH_AIDE_FINGERPRINT_FILE" ]]; then
+        log_info "To fetch it from another machine, run this there:"
+        log_info "  scp $host:$UH_AIDE_FINGERPRINT_FILE ./aide-fingerprint-$host-$(date +%Y%m%d-%H%M).txt"
+        aide_save_fingerprint_offbox "$db"
+    fi
+    return 0
+}
+
+# Prints the saved drive folder, only if it still passes the checks a typed one would.
+aide_saved_destination() {
+    local saved
+    [[ -f "$UH_AIDE_DESTINATION_FILE" && ! -L "$UH_AIDE_DESTINATION_FILE" ]] || return 1
+    saved=$(head -n 1 "$UH_AIDE_DESTINATION_FILE" 2>/dev/null) || return 1
+    [[ "$saved" == /* && "$saved" != *[[:cntrl:]]* ]] || return 1
+    printf '%s\n' "$saved"
+}
+
+aide_remember_destination() {
+    local dir="$1" tmp
+    tmp=$(mktemp "$UH_STATE_DIR/.aide-destination.XXXXXX") || return 1
+    printf '%s\n' "$dir" > "$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$UH_AIDE_DESTINATION_FILE" || return 1
+    if command -v logger >/dev/null 2>&1; then
+        logger -t "$UH_AIDE_SYSLOG_TAG" -- "fingerprint destination set to $dir" 2>/dev/null || true
+    fi
+    log_info "Saved $dir as the fingerprint folder for later runs"
+}
+
+# True when DIR is on the filesystem holding / or the AIDE database: an
+# unmounted drive leaves its empty mount folder there, and a copy kept on this
+# machine gives no protection if the machine is compromised.
+aide_on_system_disk() {
+    local dir="$1" db="$2" dev
+    dev=$(stat -c %d "$dir" 2>/dev/null) || return 0
+    [[ "$dev" == "$(stat -c %d / 2>/dev/null)" ]] && return 0
+    [[ "$dev" == "$(stat -c %d "$(dirname "$db")" 2>/dev/null)" ]]
+}
+
+# Copies the fingerprint into DIR as a new file. Never writes over an existing
+# one: on a drive a non-root account owns, a planted link could otherwise make
+# root write over a system file. noclobber opens a new name with O_EXCL, which
+# also refuses a link.
+aide_copy_fingerprint_to() {   # <dir> <database> <interactive: true|false>
+    local dir="${1%/}" db="$2" interactive="$3" host target attempt reply
+    if [[ "$dir" != /* || "$dir" == *[[:cntrl:]]* ]]; then
+        log_warning "Fingerprint folder must be an absolute path: $dir"
+        return 1
+    fi
+    if [[ ! -d "$dir" || ! -w "$dir" ]]; then
+        log_warning "Fingerprint folder is missing or not writable (is the drive plugged in and mounted?): $dir"
+        return 1
+    fi
+    if aide_on_system_disk "$dir" "$db"; then
+        if [[ "$interactive" != true ]]; then
+            log_warning "Fingerprint not copied: $dir is on this machine's own disk (is the drive mounted?)"
+            return 1
+        fi
+        log_warning "$dir is on this machine's own disk, so a copy there gives no protection if this machine is compromised"
+        reply=""
+        read -r -p "Save here anyway? (y/N): " reply || true
+        [[ "$reply" =~ ^[Yy] ]] || return 1
+    fi
+    host=$(uname -n)
+    for attempt in 1 2 3 4 5; do
+        target="$dir/aide-fingerprint-$host-$(date +%Y%m%d-%H%M%S)-$RANDOM.txt"
+        if ( set -C; cat "$UH_AIDE_FINGERPRINT_FILE" > "$target" ) 2>/dev/null; then
+            sync "$target" 2>/dev/null || sync
+            if cmp -s "$UH_AIDE_FINGERPRINT_FILE" "$target"; then
+                log_success "Fingerprint saved to $target"
+                log_info "Unmount the drive before unplugging it"
+                return 0
+            fi
+            log_warning "The copy at $target does not read back the same; the drive may be failing"
+            return 1
+        fi
+    done
+    log_warning "Could not create a new file in $dir"
+    return 1
+}
+
+# Asks for a drive folder, or reuses the one saved last time. Unattended runs
+# use the saved folder without asking, and skip when there is none.
+aide_save_fingerprint_offbox() {
+    local db="$1" saved="" answer dir
+    saved=$(aide_saved_destination) || saved=""
+    if [[ "$AUTO_MODE" == true ]] || ! _uh_stdin_is_terminal; then
+        if [[ -n "$saved" ]]; then
+            aide_copy_fingerprint_to "$saved" "$db" false || true
+        fi
+        return 0
+    fi
+    while :; do
+        answer=""
+        if [[ -n "$saved" ]]; then
+            echo "Fingerprint folder: $saved"
+            read -r -p "Press Enter to save a copy there, type a new folder to replace it, or type skip: " answer || return 0
+        else
+            read -r -p "Save a copy of the fingerprint to another drive? Enter a folder, or press Enter to skip: " answer || return 0
+        fi
+        [[ "$answer" == skip || ( -z "$answer" && -z "$saved" ) ]] && return 0
+        dir="${answer:-$saved}"
+        if aide_copy_fingerprint_to "$dir" "$db" true; then
+            if [[ "${dir%/}" != "$saved" ]] && ! aide_remember_destination "${dir%/}"; then
+                log_warning "Could not save $dir for later runs"
+            fi
+            return 0
+        fi
+    done
+}
+
+# --aide-fingerprint: records the current baseline, for one accepted without
+# --aide-refresh (by hand, or before this version).
+aide_fingerprint_current() {
+    local db
+    db=$(aide_live_database) || { log_error "Could not find AIDE's database in its config"; return 1; }
+    if ! aide_database_is_valid "$db"; then
+        log_error "No valid AIDE baseline at $db"
+        return 1
+    fi
+    if [[ "$DRY_RUN" == true ]]; then
+        log_dry "Would record the fingerprint of $db and offer to copy it to a drive"
+        return 0
+    fi
+    log_warning "This records $db as the trusted baseline. Do it only after reading the AIDE report it came from."
+    confirm "Record the fingerprint of $db?" || { log_info "Nothing recorded"; return 1; }
+    aide_record_fingerprint "$db"
+}
+
+# --aide-verify: compares the live database with a fingerprint kept elsewhere,
+# given as the hash or as a saved fingerprint file. Exit 0 = matches,
+# 1 = does not match, 2 = could not check.
+aide_verify() {
+    local given="$1" expected="" file_host="" db actual
+    if [[ -f "$given" ]]; then
+        expected=$(sed -n 's/^sha256=//p' "$given" | head -n 1)
+        file_host=$(sed -n 's/^host=//p' "$given" | head -n 1)
+        if [[ -n "$file_host" && "$file_host" != "$(uname -n)" ]]; then
+            log_error "That fingerprint is for $file_host, not $(uname -n)"
+            return 2
+        fi
+    else
+        expected="$given"
+    fi
+    if [[ ! "$expected" =~ $UH_AIDE_HASH_RE ]]; then
+        log_error "Not a fingerprint: give the sha256 value printed when the baseline was accepted, or a saved fingerprint file"
+        return 2
+    fi
+    db=$(aide_live_database) || { log_error "Could not find AIDE's database in its config"; return 2; }
+    if ! aide_database_is_valid "$db"; then
+        log_error "No valid AIDE baseline at $db"
+        return 2
+    fi
+    actual=$(aide_database_sha256 "$db") || actual=""
+    if [[ "$actual" == "$expected" ]]; then
+        log_success "AIDE baseline $db matches the fingerprint"
+        return 0
+    fi
+    log_error "AIDE baseline $db does NOT match the fingerprint (now $actual). It changed after that fingerprint was recorded: find out why before trusting AIDE's reports, or restore a backup"
+    return 1
 }
 
 # --- 11. rkhunter ------------------------------------------------------------

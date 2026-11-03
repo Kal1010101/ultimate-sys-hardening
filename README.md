@@ -173,6 +173,10 @@ sudo ./src/free/ultimate_hardening.sh [OPTIONS]
   --revert         Restore everything from backup
   --revert-suid    Restore only SUID/SGID permissions
   --aide-refresh   Update the AIDE baseline, after showing the changes for approval
+  --aide-fingerprint
+                   Record the fingerprint of the current AIDE baseline
+  --aide-verify <hash|file>
+                   Check the AIDE baseline against a fingerprint kept elsewhere
   --check-update   Check GitHub for a newer release, then exit
   --version        Print version and exit
   --help           Show this help
@@ -182,6 +186,47 @@ Settings such as the USB storage blacklist, backup location and retention, and
 the remote syslog destination are environment variables. They are listed with
 their defaults in [`examples/.env.example`](examples/.env.example); pass one
 directly with `sudo UH_USB_STORAGE_BLACKLIST=false ./src/free/ultimate_hardening.sh`.
+
+### AIDE baseline fingerprint
+
+Each time an AIDE baseline is accepted (`--aide-refresh`, or module 10 building
+the first one), the tool prints the database's SHA-256 fingerprint and:
+
+- saves it in `/var/lib/ultimate-hardening/aide-fingerprint`, root-owned and
+  readable by all, since it is not secret;
+- sends it to syslog, so remote log forwarding, when set up, puts a copy on the
+  collector;
+- offers to copy it to a drive. The folder you give is remembered: press Enter
+  to use it again, type a new one, or type `skip`. Unattended runs use the saved
+  folder without asking, and only when it is on another filesystem than this
+  machine's own, so an unmounted drive is never mistaken for one. A copy is
+  always a new file; existing files are never written over;
+- prints an `scp` command to fetch it from another machine.
+
+Check the baseline later against a copy you kept:
+
+```bash
+sudo ./src/free/ultimate_hardening.sh --aide-verify /media/you/BACKUP/aide-fingerprint-host-....txt
+sudo ./src/free/ultimate_hardening.sh --aide-verify 'z/KpcAIiebD95YHH8Pdjn5+MGhRzcfoEVbWDW6BDvjs='
+```
+
+Exit status: 0 matches, 1 does not match, 2 could not check. If you accepted a
+baseline by hand, record it with `--aide-fingerprint` after reading its report.
+Pro and Enterprise also compare the database with the saved fingerprint during
+every compromise scan.
+
+**Limits.** Anything that runs on the machine, `--aide-verify` included, can be
+faked by someone who already has root there: they can change the database, the
+saved copy and the tool together. Only the copies you keep elsewhere cannot be
+changed from the machine. The strongest check hashes the database on another
+machine, so that the machine being checked does not do the hashing:
+
+```bash
+ssh host sudo cat /var/lib/aide/aide.db | zcat -f | openssl dgst -sha256 -binary | base64
+```
+
+That still trusts the machine's kernel to hand over the real file; only booting
+from trusted media removes that.
 
 ## CI and image builds
 

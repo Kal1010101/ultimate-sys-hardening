@@ -67,6 +67,8 @@ CIS_ONLY=false
 REVERT_MODE=false
 REVERT_SUID_ONLY=false
 AIDE_REFRESH=false
+AIDE_FINGERPRINT=false
+AIDE_VERIFY=""
 SAFE_ONLY=false
 
 usage() {
@@ -83,6 +85,10 @@ Usage: sudo $0 [OPTIONS]
   --revert        Restore everything from the most recent backup
   --revert-suid   Restore only SUID/SGID permissions
   --aide-refresh  Update the AIDE baseline, after showing the changes for approval
+  --aide-fingerprint
+                  Record the fingerprint of the current AIDE baseline
+  --aide-verify <hash|file>
+                  Check the AIDE baseline against a fingerprint kept elsewhere
   --check-update  Check GitHub for a newer release, then exit
   --version       Print version and exit
   --help          Show this help
@@ -114,6 +120,11 @@ while [[ $# -gt 0 ]]; do
         --revert)      REVERT_MODE=true ;;
         --revert-suid) REVERT_SUID_ONLY=true ;;
         --aide-refresh) AIDE_REFRESH=true ;;
+        --aide-fingerprint) AIDE_FINGERPRINT=true ;;
+        --aide-verify)
+            [[ -n "${2:-}" ]] || \
+                { echo -e "${RED}--aide-verify requires a fingerprint or a fingerprint file${NC}" >&2; exit 1; }
+            AIDE_VERIFY="$2"; shift ;;
         --check-update) check_for_updates; exit 0 ;;
         --version)     echo "Ultimate Hardening ${UH_VERSION} (Free)"; exit 0 ;;
         --help|-h)     usage; exit 0 ;;
@@ -213,6 +224,8 @@ main() {
     if [[ "$REVERT_MODE" == true ]];      then full_system_revert;  exit 0; fi
     if [[ "$REVERT_SUID_ONLY" == true ]]; then undo_suid_hardening; exit 0; fi
     if [[ "$AIDE_REFRESH" == true ]];     then aide_refresh;        exit $?; fi
+    if [[ "$AIDE_FINGERPRINT" == true ]]; then aide_fingerprint_current; exit $?; fi
+    if [[ -n "$AIDE_VERIFY" ]];           then aide_verify "$AIDE_VERIFY"; exit $?; fi
 
     show_distro_menu
 
