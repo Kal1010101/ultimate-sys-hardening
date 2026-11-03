@@ -54,7 +54,21 @@ assert_file_contains "$FP" "database=$LIVE" "record: names the database"
 assert_file_contains "$FP" "host=$(uname -n)" "record: names the host"
 assert_file_mode "$FP" 644
 assert_output_contains "$out" "aide-verify $hash_re" "record: prints the verify command"
-assert_output_contains "$out" "scp $(uname -n):$FP" "record: prints the pull command"
+assert_output_contains "$out" "scp [^ ]+:$FP " "record: prints the pull command"
+grep -qF "scp $(uname -n):" <<< "$out" && fail "the pull command relies on the hostname resolving" || pass_msg "record: the pull command does not rely on the hostname resolving"
+
+# The pull command logs in as an ordinary account, so a 027 umask must not
+# leave the folder closed to it.
+rm -rf "$STATE"
+out=$(run false '' "umask 027; aide_record_fingerprint '$LIVE'")
+[[ $(( 8#$(stat -c %a "$STATE") & 8#001 )) -ne 0 ]] && pass_msg "record, umask 027: others can reach the file" || fail "state folder is $(stat -c %a "$STATE")"
+[[ $(( 8#$(stat -c %a "$STATE") & 8#004 )) -eq 0 ]] && pass_msg "record, umask 027: others still can't list the folder" || fail "state folder is $(stat -c %a "$STATE")"
+out=$(run false '' "SUDO_USER=alice aide_scp_source")
+assert_output_contains "$out" "^alice@[^ ]+$" "pull command: names the account that ran sudo"
+out=$(run false '' "SUDO_USER=root aide_scp_source")
+grep -qF "root@" <<< "$out" && fail "the pull command names root: $out" || pass_msg "pull command: never names root"
+out=$(run false '' "hostname() { echo 'fe80::1 10.0.0.2'; }; aide_scp_source")
+assert_output_contains "$out" '^\[fe80::1\]$' "pull command: an IPv6 address is in brackets"
 assert_file_contains "$stub_dir/logger.out" "sha256=$hash_re" "record: sent to syslog"
 assert_file_absent "$STATE/aide-fingerprint-destination" "record unattended: no folder saved"
 

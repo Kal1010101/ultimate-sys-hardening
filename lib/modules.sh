@@ -1060,6 +1060,11 @@ aide_record_fingerprint() {
         rm -f "$tmp"
         log_warning "Could not save the AIDE fingerprint to $UH_AIDE_FINGERPRINT_FILE"
     fi
+    # A umask such as 027 creates the folder closed to other accounts, and the
+    # scp below logs in as one. Search only, so its contents still can't be listed.
+    if [[ -d "$UH_STATE_DIR" && ! -L "$UH_STATE_DIR" ]]; then
+        chmod a+x "$UH_STATE_DIR" 2>/dev/null || true
+    fi
     if command -v logger >/dev/null 2>&1; then
         logger -t "$UH_AIDE_SYSLOG_TAG" -- "host=$host database=$db sha256=$hash" 2>/dev/null || true
     fi
@@ -1070,10 +1075,25 @@ aide_record_fingerprint() {
     log_info "  --aide-verify $hash"
     if [[ -f "$UH_AIDE_FINGERPRINT_FILE" ]]; then
         log_info "To fetch it from another machine, run this there:"
-        log_info "  scp $host:$UH_AIDE_FINGERPRINT_FILE ./aide-fingerprint-$host-$(date +%Y%m%d-%H%M).txt"
+        log_info "  scp $(aide_scp_source):$UH_AIDE_FINGERPRINT_FILE ./aide-fingerprint-$host-$(date +%Y%m%d-%H%M).txt"
         aide_save_fingerprint_offbox "$db"
     fi
     return 0
+}
+
+# Prints user@address for the scp hint. The hostname alone may not resolve from
+# another machine, and root usually can't log in over ssh, so it names the
+# account that ran sudo and this machine's first address.
+aide_scp_source() {
+    local address
+    address=$(hostname -I 2>/dev/null | awk '{print $1}') || address=""
+    [[ -n "$address" ]] || address=$(uname -n)
+    [[ "$address" == *:* ]] && address="[$address]"   # scp needs IPv6 in brackets
+    if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != root ]]; then
+        printf '%s@%s\n' "$SUDO_USER" "$address"
+    else
+        printf '%s\n' "$address"
+    fi
 }
 
 # Prints the saved drive folder, only if it still passes the checks a typed one would.

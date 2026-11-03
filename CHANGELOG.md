@@ -4,6 +4,16 @@ All notable changes to Ultimate Hardening (free tier) are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com),
 and the project follows [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Fixed
+- The `scp` command printed after an AIDE fingerprint is recorded did not work
+  from another machine. It named the host by its hostname, which other machines
+  may not resolve, and on systems with a 027 umask (module 1 sets one) the
+  fingerprint folder was closed to the ordinary account scp logs in as. It now
+  names the account that ran sudo and the machine's address, and the folder can
+  be entered (not listed) by other accounts.
+
 ## [2.4.8] — 2026-11-03
 
 ### Added
@@ -314,6 +324,7 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
+[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.4.8...HEAD
 [2.4.8]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.8
 [2.4.7]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.7
 [2.4.6]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.6

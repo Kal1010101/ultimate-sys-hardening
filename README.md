@@ -201,7 +201,13 @@ the first one), the tool prints the database's SHA-256 fingerprint and:
   folder without asking, and only when it is on another filesystem than this
   machine's own, so an unmounted drive is never mistaken for one. A copy is
   always a new file; existing files are never written over;
-- prints an `scp` command to fetch it from another machine.
+- prints an `scp` command to fetch it from another machine, as the account that
+  ran sudo. Run it on the machine the drive is plugged into: the drive prompt
+  only sees drives mounted on this one. For example:
+
+  ```bash
+  scp user@192.168.xx.xx:/var/lib/ultimate-hardening/aide-fingerprint ./aide-fingerprint-user-20261103-1322.txt
+  ```
 
 Check the baseline later against a copy you kept:
 
