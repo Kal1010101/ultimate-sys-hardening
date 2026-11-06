@@ -1087,6 +1087,9 @@ aide_record_fingerprint() {
 aide_scp_source() {
     local address
     address=$(hostname -I 2>/dev/null | awk '{print $1}') || address=""
+    # Arch's inetutils and busybox hostname have no -I; iproute2/busybox ip do.
+    [[ -n "$address" ]] || address=$(ip -o addr show scope global 2>/dev/null \
+        | awk '$3 == "inet" || $3 == "inet6" { sub(/\/.*/, "", $4); print $4; exit }') || address=""
     [[ -n "$address" ]] || address=$(uname -n)
     [[ "$address" == *:* ]] && address="[$address]"   # scp needs IPv6 in brackets
     if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != root ]]; then

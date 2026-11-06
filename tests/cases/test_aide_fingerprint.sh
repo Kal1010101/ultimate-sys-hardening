@@ -55,7 +55,11 @@ assert_file_contains "$FP" "host=$(uname -n)" "record: names the host"
 assert_file_mode "$FP" 644
 assert_output_contains "$out" "aide-verify $hash_re" "record: prints the verify command"
 assert_output_contains "$out" "scp [^ ]+:$FP " "record: prints the pull command"
-grep -qF "scp $(uname -n):" <<< "$out" && fail "the pull command relies on the hostname resolving" || pass_msg "record: the pull command does not rely on the hostname resolving"
+if [[ -n "$( { hostname -I 2>/dev/null; ip -o addr show scope global 2>/dev/null; } | tr -d '[:space:]')" ]]; then
+    grep -qF "scp $(uname -n):" <<< "$out" && fail "the pull command relies on the hostname resolving" || pass_msg "record: the pull command does not rely on the hostname resolving"
+else
+    echo "  ⏭️  SKIP: neither 'hostname -I' nor 'ip' reports an address in this image"
+fi
 
 # The pull command logs in as an ordinary account, so a 027 umask must not
 # leave the folder closed to it.
@@ -69,6 +73,10 @@ out=$(run false '' "SUDO_USER=root aide_scp_source")
 grep -qF "root@" <<< "$out" && fail "the pull command names root: $out" || pass_msg "pull command: never names root"
 out=$(run false '' "hostname() { echo 'fe80::1 10.0.0.2'; }; aide_scp_source")
 assert_output_contains "$out" '^\[fe80::1\]$' "pull command: an IPv6 address is in brackets"
+out=$(run false '' "hostname() { return 1; }; ip() { echo '2: eth0    inet 192.0.2.5/24 brd 192.0.2.255 scope global eth0'; }; aide_scp_source")
+assert_output_contains "$out" '^192\.0\.2\.5$' "pull command: without hostname -I, the address comes from ip"
+out=$(run false '' "hostname() { return 1; }; ip() { return 1; }; aide_scp_source")
+assert_output_contains "$out" "^$(uname -n)$" "pull command: with neither tool, falls back to the hostname"
 assert_file_contains "$stub_dir/logger.out" "sha256=$hash_re" "record: sent to syslog"
 assert_file_absent "$STATE/aide-fingerprint-destination" "record unattended: no folder saved"
 

@@ -11,7 +11,8 @@ and the project follows [Semantic Versioning](https://semver.org).
   from another machine. It named the host by its hostname, which other machines
   may not resolve, and on systems with a 027 umask (module 1 sets one) the
   fingerprint folder was closed to the ordinary account scp logs in as. It now
-  names the account that ran sudo and the machine's address, and the folder can
+  names the account that ran sudo and the machine's address (from `hostname -I`,
+  or `ip` where hostname has no -I, as on Arch and Alpine), and the folder can
   be entered (not listed) by other accounts.
 
 ### Security
