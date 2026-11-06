@@ -281,7 +281,7 @@ What the free tier looks like:
 
 | | Free | Pro (coming soon) | Enterprise (coming soon) |
 |---|---|---|---|
-| **Price** | $0 | $9/mo · $79/yr | $49/mo (≤10 hosts) |
+| **Price** | $0 | $9/mo · $79/yr | $49/mo · $490/yr (≤10 hosts) |
 | Hardening modules (22) | ✅ | ✅ | ✅ |
 | Extra hardening modules: SSH rate limiting, sshd resource caps, USB device control | — | ✅ | ✅ |
 | AI directory lock-down | — | ✅ | ✅ |

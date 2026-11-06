@@ -25,6 +25,7 @@ and the project follows [Semantic Versioning](https://semver.org).
 - `docs/installation.md` clones the released tag instead of `main`, and the
   version test now covers it.
 - CONTRIBUTING.md's conduct contact is the project address, not a placeholder.
+- README and site list a yearly Enterprise price: $490/year for up to 10 hosts.
 
 ## [2.4.8] — 2026-11-03
 
