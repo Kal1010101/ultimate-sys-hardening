@@ -22,6 +22,8 @@ and the project follows [Semantic Versioning](https://semver.org).
 - The pre-push hook also refuses commits that carry payment account details.
 - Release packages come with a `SHA256SUMS` file, and CI pins every GitHub
   Action to a commit and runs with a read-only token.
+- gitleaks scans the full history on every push, and the pre-commit hook scans
+  staged changes when gitleaks is installed.
 
 ### Documentation
 - `docs/installation.md` clones the released tag instead of `main`, and the

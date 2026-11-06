@@ -99,6 +99,15 @@ if [[ -n "$env_refused" ]]; then
     exit 1
 fi
 
+# Secrets in the staged changes: gitleaks when installed; CI runs it on every push.
+GITLEAKS=$(command -v gitleaks || echo "$HOME/go/bin/gitleaks")
+if [[ -x "$GITLEAKS" ]]; then
+    "$GITLEAKS" git --pre-commit --staged --redact --no-banner --log-level error . >&2 \
+        || { echo "${RED}pre-commit: gitleaks found a secret in the staged changes${NC}" >&2; exit 1; }
+else
+    echo "pre-commit: gitleaks is not installed, so the secret scan was skipped (CI still runs it)" >&2
+fi
+
 # ---------------------------------------------------------------------------
 # Exact-content check against the commercial repo.
 #
