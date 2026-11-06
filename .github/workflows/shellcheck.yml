@@ -12,15 +12,21 @@ on:
 # private repo runs the equivalent checks against lib/ from here plus its own
 # tier scripts.
 #
-# Runner policy: pin runs-on to ubuntu-24.04 and actions to a major tag, never
-# ubuntu-latest (GitHub moved it to Ubuntu 26 on 2026-10-19). Trial ubuntu-26.04
+# Runner policy: pin runs-on to ubuntu-24.04 and actions to a full commit SHA
+# (major tag in the trailing comment), never ubuntu-latest (GitHub moved it to
+# Ubuntu 26 on 2026-10-19). A tag can be moved; a SHA cannot. Trial ubuntu-26.04
 # on a branch before switching; bump runners and actions deliberately.
+
+# Read-only token: no job here writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   shellcheck:
     name: ShellCheck
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Install ShellCheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck

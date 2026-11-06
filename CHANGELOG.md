@@ -20,6 +20,8 @@ and the project follows [Semantic Versioning](https://semver.org).
   third-party loads, no forms or base changes. A new test checks every page in
   `docs/` for this and for contact addresses other than the project's.
 - The pre-push hook also refuses commits that carry payment account details.
+- Release packages come with a `SHA256SUMS` file, and CI pins every GitHub
+  Action to a commit and runs with a read-only token.
 
 ### Documentation
 - `docs/installation.md` clones the released tag instead of `main`, and the
