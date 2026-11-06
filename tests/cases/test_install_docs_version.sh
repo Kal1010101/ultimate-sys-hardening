@@ -5,7 +5,7 @@ REPO="${REPO_ROOT:-/repo}"
 ver=$(sed -n 's/^UH_VERSION="\([^"]*\)"/\1/p' "$REPO/lib/core.sh")
 [[ -n "$ver" ]] || { fail "UH_VERSION not found in lib/core.sh"; finish; }
 
-for f in README.md SECURITY.md docs/index.html; do
+for f in README.md SECURITY.md docs/index.html docs/installation.md; do
     [[ -f "$REPO/$f" ]] || { echo "  ⏭️  SKIP: $f not present"; continue; }
     lines=$(grep -o 'git clone[^<]*ultimate-sys-hardening\.git' "$REPO/$f")
     if [[ -z "$lines" ]]; then

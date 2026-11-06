@@ -14,6 +14,16 @@ and the project follows [Semantic Versioning](https://semver.org).
   names the account that ran sudo and the machine's address, and the folder can
   be entered (not listed) by other accounts.
 
+### Security
+- The website sets a Content-Security-Policy: only its own script by hash, no
+  third-party loads, no forms or base changes. A new test checks every page in
+  `docs/` for this and for contact addresses other than the project's.
+
+### Documentation
+- `docs/installation.md` clones the released tag instead of `main`, and the
+  version test now covers it.
+- CONTRIBUTING.md's conduct contact is the project address, not a placeholder.
+
 ## [2.4.8] — 2026-11-03
 
 ### Added
