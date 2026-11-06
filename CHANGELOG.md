@@ -4,7 +4,7 @@ All notable changes to Ultimate Hardening (free tier) are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com),
 and the project follows [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [2.4.9] — 2026-11-06
 
 ### Fixed
 - The `scp` command printed after an AIDE fingerprint is recorded did not work
@@ -341,7 +341,8 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
-[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.4.8...HEAD
+[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.4.9...HEAD
+[2.4.9]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.9
 [2.4.8]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.8
 [2.4.7]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.7
 [2.4.6]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.6

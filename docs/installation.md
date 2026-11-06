@@ -6,7 +6,7 @@ see [PRICING.md](https://Kal1010101.github.io/ultimate-sys-hardening/#pricing).
 ## Quick install
 
 ```bash
-git clone --branch v2.4.8 https://github.com/Kal1010101/ultimate-sys-hardening.git
+git clone --branch v2.4.9 https://github.com/Kal1010101/ultimate-sys-hardening.git
 cd ultimate-sys-hardening
 sudo ./scripts/install.sh
 ```
@@ -42,7 +42,7 @@ nothing.
 The installer is optional — the script runs from a checkout as-is:
 
 ```bash
-git clone --branch v2.4.8 https://github.com/Kal1010101/ultimate-sys-hardening.git
+git clone --branch v2.4.9 https://github.com/Kal1010101/ultimate-sys-hardening.git
 cd ultimate-sys-hardening
 chmod +x src/free/ultimate_hardening.sh
 sudo ./src/free/ultimate_hardening.sh --dry-run --auto-mode
