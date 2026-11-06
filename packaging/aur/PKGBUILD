@@ -8,7 +8,7 @@ url='https://github.com/Kal1010101/ultimate-sys-hardening'
 license=('MIT')
 depends=('bash')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('d10b4f0fa6d5fb77304269a13b1bec1b3667fcc647fae4ae9c806f9ba15d8f60')
+sha256sums=('deb7aa844495295ffa64798e57271e2f8afb098a39f5051afc02710f81b2374f')
 
 package() {
     cd "ultimate-sys-hardening-$pkgver"
