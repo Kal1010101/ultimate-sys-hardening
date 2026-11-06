@@ -1,6 +1,7 @@
 #!/bin/bash
 # =============================================================================
-#  pre-push — env files with credentials never leave this machine
+#  pre-push — env files with credentials and payment details never leave
+#  this machine (payment-guard.sh: account IDs, test runs, payment errors)
 #
 #  Applies scripts/hooks/env-guard.sh to every file each pushed commit adds or
 #  changes, and to every env-named file in the tip being pushed. Catches what
@@ -11,20 +12,30 @@ set -uo pipefail
 # shellcheck source=scripts/hooks/env-guard.sh
 source "$(dirname "${BASH_SOURCE[0]}")/env-guard.sh" 2>/dev/null \
     || { echo "pre-push: scripts/hooks/env-guard.sh is missing — refusing to continue" >&2; exit 1; }
+# shellcheck source=scripts/hooks/payment-guard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/payment-guard.sh" 2>/dev/null \
+    || { echo "pre-push: scripts/hooks/payment-guard.sh is missing — refusing to continue" >&2; exit 1; }
 ZERO=0000000000000000000000000000000000000000
 refused=""
+payment_hits=""
 check_at() {  # $1 = commit, $2 = path
     local r
     r=$(env_guard_check "$2" "$(git show "$1:$2" 2>/dev/null)") || refused+="$(git rev-parse --short "$1")  $r"$'\n'
 }
 while read -r _lref lsha _rref rsha; do
     [[ "$lsha" == "$ZERO" ]] && continue
+    if [[ "$(git cat-file -t "$lsha" 2>/dev/null)" == tag ]]; then
+        hits=$(git cat-file tag "$lsha" | sed '1,/^$/d' | payment_guard_scan) \
+            || payment_hits+="tag $_lref  ${hits//$'\n'/$'\n'    }"$'\n'
+    fi
     if [[ "$rsha" == "$ZERO" ]]; then
         range=$(git rev-list "$lsha" --not --remotes 2>/dev/null)
     else
         range=$(git rev-list "$rsha..$lsha" 2>/dev/null)
     fi
     for c in $range; do
+        hits=$({ git show -s --format=%B "$c"; payment_added_lines "$c"; } \
+               | payment_guard_scan) || payment_hits+="$(git rev-parse --short "$c")  ${hits//$'\n'/$'\n'    }"$'\n'
         while IFS= read -r f; do [[ -n "$f" ]] && check_at "$c" "$f"; done \
             < <(git diff-tree --root --no-commit-id --name-only -r --diff-filter=ACMR "$c" | grep -E "$ENV_NAME_RE")
     done
@@ -32,6 +43,11 @@ while read -r _lref lsha _rref rsha; do
         < <(git ls-tree -r --name-only "$lsha" | grep -E "$ENV_NAME_RE")
 done
 refused=$(sort -u <<< "$refused" | grep -v '^\s*$')
+if [[ -n "$payment_hits" ]]; then
+    echo "pre-push: refusing to push payment details or payment test/error notes (keep them in private notes):" >&2
+    sed 's/^/    /' <<< "$payment_hits" >&2
+    exit 1
+fi
 if [[ -n "$refused" ]]; then
     echo "pre-push: refusing to push env files:" >&2
     sed 's/^/    /' <<< "$refused" >&2

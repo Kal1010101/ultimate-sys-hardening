@@ -18,6 +18,7 @@ and the project follows [Semantic Versioning](https://semver.org).
 - The website sets a Content-Security-Policy: only its own script by hash, no
   third-party loads, no forms or base changes. A new test checks every page in
   `docs/` for this and for contact addresses other than the project's.
+- The pre-push hook also refuses commits that carry payment account details.
 
 ### Documentation
 - `docs/installation.md` clones the released tag instead of `main`, and the
