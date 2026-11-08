@@ -58,9 +58,26 @@ you choose to confirm it. Prefer to do it by hand instead, or the inventory is
 missing (a host hardened before this existed)? Re-enable manually with
 `systemctl enable --now <service>`.
 
-**Firewall configuration** resets existing rules before applying its own. If you
-have a hand-built ruleset, back it up separately — the script's backup covers
-config files, not live kernel state.
+**Firewall configuration** opens SSH only and keeps the rules a host already
+has. On ufw, its rule and settings files are backed up first, and revert puts
+them back and turns ufw on or off as it was. On firewalld, the default zone,
+whether the drop zone allowed SSH, and whether firewalld was running are
+recorded first, and revert puts those back. On nftables, the module's table
+lives in a file of its own, included from the host's config by one added line;
+revert removes the table, the file and the line, keeps any edits made to the
+config since, and never stops nftables (its unit flushes every table on stop).
+Hosts hardened by 2.4.9 or earlier have no such record, and revert falls back
+to resetting or stopping the firewall; on firewalld it also removes the http
+and https services an earlier release added.
+
+**Services and settings modules turn on are recorded first.** Whether
+fail2ban, auditd and AppArmor were running and started at boot, the live value
+of every kernel setting module 6 changes, and which AppArmor profiles were in
+complain mode are recorded before the first run; revert puts those back.
+Fail2Ban's jail goes in a file of its own, so an admin's `jail.local` is never
+changed. Docker's `daemon.json` is merged rather than replaced, and
+`userns-remap` is only turned on where Docker holds no containers, images or
+volumes yet, since it would hide them.
 
 **Encrypted home directories.** An earlier version modified PAM and locked a test
 machine out of its login screen on an eCryptfs system. PAM modification was
@@ -77,7 +94,7 @@ why that module no longer exists.
 ## Verifying before you run
 
 ```bash
-git clone --branch v2.4.9 https://github.com/Kal1010101/ultimate-sys-hardening.git
+git clone --branch v2.5.0 https://github.com/Kal1010101/ultimate-sys-hardening.git
 cd ultimate-sys-hardening
 
 # Read it

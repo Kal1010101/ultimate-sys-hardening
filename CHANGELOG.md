@@ -4,6 +4,116 @@ All notable changes to Ultimate Hardening (free tier) are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com),
 and the project follows [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+## [2.5.0] — 2026-11-08
+
+### Changed
+- Module 3 (Firewall) opens only SSH inbound. It used to open ports 80 and 443
+  too, on every host, desktops included. A host that serves the web now opens
+  them itself (`ufw allow 80,443/tcp`, or `firewall-cmd --permanent
+  --add-service=http --add-service=https && firewall-cmd --reload`). Re-running
+  module 3 closes them on nftables hosts hardened earlier. On ufw (see Fixed
+  below) and firewalld it does not; close them with `ufw delete allow 80/tcp &&
+  ufw delete allow 443/tcp`, or `firewall-cmd --permanent
+  --remove-service=http --remove-service=https && firewall-cmd --reload`.
+
+### Fixed
+- Module 3 on ufw no longer runs `ufw reset` first, which deleted every rule the
+  host already had, including ones made in a distro's firewall GUI. It backs up
+  ufw's rule and settings files and adds its policies and the SSH allow on top.
+  Because nothing is reset, ufw hosts hardened earlier keep 80/443 open after a
+  re-run; close them with `ufw delete allow 80/tcp && ufw delete allow 443/tcp`.
+- Reverting module 3 on ufw restores those files and turns ufw back on or off
+  as it was, instead of resetting and disabling it, which left distros that ship
+  ufw enabled with no firewall. A full revert does the same. Hosts hardened by
+  an earlier release have no such backup and still get the old reset, also
+  after a 2.5.0 run: their rules (22, 80 and 443 open) are not saved as the
+  state before hardening.
+- Reverting module 3 on firewalld puts back the default zone the host had (for
+  example FedoraWorkstation), the drop zone's SSH setting, and firewalld running
+  or not, all recorded before the first run. It used to switch to the public
+  zone and stop firewalld on every host. While sshd is running (or over SSH),
+  it will not switch back to a zone that does not allow SSH; it says so and
+  gives the command to run from a console. This is judged by sshd, not only by
+  `$SSH_CONNECTION`, which `sudo` usually clears. Hosts hardened by an earlier
+  release have no record and still get the old revert.
+- Module 3 on nftables checks that the SSH accept rule loaded before saving
+  anything. If it did not, the table is removed again and nothing is saved or
+  enabled at boot, so a default-drop ruleset without SSH can never be loaded at
+  the next boot.
+- Module 3 on nftables no longer overwrites the host's own nftables config. Its
+  table goes in `/etc/nftables-uh_filter.nft`, included by one line appended to
+  the config, and nftables is enabled at boot without being started (starting
+  it loads the config, which may flush every table, Docker's included). Where
+  nftables was not enabled at boot before, the host's config was never loaded,
+  so it is kept aside (restored on revert) and the boot file loads the module's
+  table alone: loading Alpine's dormant default as well drops SSH. Its
+  revert found nothing on hosts with the current table and reported "nothing
+  reverted"; it now removes the table, the file and the include line, puts the
+  config back as it was, and never stops nftables (stopping it flushes every
+  table). On hosts hardened by an earlier release, revert restores the
+  backed-up config instead of deleting it. A full revert also puts nftables'
+  start-at-boot setting back; it used to leave it enabled, and on Alpine the
+  restored default config then dropped SSH at the next boot. With
+  `--skip-backup`, a config nftables does not load at boot is left alone (it
+  could not be restored), and nftables is not enabled at boot; the rules last
+  until reboot, and the run says so.
+- Reverting module 3 deleted any nftables `ip filter` table, taking it for the
+  one releases before 2.5.0 made. ufw and Docker make one through
+  iptables-nft, so on a ufw host with `nft` installed the revert wiped ufw's
+  and Docker's live IPv4 rules, deleted `/etc/nftables.conf` and stopped
+  nftables. Only the table with this tool's combined 22/80/443 accept is
+  removed now.
+- Reverting module 3 on nftables keeps edits made to the host's nftables config
+  after hardening. It takes out only the include line it added; it used to copy
+  the backup over the config. Where the module had replaced a config nftables
+  did not load at boot and the file was edited since, the edited file stays and
+  the config from before hardening is saved next to it as
+  `<config>.before-hardening`.
+- Hosts hardened by a release from before the firewalld default-zone fix had
+  ssh, http and https in the zone that was the default then, usually public.
+  Module 3 recorded that zone as the state before hardening, so reverting it
+  switched back to that zone and opened 80/443 again. Such a host is now
+  recognised (an earlier run of this tool, and all three services in the
+  default zone), nothing is recorded, and revert removes http and https from
+  that zone. A web server's own public zone, on a host the tool never ran on
+  before, is recorded and restored as before.
+- Choosing module 3 in the menu ended the program when its revert found nothing
+  of the module's to undo (for example, nftables running with only the host's
+  own rules).
+- Module 17 (Docker) merges its settings into an existing `daemon.json` instead
+  of replacing it, so storage location, registry mirrors and the like are kept,
+  and a log driver the admin chose is left alone. `userns-remap` is only turned
+  on where Docker holds no containers, images or volumes yet: it made existing
+  ones disappear from view. Docker is not restarted while that would stop
+  running containers, when applying the module or when reverting it.
+- Module 13 (AppArmor) switches only the profiles in complain mode to enforce,
+  instead of running `aa-enforce` on everything in `/etc/apparmor.d`, and records
+  each first. Reverting it, which had no automated way back, now puts exactly
+  those profiles back in complain mode, and so does a full revert.
+- Module 4 (Fail2Ban) writes its SSH jail to
+  `/etc/fail2ban/jail.d/99-ultimate-hardening.local` instead of overwriting
+  `jail.local`, which switched off every jail an admin had there. Its jail no
+  longer sets `[DEFAULT]` values for other jails.
+- Reverting modules 4, 7 and 13, and a full revert, stop and disable fail2ban,
+  auditd and AppArmor again if they were not running or not started at boot
+  before hardening.
+- Reverting module 6 puts the live kernel settings back to their values before
+  hardening. Removing the drop-in alone left them hardened until a reboot.
+- Module 7 (auditd) loaded no rules on Alpine although it reported "configured
+  with 17 audit rules": Alpine's `augenrules --load` calls `/sbin/auditctl`,
+  which lives in `/usr/sbin` there. The merged rules are now loaded with
+  `auditctl -R`, and success is reported only when `auditctl -l` lists them.
+  Reverting the module restores the merged `/etc/audit/audit.rules` (or removes
+  it where hardening created it) and reloads the kernel's rules from it: Alpine
+  loads that file at every start and never rebuilds it, so the rules came back
+  at boot after a revert.
+- Checks that piped a command into `grep -q` could fail at random under
+  `pipefail` (grep exits early, the command gets SIGPIPE): module 3 reported
+  that nothing was applied when it had been. They now capture the output first,
+  and a test keeps new ones out.
+
 ## [2.4.9] — 2026-11-06
 
 ### Fixed
@@ -341,7 +451,8 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
-[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.4.9...HEAD
+[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.5.0
 [2.4.9]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.9
 [2.4.8]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.8
 [2.4.7]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.7

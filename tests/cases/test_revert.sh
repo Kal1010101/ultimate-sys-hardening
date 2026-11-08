@@ -13,8 +13,9 @@ had_jail=false; [[ -f /etc/fail2ban/jail.local ]] && had_jail=true
 
 # Harden WITH backup this time
 run_hardening --auto-mode >/dev/null
-# Where fail2ban could not be installed, put the module's own jail.local in
-# place by hand, so the revert below still has one to remove.
+# Releases up to 2.4.9 wrote their jail into jail.local itself. Put that
+# output in place by hand, as such a host would have it, so the revert below
+# must still recognise and remove it.
 if [[ "$had_jail" == false && ! -f /etc/fail2ban/jail.local ]]; then
     mkdir -p /etc/fail2ban
     bash -c 'R="${REPO_ROOT:-/repo}"; source "$R/lib/core.sh"; source "$R/lib/platform.sh"
@@ -45,7 +46,8 @@ fi
 
 assert_file_absent /etc/sysctl.d/99-hardening.conf "revert removed the sysctl drop-in"
 assert_file_absent /etc/ssh/sshd_config.d/00-ultimate-hardening.conf "revert removed the sshd drop-in"
-[[ "$made_jail" == true ]] && assert_file_absent /etc/fail2ban/jail.local "revert removed the jail.local it created"
+[[ "$made_jail" == true ]] && assert_file_absent /etc/fail2ban/jail.local "revert removed the jail.local an earlier release created"
+assert_file_absent /etc/fail2ban/jail.d/99-ultimate-hardening.local "revert removed the module's own jail file"
 [[ "$(cat /etc/docker/daemon.json 2>/dev/null)" == '{ "debug": true }' ]] \
     && pass_msg "revert left the admin's own daemon.json alone" \
     || fail "revert changed or removed an admin daemon.json it never wrote"

@@ -10,7 +10,7 @@
 # =============================================================================
 
 # ------------------------------------------------------------------ version --
-UH_VERSION="2.4.9"
+UH_VERSION="2.5.0"
 
 # ------------------------------------------------------------------- colors --
 RED='\033[0;31m'
@@ -529,6 +529,8 @@ UH_TOOL_CREATED_PATHS=(
     "/etc/profile.d/hardening-umask.sh"
     "/etc/fail2ban/filter.d/alpine-sshd.local"
     "/etc/ssh/sshd_config.d/00-ultimate-hardening.conf"
+    "/etc/nftables-uh_filter.nft"
+    "/etc/fail2ban/jail.d/99-ultimate-hardening.local"
 )
 
 # Files a module also rewrites whole, but under a name an admin may already

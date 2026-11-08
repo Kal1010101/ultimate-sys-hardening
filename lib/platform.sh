@@ -298,6 +298,99 @@ is_service_active() {
     fi
 }
 
+is_service_enabled() {
+    local svc="$1"
+    if _has_systemd; then
+        systemctl is-enabled --quiet "$svc" 2>/dev/null
+    elif _has_openrc; then
+        grep -qE "^[[:space:]]*${svc}[[:space:]]*\|" <<<"$(rc-update show default 2>/dev/null)"
+    else
+        return 1
+    fi
+}
+
+# Start at boot without starting now, and the reverse. nftables needs these:
+# its unit on Debian and Arch flushes the WHOLE ruleset (Docker's and
+# fail2ban's tables included) when stopped, and loads a config that may begin
+# with `flush ruleset` when started.
+enable_service_at_boot() {
+    local svc="$1"
+    [[ "${DRY_RUN:-false}" == true ]] && { log_info "DRY RUN: Would enable $svc at boot"; return 0; }
+    if _has_systemd; then
+        systemctl enable "$svc" >>"$LOG_FILE" 2>&1
+    elif _has_openrc; then
+        rc-update add "$svc" default >>"$LOG_FILE" 2>&1
+    else
+        return 1
+    fi
+}
+
+disable_service_at_boot() {
+    local svc="$1"
+    [[ "${DRY_RUN:-false}" == true ]] && { log_info "DRY RUN: Would disable $svc at boot"; return 0; }
+    if _has_systemd; then
+        systemctl disable "$svc" >>"$LOG_FILE" 2>&1 || true
+    elif _has_openrc; then
+        rc-update del "$svc" default >>"$LOG_FILE" 2>&1 || true
+    fi
+    return 0
+}
+
+stop_service_now() {
+    local svc="$1"
+    [[ "${DRY_RUN:-false}" == true ]] && { log_info "DRY RUN: Would stop $svc"; return 0; }
+    if _has_systemd; then
+        systemctl stop "$svc" >>"$LOG_FILE" 2>&1 || true
+    elif command -v rc-service >/dev/null 2>&1; then
+        rc-service "$svc" stop >>"$LOG_FILE" 2>&1 || true
+    elif command -v service >/dev/null 2>&1; then
+        service "$svc" stop >>"$LOG_FILE" 2>&1 || true
+    fi
+    return 0
+}
+
+# --- Service state before hardening ------------------------------------------
+# A module that turns a service on records, once (genesis, first run wins),
+# whether it was running and whether it started at boot, so revert can put it
+# back instead of leaving on what hardening turned on. Lines: name|active|enabled
+UH_SERVICE_STATE_NAME=service_state_before.txt
+
+record_service_state() {
+    local svc="$1" active=no enabled=no
+    local rec="${BACKUP_GENESIS_DIR:-}/$UH_SERVICE_STATE_NAME"
+    [[ -n "${BACKUP_GENESIS_DIR:-}" ]] || return 0
+    [[ "${SKIP_BACKUP:-false}" == true || "${DRY_RUN:-false}" == true ]] && return 0
+    grep -q "^${svc}|" "$rec" 2>/dev/null && return 0
+    is_service_active "$svc" && active=yes
+    is_service_enabled "$svc" && enabled=yes
+    ( umask 077; mkdir -p "$BACKUP_GENESIS_DIR" ) 2>/dev/null
+    printf '%s|%s|%s\n' "$svc" "$active" "$enabled" >> "$rec" 2>/dev/null \
+        || log_warning "Could not record the state of $svc — revert will leave it as it is"
+}
+
+# Prints "<active> <enabled>" (yes/no each); fails when there is no record.
+recorded_service_state() {
+    local rec="${BACKUP_GENESIS_DIR:-}/$UH_SERVICE_STATE_NAME" line _name active enabled
+    line=$(grep -m1 "^${1}|" "$rec" 2>/dev/null) || return 1
+    IFS='|' read -r _name active enabled <<<"$line"
+    [[ "$active" =~ ^(yes|no)$ && "$enabled" =~ ^(yes|no)$ ]] || return 1
+    echo "$active $enabled"
+}
+
+# Stop and/or disable a service that was not running / not enabled before
+# hardening. What was on before is left on. No record: left as it is.
+restore_service_state() {
+    local svc="$1" state active enabled
+    state=$(recorded_service_state "$svc") || { log_info "$svc: no record of its state before hardening — left as it is"; return 0; }
+    read -r active enabled <<<"$state"
+    [[ "$active" == no ]] && stop_service_now "$svc"
+    [[ "$enabled" == no ]] && disable_service_at_boot "$svc"
+    if [[ "$active" == no || "$enabled" == no ]]; then
+        log_success "$svc: back to how it was before hardening (running: $active, started at boot: $enabled)"
+    fi
+    return 0
+}
+
 service_status_hint() {
     if _has_systemd; then printf 'systemctl status %s' "$1"
     elif _has_openrc; then printf 'rc-service %s status' "$1"

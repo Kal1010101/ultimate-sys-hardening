@@ -65,7 +65,7 @@ sudo ./src/free/ultimate_hardening.sh --revert
 ## Quick start
 
 ```bash
-git clone --branch v2.4.9 https://github.com/Kal1010101/ultimate-sys-hardening.git
+git clone --branch v2.5.0 https://github.com/Kal1010101/ultimate-sys-hardening.git
 cd ultimate-sys-hardening
 chmod +x src/free/ultimate_hardening.sh
 sudo ./src/free/ultimate_hardening.sh
@@ -98,11 +98,11 @@ from the same compliance checks `--cis-only` runs:
 | 10 | AIDE | Safe | File integrity baseline + daily cron check |
 | 11 | rkhunter | Safe | Rootkit scanner with daily scan |
 | 12 | Disable services | Safe | 20 unnecessary services |
-| 13 | AppArmor / SELinux | Medium | Enforce mode |
+| 13 | AppArmor / SELinux | Medium | Enforce mode (AppArmor profiles in complain mode, recorded for revert) |
 | 14 | etckeeper | Safe | Git version control for `/etc` |
 | 15 | Boot security | Safe | GRUB permissions, USB storage blacklist (`UH_USB_STORAGE_BLACKLIST=false` skips it) |
 | 16 | GRUB password | **High** | PBKDF2 bootloader password; interactive only |
-| 17 | Docker security | Medium | userns-remap, inter-container comms off, log rotation |
+| 17 | Docker security | Medium | Inter-container comms off, live-restore, log rotation, merged into your daemon.json; userns-remap where Docker holds no data yet |
 | 18 | ModSecurity | Medium | WAF + core rule set, only if Apache/httpd is present |
 | 19 | Unused kernel modules | Safe | Blacklists DCCP, SCTP, RDS, TIPC and the CIS uncommon filesystems (cramfs, freevxfs, hfs, hfsplus, jffs2, squashfs, udf). squashfs is left alone where snapd needs it. |
 | 20 | Compiler access | Medium | Restricts gcc/clang to root, records original modes |

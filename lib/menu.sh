@@ -90,7 +90,7 @@ declare -A MOD_REVERT_FILES=(
     # tool wrote it, so revert_backed_up_file() correctly deletes it rather
     # than trying to restore a backup that was never taken.
     [ssh]="/etc/ssh/sshd_config /etc/ssh/sshd_config.d/00-ultimate-hardening.conf /etc/issue.net"
-    [fail2ban]="/etc/fail2ban/jail.local /etc/fail2ban/filter.d/alpine-sshd.local"
+    [fail2ban]="/etc/fail2ban/jail.d/99-ultimate-hardening.local /etc/fail2ban/jail.local /etc/fail2ban/filter.d/alpine-sshd.local"
     [kernel]="/etc/sysctl.d/99-hardening.conf"
     [audit]="/etc/audit/rules.d/99-hardening.rules"
     [password]="/etc/login.defs"
@@ -100,9 +100,9 @@ declare -A MOD_REVERT_FILES=(
     [syslog]="/etc/rsyslog.conf"
     [umask]="/etc/login.defs /etc/profile.d/hardening-umask.sh /etc/bash.bashrc"
 )
-# apparmor is split: the AppArmor branch enables a service and calls
-# aa-enforce, with no single settings file to revert; the SELinux branch
-# writes exactly one file. Handled as a special case in revert_module()
+# apparmor is split: the AppArmor branch enables a service and moves the
+# profiles in complain mode to enforce, recording them (undo_apparmor_enforce);
+# the SELinux branch writes exactly one file. Handled as a special case in revert_module()
 # rather than forced into the generic table above.
 
 # Live state, filled by refresh_module_states(). Values: on | off | na
@@ -256,7 +256,9 @@ module_probe_state() {
             grep -qE '^[[:space:]]*password_pbkdf2' /etc/grub.d/40_custom 2>/dev/null \
                 && echo on || echo off ;;
         docker)
-            grep -q '"userns-remap"' /etc/docker/daemon.json 2>/dev/null \
+            # icc, not userns-remap: userns-remap is left off on hosts that
+            # already hold containers (see apply_docker_security).
+            grep -qE '"icc":[[:space:]]*false' /etc/docker/daemon.json 2>/dev/null \
                 && echo on || echo off ;;
         modsec)
             # Enabled if the module is loadable by the local web server.
@@ -579,8 +581,8 @@ revert_module() {
             ;;
         apparmor)
             # Split module: SELinux writes one file and can be reverted the
-            # normal way; AppArmor enables a service and calls aa-enforce,
-            # with no single settings file to restore.
+            # normal way; AppArmor moved recorded profiles from complain to
+            # enforce, and undo_apparmor_enforce puts exactly those back.
             if [[ -f /etc/selinux/config ]] && command -v sestatus >/dev/null 2>&1; then
                 confirm "Revert ${label} — restore /etc/selinux/config?" || { log_info "Revert cancelled"; return 0; }
                 if revert_backed_up_file /etc/selinux/config; then
@@ -589,13 +591,16 @@ revert_module() {
                     log_info "${label}: nothing reverted — this module doesn't appear to have been applied by the tool on this host (already compliant by default)"
                 fi
             else
-                log_warning "${label}: not automated — AppArmor enables a service and sets profiles to enforce rather than writing one config file, so there's nothing for a file-based revert to restore. Run 'aa-complain /etc/apparmor.d/*' by hand if you need to back off enforcement."
+                confirm "Revert ${label} — put the AppArmor profiles that were in complain mode back into it?" || { log_info "Revert cancelled"; return 0; }
+                undo_apparmor_enforce
             fi
             return 0
             ;;
         firewall)
-            confirm_risky "Revert ${label} — remove the default-deny ruleset entirely, leaving no active firewall?" || { log_info "Revert cancelled"; return 0; }
-            revert_firewall
+            confirm_risky "Revert ${label} — put back the firewall from before hardening (ufw, firewalld), or remove the default-deny ruleset and leave no active firewall (nftables, or a host hardened by 2.4.9 or earlier)?" || { log_info "Revert cancelled"; return 0; }
+            # Returns 1 when nothing of module 3's is found (it logs why);
+            # under set -e that ended the whole program.
+            revert_firewall || true
             return 0
             ;;
         services)
@@ -713,10 +718,27 @@ revert_module() {
     # auditd/sysctl, scoped here to just the one module being reverted.
     case "$key" in
         ssh)      restart_sshd || true ;;
-        fail2ban) is_service_active fail2ban && { restart_service fail2ban || true; } ;;
-        kernel)   is_linux && { sysctl --system >>"$LOG_FILE" 2>&1 || true; } ;;
-        audit)    is_service_active auditd && { restart_service auditd || true; } ;;
-        docker)   is_service_active docker && { restart_service docker || true; } ;;
+        fail2ban)
+            restore_service_state fail2ban
+            is_service_active fail2ban && { restart_service fail2ban || true; } ;;
+        kernel)   is_linux && restore_sysctl_before ;;
+        audit)
+            restore_audit_rules
+            restore_service_state auditd
+            is_service_active auditd && { restart_service auditd || true; } ;;
+        docker)
+            # The restored daemon.json may lack live-restore, and a daemon
+            # started without it stops running containers (seen on a lab
+            # guest: a running container came back exited). So no restart
+            # while any container runs.
+            if is_service_active docker; then
+                local running_containers; running_containers=$(docker ps -q 2>/dev/null | wc -l)
+                if (( running_containers > 0 )); then
+                    log_warning "Docker: not restarted — $running_containers running container(s) would be stopped. The restored daemon.json applies at the next Docker restart, when it suits you."
+                else
+                    restart_service docker || true
+                fi
+            fi ;;
         syslog)   is_service_active rsyslog && { restart_service rsyslog || true; } ;;
         grubpw)
             update-grub >>"$LOG_FILE" 2>&1 \

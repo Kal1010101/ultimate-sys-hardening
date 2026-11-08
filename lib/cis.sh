@@ -172,9 +172,12 @@ run_cis_checks() {
     # whose `ufw status` said "Status: active" with the correct rules applied
     # a moment earlier in the same session.
     local ufw_active=false
-    command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active' && ufw_active=true
+    command -v ufw >/dev/null 2>&1 && grep -q '^Status: active' <<<"$(ufw status 2>/dev/null)" && ufw_active=true
 
+    # Module 3's nftables table is loaded without starting the nftables
+    # service (see _fw_nftables), so the table itself counts too.
     if is_service_active nftables || [[ "$ufw_active" == true ]] \
+       || { command -v nft >/dev/null 2>&1 && nft list chain inet uh_filter input >/dev/null 2>&1; } \
        || is_service_active firewalld || is_service_active pf; then
         record_check "Firewall is active" "true"
     else
@@ -563,7 +566,32 @@ full_system_revert() {
         done < "$cinv"
     fi
 
-    is_linux && { sysctl --system >>"$LOG_FILE" 2>&1 || true; }
+    is_linux && restore_sysctl_before
+    # Module 3's nftables table: its include line comes out of the host's
+    # config (restored above or not), and the live table goes.
+    if command -v nft >/dev/null 2>&1 && nft list table inet uh_filter >/dev/null 2>&1; then
+        nft delete table inet uh_filter >>"$LOG_FILE" 2>&1 || true
+        unpersist_uh_filter_table
+    fi
+    # Its start-at-boot setting too: left enabled, Alpine would load its
+    # restored default config at the next boot, and that drops SSH.
+    restore_nftables_boot_state
+    # ufw's restored files only take effect once ufw re-reads them.
+    if command -v ufw >/dev/null 2>&1 && [[ -f "$BACKUP_GENESIS_DIR/files$UFW_CONF" ]]; then
+        ufw_apply_restored_config
+    fi
+    # The merged audit rules file auditd loads at start (Alpine never
+    # rebuilds it): restored, or removed if hardening created it.
+    restore_audit_rules
+    # Profiles that were in complain mode: the restored files take effect only
+    # once reloaded, and force-complain links are not in the file backup.
+    [[ -f "$BACKUP_GENESIS_DIR/$UH_APPARMOR_RECORD_NAME" ]] && undo_apparmor_enforce
+    # Services hardening turned on go back to how they were (not nftables:
+    # stopping its unit flushes every table; module 3's revert handles it).
+    local svc_before
+    for svc_before in fail2ban auditd apparmor; do
+        recorded_service_state "$svc_before" >/dev/null && restore_service_state "$svc_before"
+    done
     restart_sshd || true
     is_service_active auditd && restart_service auditd || true
 

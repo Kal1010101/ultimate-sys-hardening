@@ -171,10 +171,14 @@ EOF
 # under `set -euo pipefail` aborted apply_safe_modules() and silently skipped
 # modules 4-22. A firewall that cannot be installed must degrade this module
 # only; see the set -e contract at the top of this file.
+#
+# Inbound, only SSH is opened. Earlier releases also opened 80/443 on every
+# host, desktops included, with no record of why; a hardening tool should not
+# open ports nobody asked for, so a host that serves the web opens them itself.
 apply_firewall() {
     log_message "${FIRE} [3/22] Firewall"
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would configure firewall: default-deny inbound, allow SSH/80/443"
+        log_dry "Would configure firewall: default-deny inbound, allow SSH only"
         return 0
     fi
 
@@ -235,17 +239,48 @@ firewall_package_for() {
     esac
 }
 
+# ufw keeps all of its state in these files: the rules (IPv4 and IPv6), the
+# default policies, and whether it is enabled. Backing them up before the first
+# change is what lets revert put back the firewall the host already had.
+UFW_CONF=/etc/ufw/ufw.conf
+UFW_STATE_FILES=(/etc/ufw/user.rules /etc/ufw/user6.rules /etc/default/ufw "$UFW_CONF")
+
 # Each backend counts its own fix, so a module that configured nothing does
 # not inflate FIXES_APPLIED.
+#
+# Releases up to 2.4.9 reset ufw, opened 22, 80 and 443, and kept no backup of
+# its files. On such a host, saving those files now would make revert put that
+# hardening back instead of undoing it; with no backup, revert falls back to
+# the old reset. Recognised by all three: this tool ran before (an earlier
+# per-run backup exists), genesis has no copy of user.rules, and user.rules
+# opens 22, 80 and 443.
+_ufw_holds_earlier_release_rules() {
+    local user_rules="${UFW_STATE_FILES[0]}" rules port
+    [[ -f "$BACKUP_GENESIS_DIR/files$user_rules" ]] && return 1
+    grep -q . <<<"$(find "$UH_BACKUP_ROOT" -maxdepth 1 -type d -name 'hardening_backup_*' 2>/dev/null | grep -vxF "$BACKUP_DIR")" || return 1
+    rules=$(cat "$user_rules" 2>/dev/null) || return 1
+    for port in 22 80 443; do
+        grep -qE "^### tuple ### allow tcp $port 0\.0\.0\.0/0 any 0\.0\.0\.0/0 in" <<<"$rules" || return 1
+    done
+}
+
+# No `ufw reset` first: it deleted every rule already there, including ones a
+# distro's firewall GUI made (Aero Linux's aero-firewall-gui, for one). The
+# policies and the SSH allow below are added on top of whatever exists.
 _fw_ufw() {
-    ufw --force reset          >>"$LOG_FILE" 2>&1 || true
+    local state_file
+    if _ufw_holds_earlier_release_rules; then
+        log_info "ufw already holds an earlier release's rules (22, 80 and 443 open, no backup of ufw from before) — not saving them as the state before hardening"
+    else
+        for state_file in "${UFW_STATE_FILES[@]}"; do
+            backup_file "$state_file"
+        done
+    fi
     ufw default deny incoming  >>"$LOG_FILE" 2>&1 || true
     ufw default allow outgoing >>"$LOG_FILE" 2>&1 || true
     ufw allow ssh              >>"$LOG_FILE" 2>&1 || true
-    ufw allow 80/tcp           >>"$LOG_FILE" 2>&1 || true
-    ufw allow 443/tcp          >>"$LOG_FILE" 2>&1 || true
     ufw --force enable         >>"$LOG_FILE" 2>&1 || true
-    log_success "UFW: deny inbound, allow outbound, SSH/80/443 open"
+    log_success "UFW: deny inbound, allow outbound, SSH open"
     count_fix
 }
 
@@ -259,7 +294,114 @@ _fw_firewalld_reload() {
     fi
 }
 
+# firewalld keeps its rules in the running daemon and in many zone files, so
+# revert cannot restore one file the way ufw's does. Instead, the three things
+# module 3 changes are recorded once, before its first run (genesis, first run
+# wins): whether firewalld was running, the default zone, and whether the drop
+# zone already allowed SSH.
+FIREWALLD_STATE_NAME=firewalld_state.txt
+# The zone an earlier release left ssh, http and https in. Written instead of
+# the state record, it also stops later runs recording the hardened state.
+FIREWALLD_EARLIER_RELEASE_NAME=firewalld_earlier_release_zone.txt
+
+# Releases up to 2.4.9 added ssh, http and https to the default zone. Since
+# --set-default-zone was fixed that is the drop zone; before, that call always
+# failed and they landed in whatever zone was the default then, usually public.
+# Prints the zone holding them. Outside drop, a web server's own zone can hold
+# all three too, so that counts only when this tool ran here before (an
+# earlier per-run backup exists).
+_firewalld_earlier_release_zone() {
+    if firewall-cmd --permanent --zone=drop --query-service=http >/dev/null 2>&1 \
+       && firewall-cmd --permanent --zone=drop --query-service=https >/dev/null 2>&1; then
+        echo drop
+        return 0
+    fi
+    grep -q . <<<"$(find "$UH_BACKUP_ROOT" -maxdepth 1 -type d -name 'hardening_backup_*' 2>/dev/null | grep -vxF "$BACKUP_DIR")" || return 1
+    local zone service
+    zone=$(firewall-cmd --get-default-zone 2>/dev/null) || return 1
+    [[ "$zone" =~ ^[A-Za-z0-9_.-]+$ ]] || return 1
+    for service in ssh http https; do
+        firewall-cmd --permanent --zone="$zone" --query-service="$service" >/dev/null 2>&1 || return 1
+    done
+    echo "$zone"
+}
+
+# $1 = yes|no: firewalld was running before this run started it.
+_record_firewalld_state() {
+    local rec="$BACKUP_GENESIS_DIR/$FIREWALLD_STATE_NAME"
+    local earlier_rec="$BACKUP_GENESIS_DIR/$FIREWALLD_EARLIER_RELEASE_NAME"
+    [[ "$SKIP_BACKUP" == true || -f "$rec" || -f "$earlier_rec" ]] && return 0
+    # An earlier release's rules mean the original state is already gone;
+    # recording this one as "before hardening" would make revert keep the
+    # hardening (and reopen 80/443 when it switched back to that zone).
+    local earlier_zone
+    if earlier_zone=$(_firewalld_earlier_release_zone); then
+        log_info "firewalld already holds an earlier release's rules (ssh, http and https in the $earlier_zone zone) — not recording them as the state before hardening"
+        ( umask 077; mkdir -p "$BACKUP_GENESIS_DIR" ) 2>/dev/null
+        printf '%s\n' "$earlier_zone" > "$earlier_rec" 2>/dev/null \
+            || log_warning "Could not write $earlier_rec — revert will not remove http and https from the $earlier_zone zone"
+        return 0
+    fi
+    local zone ssh_in_drop=no
+    zone=$(firewall-cmd --get-default-zone 2>/dev/null) || zone=""
+    if [[ -z "$zone" ]]; then
+        log_warning "Could not read firewalld's default zone — revert will not be able to put it back"
+        return 0
+    fi
+    firewall-cmd --permanent --zone=drop --query-service=ssh >/dev/null 2>&1 && ssh_in_drop=yes
+    ( umask 077; mkdir -p "$BACKUP_GENESIS_DIR" ) 2>/dev/null
+    printf 'was_active=%s\ndefault_zone=%s\nssh_in_drop=%s\n' "$1" "$zone" "$ssh_in_drop" > "$rec" 2>/dev/null \
+        || log_warning "Could not record firewalld's state in $rec — revert will not be able to put it back"
+}
+
+_zone_allows_ssh() {
+    firewall-cmd --permanent --zone="$1" --query-service=ssh >/dev/null 2>&1 \
+        || firewall-cmd --permanent --zone="$1" --query-port=22/tcp >/dev/null 2>&1
+}
+
+# Put firewalld back the way _record_firewalld_state found it. Returns 1 when
+# there is no usable record, so the caller can fall back.
+_restore_firewalld_state() {
+    local rec="$BACKUP_GENESIS_DIR/$FIREWALLD_STATE_NAME"
+    [[ -f "$rec" ]] || return 1
+    local was_active zone ssh_in_drop
+    was_active=$(sed -n 's/^was_active=//p' "$rec")
+    zone=$(sed -n 's/^default_zone=//p' "$rec")
+    ssh_in_drop=$(sed -n 's/^ssh_in_drop=//p' "$rec")
+    if [[ ! "$was_active" =~ ^(yes|no)$ || ! "$zone" =~ ^[A-Za-z0-9_.-]+$ || ! "$ssh_in_drop" =~ ^(yes|no)$ ]]; then
+        log_warning "firewalld state record $rec is not readable — falling back to the generic revert"
+        return 1
+    fi
+
+    # Going back to a zone without SSH would lock out remote logins, and a
+    # reload has cut a live session before (see the note in revert_firewall).
+    # Judged by whether sshd runs, not only by $SSH_CONNECTION: sudo's default
+    # env_reset drops that variable, so `sudo` over SSH looked like a console.
+    if [[ "$was_active" == yes ]] && ! _zone_allows_ssh "$zone" \
+       && { [[ -n "${SSH_CONNECTION:-}" ]] || is_service_active sshd || is_service_active ssh; }; then
+        log_warning "firewalld: nothing changed. The default zone before hardening ($zone) does not allow SSH, and sshd is running, so switching back would lock SSH out. If that is intended, run from a local console: firewall-cmd --set-default-zone=$zone"
+        return 0
+    fi
+
+    if [[ "$ssh_in_drop" == no ]]; then
+        firewall-cmd --permanent --zone=drop --remove-service=ssh >>"$LOG_FILE" 2>&1 || true
+    fi
+    firewall-cmd --set-default-zone="$zone" >>"$LOG_FILE" 2>&1 || true
+
+    if [[ "$was_active" == yes ]]; then
+        _fw_firewalld_reload
+        log_success "firewalld: default zone $zone is back, and firewalld keeps running as it did before hardening"
+    else
+        # No reload into a daemon that is about to stop: see revert_firewall.
+        stop_service firewalld
+        log_success "firewalld: default zone $zone is back; firewalld was not running before hardening, so it is stopped again"
+    fi
+    return 0
+}
+
 _fw_firewalld() {
+    local was_active=no
+    is_service_active firewalld && was_active=yes
     enable_service firewalld >/dev/null 2>&1 || true
 
     # systemctl reports the unit "active" as soon as the process starts,
@@ -274,6 +416,7 @@ _fw_firewalld() {
         [[ "$(firewall-cmd --state 2>/dev/null)" == "running" ]] && break
         sleep 0.5
     done
+    _record_firewalld_state "$was_active"
 
     # --set-default-zone is a "stand-alone option" in firewall-cmd's own
     # parser and cannot be combined with --permanent at all — firewall-cmd
@@ -288,8 +431,6 @@ _fw_firewalld() {
     # difference — the command was malformed regardless of timing.
     firewall-cmd --set-default-zone=drop         >>"$LOG_FILE" 2>&1 || true
     firewall-cmd --permanent --add-service=ssh   >>"$LOG_FILE" 2>&1 || true
-    firewall-cmd --permanent --add-service=http  >>"$LOG_FILE" 2>&1 || true
-    firewall-cmd --permanent --add-service=https >>"$LOG_FILE" 2>&1 || true
     _fw_firewalld_reload
 
     # Verify the zone change actually took rather than trusting firewall-
@@ -309,7 +450,7 @@ _fw_firewalld() {
     # service is actually confirmed running.
     if is_service_active firewalld; then
         if [[ "$zone" == "drop" ]]; then
-            log_success "firewalld: default zone drop, SSH/80/443 open"
+            log_success "firewalld: default zone drop, SSH open"
             count_fix
         else
             log_warning "firewalld default zone is '$zone', not 'drop', after a retry — check: firewall-cmd --get-default-zone"
@@ -335,13 +476,14 @@ _fw_nftables() {
     # `inet` covers v4 and v6 in one table. IPv6 cannot work without ICMPv6
     # neighbour discovery, so those types are accepted explicitly; IPv4 keeps
     # its old behaviour (no ICMP beyond what conntrack already relates).
+    record_service_state nftables
     nft delete table inet uh_filter 2>/dev/null || true
     # The table earlier releases created. A packet must be accepted by EVERY
     # base chain at a hook, so leaving its drop policy in place would keep
     # dropping whatever this table accepts. Removed only when it is recognisably
     # ours (the combined 22/80/443 accept), never a table that merely shares
     # the name.
-    if nft list chain ip filter INPUT 2>/dev/null | grep -q 'dport { 22, 80, 443 } accept'; then
+    if grep -q 'dport { 22, 80, 443 } accept' <<<"$(nft list chain ip filter INPUT 2>/dev/null)"; then
         nft delete table ip filter 2>/dev/null || true
     fi
 
@@ -353,72 +495,271 @@ _fw_nftables() {
     nft add rule  inet uh_filter input ip6 nexthdr icmpv6 icmpv6 type \
         '{ destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert }' \
         accept 2>/dev/null || true
-    nft add rule  inet uh_filter input tcp dport '{ 22, 80, 443 }' accept 2>/dev/null || true
+    nft add rule  inet uh_filter input tcp dport 22 accept 2>/dev/null || true
 
-    if ! nft list chain inet uh_filter input 2>/dev/null | grep -q 'policy drop'; then
+    # Captured, not piped into grep -q: under pipefail nft can take SIGPIPE
+    # when grep exits on the first match, and the check then fails at random.
+    local loaded_chain; loaded_chain=$(nft list chain inet uh_filter input 2>/dev/null || true)
+    if ! grep -q 'policy drop' <<<"$loaded_chain"; then
         log_warning "nftables could not load the firewall rules — nothing was applied. If a kernel update is waiting for a reboot, reboot and run module 3 again"
         return 0
     fi
-
-    # Persist OUR table only. `nft list ruleset` would freeze whatever else is
-    # loaded right now (Docker's rules, fail2ban's bans) into a boot file.
-    # `table X` then `delete table X` is the idiom that makes reloading the file
-    # idempotent whether or not the table already exists.
-    local conf="${UH_NFT_CONF:-}"   # test hook: lets the suite write somewhere harmless
-    if [[ -z "$conf" ]]; then
-        conf=/etc/nftables.conf
-        command -v rc-update >/dev/null 2>&1 && conf=/etc/nftables.nft
+    # Default-drop without the SSH accept locks out every new SSH login, and
+    # saving it would bring the lockout back at every boot. Take the table out.
+    if ! grep -qE '^[[:space:]]*tcp dport 22 accept$' <<<"$loaded_chain"; then
+        nft delete table inet uh_filter 2>/dev/null || true
+        log_warning "nftables: the SSH accept rule did not load, so the firewall rules were removed again and nothing was saved — SSH stays reachable. Check $LOG_FILE and run module 3 again"
+        return 0
     fi
-    [[ -f "$conf" ]] && backup_file "$conf"
+
+    # The rules above are live in the kernel already. What the service gates
+    # is persistence: loading the config at boot. It is enabled for boot but
+    # never started here: starting it loads the host's config, which may begin
+    # with `flush ruleset` and would wipe Docker's and fail2ban's tables.
+    # Not persisted means not enabled either: enabling would load whatever
+    # config is there, and Alpine's unused default drops SSH.
+    count_fix
+    if ! persist_uh_filter_table; then
+        log_success "nftables: default-drop inbound (IPv4 and IPv6), SSH accepted (active now)"
+        log_warning "nftables: this ruleset will NOT survive a reboot (see the warning above)"
+    elif is_service_enabled nftables || enable_service_at_boot nftables; then
+        log_success "nftables: default-drop inbound (IPv4 and IPv6), SSH accepted (persisted)"
+    else
+        log_success "nftables: default-drop inbound (IPv4 and IPv6), SSH accepted (active now)"
+        log_warning "nftables could not be enabled at boot — this ruleset will NOT survive a reboot; check: $(service_status_hint nftables)"
+    fi
+}
+
+# The host's own nftables config: the file its nftables service loads at boot.
+# UH_NFT_CONF is a test hook that lets the suite write somewhere harmless.
+nft_main_conf() {
+    if [[ -n "${UH_NFT_CONF:-}" ]]; then echo "$UH_NFT_CONF"; return; fi
+    if command -v rc-update >/dev/null 2>&1; then echo /etc/nftables.nft; else echo /etc/nftables.conf; fi
+}
+
+# This module's table lives in its own file, pulled in by one include line
+# appended to the host's config. Earlier releases overwrote the host's config
+# with this table alone, so whatever ruleset the host loaded at boot (a
+# distro default, or a hand-written one) was gone after the next reboot.
+UH_NFT_TABLE_FILE_DEFAULT=/etc/nftables-uh_filter.nft
+uh_nft_table_file() { echo "${UH_NFT_TABLE_FILE:-$UH_NFT_TABLE_FILE_DEFAULT}"; }
+uh_nft_include_line() { echo "include \"$(uh_nft_table_file)\""; }
+# The note at the top of the boot file written in place of a dormant host
+# config. Revert recognises that file by it.
+UH_NFT_BOOT_FILE_NOTE_1='# Ultimate Hardening (module 3). The config that was here, never loaded at'
+UH_NFT_BOOT_FILE_NOTE_2='# boot, is in the hardening backup and is restored when module 3 is reverted.'
+
+# Write the live `inet uh_filter` table to its own file and make sure the
+# host's config includes it. Also used by the paid SSH rate limit, which edits
+# the same table. Persists OUR table only: `nft list ruleset` would freeze
+# whatever else is loaded right now (Docker's rules, fail2ban's bans) into a
+# boot file. `table X` then `delete table X` makes reloading the file
+# idempotent whether or not the table already exists.
+persist_uh_filter_table() {
+    local table_file conf include
+    table_file=$(uh_nft_table_file); conf=$(nft_main_conf); include=$(uh_nft_include_line)
     {
         echo '#!/usr/sbin/nft -f'
+        echo '# Written by Ultimate Hardening (module 3). Included from the host config.'
         echo
         echo 'table inet uh_filter'
         echo 'delete table inet uh_filter'
         nft list table inet uh_filter 2>/dev/null
-    } > "$conf" 2>/dev/null || true
-    enable_service nftables >/dev/null 2>&1 || true
-
-    # The rules above are live in the kernel already — that part does not
-    # depend on the nftables service. What the service gates is persistence:
-    # without it the ruleset does not survive a reboot, silently undoing this
-    # module the next time the host restarts. enable_service logs "enabled"
-    # unconditionally, so check the real state before claiming "(persisted)".
-    count_fix
-    if is_service_active nftables; then
-        log_success "nftables: default-drop inbound (IPv4 and IPv6), SSH/80/443 accepted (persisted)"
+    } > "$table_file" 2>/dev/null || { log_warning "Could not write $table_file — the ruleset will not survive a reboot"; return 1; }
+    grep -qxF "$include" "$conf" 2>/dev/null && return 0
+    [[ -f "$conf" ]] && backup_file "$conf"
+    if _nft_host_config_in_use; then
+        # Loaded at boot already: the host's ruleset stays in force, and this
+        # module's table is added to it.
+        [[ -f "$conf" ]] || echo '#!/usr/sbin/nft -f' > "$conf" 2>/dev/null || true
+        printf '\n%s\n' "$include" >> "$conf" 2>/dev/null \
+            || { log_warning "Could not add the include line to $conf — the ruleset will not survive a reboot"; return 1; }
+    elif [[ "$SKIP_BACKUP" == true && -s "$conf" ]]; then
+        # Overwriting it below relies on the backup to bring it back on revert.
+        log_warning "Not replacing $conf, which nftables does not load at boot: --skip-backup is set, so it could never be put back"
+        return 1
     else
-        log_success "nftables: default-drop inbound (IPv4 and IPv6), SSH/80/443 accepted (active now)"
-        log_warning "nftables service is not running — this ruleset will NOT survive a reboot; check: $(service_status_hint nftables)"
+        # Never loaded at boot (nftables was not enabled): a distro default
+        # sitting there unused. Enabling nftables would start loading it, and
+        # Alpine's drops SSH: a lab guest came back from a reboot locked out.
+        # So the boot file loads this module's table alone; the dormant config
+        # is in the backup and comes back on revert.
+        {
+            echo '#!/usr/sbin/nft -f'
+            echo "$UH_NFT_BOOT_FILE_NOTE_1"
+            echo "$UH_NFT_BOOT_FILE_NOTE_2"
+            echo "$include"
+        } > "$conf" 2>/dev/null \
+            || { log_warning "Could not write $conf — the ruleset will not survive a reboot"; return 1; }
     fi
+}
+
+# Was the host's nftables config loaded at boot before hardening? Judged by
+# whether the nftables service was enabled then (recorded by module 3), or
+# now when there is no record.
+_nft_host_config_in_use() {
+    local state enabled
+    if state=$(recorded_service_state nftables); then
+        read -r _ enabled <<<"$state"
+        [[ "$enabled" == yes ]]
+    else
+        is_service_enabled nftables
+    fi
+}
+
+# Undo persist_uh_filter_table: drop the table file, and take out of the
+# host's config only what this module put there. Copying the backup over the
+# config used to throw away every edit the admin made after hardening.
+unpersist_uh_filter_table() {
+    local table_file conf include
+    table_file=$(uh_nft_table_file); conf=$(nft_main_conf); include=$(uh_nft_include_line)
+    rm -f "$table_file" 2>/dev/null || true
+    [[ -f "$conf" ]] || return 0
+    if [[ "$DRY_RUN" == true ]]; then
+        log_dry "Would remove this module's lines from $conf"
+        return 0
+    fi
+    if grep -qxF "$UH_NFT_BOOT_FILE_NOTE_1" "$conf" 2>/dev/null; then
+        _unpersist_nft_boot_file "$conf" "$include"
+    elif grep -q 'uh_filter' <<<"$(grep -v -xF "$include" "$conf" 2>/dev/null)"; then
+        # A release before 2.5.0 wrote its table into the config itself, after
+        # backing the config up: only the backup holds the host's own.
+        revert_backed_up_file "$conf" >/dev/null 2>&1 || true
+    else
+        _remove_nft_include_line "$conf" "$include"
+    fi
+    # Genesis can hold our own earlier output when the config did not exist
+    # before (see UH_TOOL_CREATED_PATHS in core.sh), so the include line is
+    # removed whatever was restored.
+    remove_line "$include" "$conf"
+    # A config this module created holds nothing else; it goes too.
+    if ! grep -qvE '^[[:space:]]*($|#)' "$conf" 2>/dev/null; then
+        rm -f "$conf" 2>/dev/null || true
+    fi
+}
+
+# Take out the include line persist_uh_filter_table appended to a config
+# nftables loads at boot, with the blank line it put before it, so an
+# unedited config is byte-identical to the original again.
+_remove_nft_include_line() {
+    local conf="$1" include="$2" line_count tmp
+    if [[ "$(tail -n 2 "$conf" 2>/dev/null)" == $'\n'"$include" ]]; then
+        line_count=$(wc -l < "$conf")
+        tmp=$(mktemp) || return 1
+        awk -v keep="$((line_count - 2))" 'NR <= keep' "$conf" > "$tmp" && cat "$tmp" > "$conf"
+        rm -f "$tmp"
+    else
+        remove_line "$include" "$conf"
+    fi
+}
+
+# The boot file written in place of a dormant config: the backup comes back,
+# unless the admin has since added their own lines. Their file then stays (it
+# is the newer intent, and nftables goes back to not loading it at boot), and
+# the config from before hardening is put next to it instead.
+_unpersist_nft_boot_file() {
+    local conf="$1" include="$2" admin_lines before_copy saved
+    admin_lines=$(grep -v -xF -e '#!/usr/sbin/nft -f' -e "$UH_NFT_BOOT_FILE_NOTE_1" \
+                      -e "$UH_NFT_BOOT_FILE_NOTE_2" -e "$include" "$conf" \
+                  | grep -vE '^[[:space:]]*$' || true)
+    if [[ -z "$admin_lines" ]]; then
+        revert_backed_up_file "$conf" >/dev/null 2>&1 || true
+        return 0
+    fi
+    before_copy="$conf.before-hardening"
+    saved=$(mktemp) || return 1
+    cat "$conf" > "$saved"
+    revert_backed_up_file "$conf" >/dev/null 2>&1 || true
+    if [[ -f "$conf" ]] && ! cmp -s "$conf" "$saved"; then
+        cp -a "$conf" "$before_copy"
+        log_warning "nftables: $conf was edited after hardening, so it was kept. The config from before hardening is in $before_copy"
+    fi
+    # Written through the existing file, not copied over it: a temp file's
+    # SELinux label would come with a copy.
+    cat "$saved" > "$conf"
+    rm -f "$saved"
+    remove_line "$UH_NFT_BOOT_FILE_NOTE_1" "$conf"
+    remove_line "$UH_NFT_BOOT_FILE_NOTE_2" "$conf"
 }
 
 # Revert module 3 on whichever backend is actually configured right now —
 # detected the same way apply_firewall() picks one to apply to, not
 # re-derived from DISTRO_TYPE, since what is live is the ground truth.
-# There is no captured "before" ruleset to restore: SECURITY.md already
-# documents that firewall config resets existing rules rather than backing
-# up live kernel state ("If you have a hand-built ruleset, back it up
-# separately"), so "revert" here can only mean the same thing apply's own
-# --force reset / delete already means — back to that backend's own clean,
-# inactive default, not a guess at whatever was there before.
+# ufw and firewalld have a captured "before". ufw's state is plain files
+# (UFW_STATE_FILES), backed up by apply, so revert restores them and turns ufw
+# back on or off as it was. For firewalld, apply records what it changes
+# (_record_firewalld_state) and revert puts that back. nftables has no captured
+# ruleset (SECURITY.md: "If you have a hand-built ruleset, back it up
+# separately"), and neither do hosts hardened before these records existed, so
+# for them "revert" means back to that backend's own clean, inactive default,
+# not a guess at whatever was there before.
 #
 # nftables specifically: `nft delete table ip filter` rather than `nft
 # flush ruleset` (what apply uses) — flush would wipe every table on the
 # system, including anything unrelated to this tool; delete removes
 # exactly the one table this module (and the paid rate-limit module, which
 # only ever adds rules inside this same table) created, and nothing else.
-revert_firewall() {
-    local acted=false
+# Make the running ufw match its config files after they were restored: back
+# on with the restored rules if it was enabled before, off if it was not.
+ufw_apply_restored_config() {
+    if grep -qE '^ENABLED=yes' "$UFW_CONF" 2>/dev/null; then
+        # `ufw enable` on an already running firewall does not re-read the
+        # rule files; `ufw reload` does.
+        if grep -qi '^Status: active' <<<"$(ufw status 2>/dev/null)"; then
+            ufw reload         >>"$LOG_FILE" 2>&1 || true
+        else
+            ufw --force enable >>"$LOG_FILE" 2>&1 || true
+        fi
+        log_success "ufw: the rules from before hardening are back and active"
+    else
+        ufw disable >>"$LOG_FILE" 2>&1 || true
+        log_success "ufw: the rules from before hardening are back; ufw was off then, so it is off again"
+    fi
+}
 
-    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi '^Status: active'; then
-        ufw --force reset  >>"$LOG_FILE" 2>&1 || true
-        ufw disable        >>"$LOG_FILE" 2>&1 || true
-        log_success "ufw: reset to defaults and disabled"
+# Never stops nftables: its unit flushes the whole ruleset on stop, other
+# tools' tables included. Only its start-at-boot setting goes back to what it
+# was before module 3 (nothing happens without a record).
+restore_nftables_boot_state() {
+    local nft_state nft_active nft_enabled
+    nft_state=$(recorded_service_state nftables) || return 0
+    read -r nft_active nft_enabled <<<"$nft_state"
+    [[ "$nft_enabled" == no ]] && disable_service_at_boot nftables
+    # OpenRC can mark a service stopped without running its stop (which would
+    # flush). systemd cannot; there it reads active until the next boot,
+    # holding only the host's own rules.
+    if [[ "$nft_active" == no ]] && _has_openrc && command -v rc-service >/dev/null 2>&1; then
+        rc-service nftables zap >>"$LOG_FILE" 2>&1 || true
+    fi
+    return 0
+}
+
+revert_firewall() {
+    local acted=false host_nft_ruleset_kept=false firewalld_state_restored=false
+
+    if command -v ufw >/dev/null 2>&1 && grep -qi '^Status: active' <<<"$(ufw status 2>/dev/null)"; then
+        local state_file restored=0
+        for state_file in "${UFW_STATE_FILES[@]}"; do
+            [[ -f "$state_file" ]] && revert_backed_up_file "$state_file" && bump restored
+        done
+        if (( restored > 0 )); then
+            ufw_apply_restored_config
+        else
+            # Hardened by a release that took no backup of these files: there
+            # is nothing to go back to, so only the old reset is possible.
+            ufw --force reset  >>"$LOG_FILE" 2>&1 || true
+            ufw disable        >>"$LOG_FILE" 2>&1 || true
+            log_success "ufw: no backup of its earlier rules was found, so it was reset to defaults and disabled"
+        fi
         acted=true
     fi
 
-    if command -v firewall-cmd >/dev/null 2>&1 && is_service_active firewalld; then
+    if command -v firewall-cmd >/dev/null 2>&1 && is_service_active firewalld \
+       && _restore_firewalld_state; then
+        acted=true
+        firewalld_state_restored=true
+    elif command -v firewall-cmd >/dev/null 2>&1 && is_service_active firewalld; then
+        # No record: hardened by a release up to 2.4.9, or with --skip-backup.
         # Services were meant to land in the "drop" zone (apply sets that as
         # default BEFORE adding them) but read the REAL current default
         # rather than assuming "drop": found by testing this for real that
@@ -447,6 +788,17 @@ revert_firewall() {
         firewall-cmd --permanent --zone="$zone" --remove-service=ssh   >>"$LOG_FILE" 2>&1 || true
         firewall-cmd --permanent --zone="$zone" --remove-service=http  >>"$LOG_FILE" 2>&1 || true
         firewall-cmd --permanent --zone="$zone" --remove-service=https >>"$LOG_FILE" 2>&1 || true
+        # Releases from before the --set-default-zone fix left http and https
+        # in the zone that was default then (usually public), and switching
+        # back to it would open 80/443 again whenever firewalld next starts.
+        # ssh stays: public allows it out of the box.
+        local earlier_zone
+        earlier_zone=$(cat "$BACKUP_GENESIS_DIR/$FIREWALLD_EARLIER_RELEASE_NAME" 2>/dev/null || true)
+        if [[ "$earlier_zone" =~ ^[A-Za-z0-9_.-]+$ && "$earlier_zone" != "$zone" ]]; then
+            firewall-cmd --permanent --zone="$earlier_zone" --remove-service=http  >>"$LOG_FILE" 2>&1 || true
+            firewall-cmd --permanent --zone="$earlier_zone" --remove-service=https >>"$LOG_FILE" 2>&1 || true
+            log_info "firewalld: removed http and https, which an earlier release added, from the $earlier_zone zone"
+        fi
         firewall-cmd --permanent --set-default-zone=public >>"$LOG_FILE" 2>&1 || true
         # Matching ufw's own revert above: apply_firewall() only ever
         # installs+enables a backend when none was already active, so "no
@@ -461,22 +813,27 @@ revert_firewall() {
         acted=true
     fi
 
-    if command -v nft >/dev/null 2>&1 && nft list tables 2>/dev/null | grep -q 'ip filter'; then
+    if command -v nft >/dev/null 2>&1 && nft list table inet uh_filter >/dev/null 2>&1; then
+        nft delete table inet uh_filter 2>>"$LOG_FILE" || true
+        unpersist_uh_filter_table
+        restore_nftables_boot_state
+        log_success "nftables: removed this module's table and its include line; the host's own nftables config is as it was before hardening"
+        acted=true
+        host_nft_ruleset_kept=true
+    elif command -v nft >/dev/null 2>&1 \
+         && grep -q 'dport { 22, 80, 443 } accept' <<<"$(nft list chain ip filter INPUT 2>/dev/null)"; then
+        # The IPv4-only table of releases before the inet one, recognised by
+        # its combined 22/80/443 accept as apply does. Not any `ip filter`:
+        # iptables-nft makes one for ufw and Docker, and deleting it wiped
+        # their live rules. Those releases overwrote the host's config, after
+        # backing it up: put that back.
         nft delete table ip filter 2>>"$LOG_FILE" || true
-        if command -v rc-update >/dev/null 2>&1; then
-            rm -f /etc/nftables.nft
-        else
-            rm -f /etc/nftables.conf
+        local legacy_conf; legacy_conf=$(nft_main_conf)
+        if ! revert_backed_up_file "$legacy_conf" >/dev/null 2>&1 || grep -q 'dport { 22, 80, 443 } accept' "$legacy_conf" 2>/dev/null; then
+            rm -f "$legacy_conf"
         fi
-        # The CIS check behind this module's [enable ]/[disable] tag reads
-        # `is_service_active nftables`, not rule content (see lib/cis.sh) —
-        # deleting the table alone leaves the tag showing [enable ] even
-        # with no rules left, same inconsistency the firewalld branch above
-        # was found to have. stop_service() rather than a hardcoded
-        # systemctl call — Alpine (nftables' main real-world use here) runs
-        # OpenRC, not systemd.
         stop_service nftables
-        log_success "nftables: removed the filter table, its persisted ruleset file, and stopped the service"
+        log_success "nftables: removed the legacy filter table, restored or removed its persisted ruleset file, and stopped the service"
         acted=true
     fi
 
@@ -485,7 +842,24 @@ revert_firewall() {
         return 1
     fi
 
-    log_warning "The host now has no active firewall — the same unprotected state as before module 3 ever ran, not a restored prior ruleset (see SECURITY.md: live kernel firewall state was never backed up, only config files are)."
+    # The host's own earlier ufw or firewalld firewall is back in force.
+    if command -v ufw >/dev/null 2>&1 && grep -qi '^Status: active' <<<"$(ufw status 2>/dev/null)"; then
+        return 0
+    fi
+    if command -v firewall-cmd >/dev/null 2>&1 && is_service_active firewalld; then
+        return 0
+    fi
+    # Only this module's table was removed; whatever ruleset the host loads
+    # itself is still in force, as it was before hardening.
+    if [[ "$host_nft_ruleset_kept" == true ]]; then
+        return 0
+    fi
+
+    if [[ "$firewalld_state_restored" == true ]]; then
+        log_info "The host has no active firewall now, as before module 3 ran: firewalld was not running then."
+        return 0
+    fi
+    log_warning "The host now has no active firewall, as before module 3 ran. On firewalld and nftables, rules from before hardening are not restored (see SECURITY.md: only config files are backed up, not live kernel firewall state)."
     return 0
 }
 
@@ -516,6 +890,28 @@ backend  = ${backend}
 EOF
 }
 
+# The SSH jail this module runs, in a file of its own. jail.d/*.local is read
+# after jail.local, so it applies whatever an admin's jail.local says, and the
+# admin's own jails and [DEFAULT] stay as they are. Earlier releases wrote
+# jail.local itself (_fail2ban_jail_local, kept so revert still recognises
+# that output), which switched off every jail an admin had there.
+UH_FAIL2BAN_JAIL=/etc/fail2ban/jail.d/99-ultimate-hardening.local
+
+_fail2ban_sshd_jail() {
+    # Same journald reasoning as _fail2ban_jail_local above.
+    local backend="auto"
+    _has_systemd && backend="systemd"
+    cat << EOF
+[sshd]
+enabled  = true
+port     = ssh
+findtime = 600
+maxretry = 3
+bantime  = 7200
+backend  = ${backend}
+EOF
+}
+
 apply_fail2ban() {
     log_message "${SHIELD} [4/22] Fail2Ban"
     if [[ "$DRY_RUN" == true ]]; then
@@ -523,11 +919,12 @@ apply_fail2ban() {
         return 0
     fi
 
+    # Before the install: Debian's package starts the service on its own.
+    record_service_state fail2ban
     install_package fail2ban || { log_warning "fail2ban unavailable — skipping"; return 0; }
 
-    backup_file /etc/fail2ban/jail.local
-    mkdir -p /etc/fail2ban 2>/dev/null || true
-    _fail2ban_jail_local > /etc/fail2ban/jail.local
+    mkdir -p "$(dirname "$UH_FAIL2BAN_JAIL")" 2>/dev/null || true
+    _fail2ban_sshd_jail > "$UH_FAIL2BAN_JAIL"
 
     if [[ -f /etc/fail2ban/filter.d/alpine-sshd.conf ]]; then
         cat > /etc/fail2ban/filter.d/alpine-sshd.local << 'EOF'
@@ -584,23 +981,8 @@ apply_permission_hardening() {
 }
 
 # --- 6. Kernel / network -----------------------------------------------------
-apply_kernel_hardening() {
-    log_message "${GEAR} [6/22] Kernel & Network Hardening"
-
-    if ! is_linux; then
-        log_warning "sysctl hardening is Linux-specific — skipping on ${DISTRO_TYPE}"
-        return 0
-    fi
-    if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would write 27 sysctl parameters to /etc/sysctl.d/99-hardening.conf"
-        return 0
-    fi
-
-    local sysctl_file="/etc/sysctl.d/99-hardening.conf"
-    backup_file "$sysctl_file"
-    mkdir -p /etc/sysctl.d 2>/dev/null || true
-
-    cat > "$sysctl_file" << 'EOF'
+_kernel_sysctl_conf() {
+    cat << 'EOF'
 # Ultimate Hardening — kernel and network parameters
 kernel.randomize_va_space = 2
 kernel.dmesg_restrict = 1
@@ -630,6 +1012,58 @@ net.ipv4.conf.all.send_redirects = 0
 net.ipv6.conf.all.accept_redirects = 0
 net.ipv6.conf.all.accept_source_route = 0
 EOF
+}
+
+# The live value of every setting this module changes, recorded once before
+# its first run (genesis, first run wins per key). Removing the drop-in on
+# revert does not change live values; they stayed hardened until a reboot.
+UH_SYSCTL_RECORD_NAME=sysctl_before.txt
+
+# $1 = this module's drop-in. Hosts hardened by a release that kept no record
+# already run the hardened values, so nothing is recorded for them.
+_record_sysctl_before() {
+    local rec="$BACKUP_GENESIS_DIR/$UH_SYSCTL_RECORD_NAME" key val
+    [[ "$SKIP_BACKUP" == true ]] && return 0
+    [[ ! -f "$rec" && -f "$1" ]] && return 0
+    ( umask 077; mkdir -p "$BACKUP_GENESIS_DIR" ) 2>/dev/null
+    while read -r key; do
+        grep -q "^${key}=" "$rec" 2>/dev/null && continue
+        val=$(sysctl -n "$key" 2>/dev/null) || continue
+        printf '%s=%s\n' "$key" "$val" >> "$rec" 2>/dev/null || true
+    done < <(_kernel_sysctl_conf | awk -F'[[:space:]]*=[[:space:]]*' '/^[a-z]/ {print $1}')
+}
+
+# Put the recorded live values back, then re-read every sysctl config so the
+# distro's own files win over them, as they would at boot.
+restore_sysctl_before() {
+    local rec="$BACKUP_GENESIS_DIR/$UH_SYSCTL_RECORD_NAME" key val
+    if [[ -f "$rec" ]]; then
+        while IFS='=' read -r key val; do
+            [[ "$key" =~ ^[a-z0-9_.]+$ && "$val" =~ ^-?[0-9]+$ ]] || continue
+            sysctl -w "${key}=${val}" >>"$LOG_FILE" 2>&1 || true
+        done < "$rec"
+    fi
+    sysctl --system >>"$LOG_FILE" 2>&1 || true
+}
+
+apply_kernel_hardening() {
+    log_message "${GEAR} [6/22] Kernel & Network Hardening"
+
+    if ! is_linux; then
+        log_warning "sysctl hardening is Linux-specific — skipping on ${DISTRO_TYPE}"
+        return 0
+    fi
+    if [[ "$DRY_RUN" == true ]]; then
+        log_dry "Would write 27 sysctl parameters to /etc/sysctl.d/99-hardening.conf"
+        return 0
+    fi
+
+    local sysctl_file="/etc/sysctl.d/99-hardening.conf"
+    backup_file "$sysctl_file"
+    mkdir -p /etc/sysctl.d 2>/dev/null || true
+
+    _record_sysctl_before "$sysctl_file"
+    _kernel_sysctl_conf > "$sysctl_file"
 
     sysctl -p "$sysctl_file" >>"$LOG_FILE" 2>&1 || true
     local n; n=$(grep -c '^[a-z]' "$sysctl_file" 2>/dev/null || echo 0)
@@ -638,6 +1072,66 @@ EOF
 }
 
 # --- 7. Auditd ---------------------------------------------------------------
+# The merged rules file auditd loads. augenrules rebuilds it from rules.d;
+# Alpine's auditd loads it at start and never runs augenrules itself.
+UH_AUDIT_RULES_FILE=/etc/audit/audit.rules
+# Recorded in genesis when that file did not exist before the first run, so
+# revert removes it rather than leaving our rules to load at every boot.
+UH_AUDIT_RULES_ABSENT_NAME=audit_rules_absent_before
+
+_audit_rules_dir() { echo "${UH_AUDIT_DIR:-/etc/audit}"; }   # test hook
+
+# Back up the merged rules file once, or record that it did not exist. Once
+# the marker is there the file is ours, and backing it up would make genesis
+# hold our own output as "the original".
+_backup_audit_rules_file() {
+    local f marker; f="$(_audit_rules_dir)/audit.rules"; marker="$BACKUP_GENESIS_DIR/$UH_AUDIT_RULES_ABSENT_NAME"
+    [[ -f "$marker" ]] && return 0
+    if [[ -f "$f" ]]; then
+        backup_file "$f"
+    elif [[ "$SKIP_BACKUP" != true && ! -f "$BACKUP_GENESIS_DIR/files$f" ]]; then
+        ( umask 077; mkdir -p "$BACKUP_GENESIS_DIR" ) 2>/dev/null
+        : > "$marker" 2>/dev/null || true
+    fi
+}
+
+# Load the rules now. augenrules only builds the merged file here: its own
+# --load calls /sbin/auditctl by that exact path, and Alpine has it in
+# /usr/sbin, so the rules were written but never loaded there. auditctl,
+# found on PATH, then loads the merged file (whose first line is -D).
+load_audit_rules() {
+    local dir merged; dir=$(_audit_rules_dir); merged="$dir/audit.rules"
+    command -v auditctl >/dev/null 2>&1 || return 1
+    if command -v augenrules >/dev/null 2>&1; then
+        augenrules >>"$LOG_FILE" 2>&1 || true
+        [[ -f "$merged" ]] && { auditctl -R "$merged" >>"$LOG_FILE" 2>&1; return; }
+    fi
+    auditctl -R "$dir/rules.d/99-hardening.rules" >>"$LOG_FILE" 2>&1
+}
+
+# Are this module's rules loaded in the kernel right now?
+audit_rules_loaded() {
+    grep -q -- '-k identity' <<<"$(auditctl -l 2>/dev/null)"
+}
+
+# Revert of the merged file: back to what it was, or gone if hardening made
+# it; then the kernel gets what is left (or nothing).
+restore_audit_rules() {
+    local f marker; f="$(_audit_rules_dir)/audit.rules"; marker="$BACKUP_GENESIS_DIR/$UH_AUDIT_RULES_ABSENT_NAME"
+    if [[ -f "$marker" ]]; then
+        rm -f "$f" "$f.prev" 2>/dev/null || true
+        log_success "Removed (created by hardening, no earlier version existed): $f"
+    else
+        revert_backed_up_file "$f" >/dev/null 2>&1 || true
+    fi
+    command -v auditctl >/dev/null 2>&1 && is_service_active auditd || return 0
+    if [[ -f "$f" ]]; then
+        auditctl -R "$f" >>"$LOG_FILE" 2>&1 || true
+    else
+        auditctl -D >>"$LOG_FILE" 2>&1 || true
+    fi
+}
+
 apply_audit_config() {
     log_message "${SHIELD} [7/22] Audit Daemon"
 
@@ -650,11 +1144,14 @@ apply_audit_config() {
         return 0
     fi
 
+    # Before the install: some packages start the service on their own.
+    record_service_state auditd
     install_package auditd || install_package audit || {
         log_warning "auditd unavailable — skipping"; return 0; }
 
     mkdir -p /etc/audit/rules.d 2>/dev/null || true
     backup_file /etc/audit/rules.d/99-hardening.rules
+    _backup_audit_rules_file
 
     cat > /etc/audit/rules.d/99-hardening.rules << 'EOF'
 -D
@@ -680,15 +1177,16 @@ apply_audit_config() {
 EOF
 
     enable_service auditd
-    command -v augenrules >/dev/null 2>&1 && { augenrules --load >>"$LOG_FILE" 2>&1 || true; }
-    # enable_service logs "enabled" unconditionally — verify the daemon is
-    # actually up before claiming the rules are in effect, same as
-    # apply_fail2ban.
-    if is_service_active auditd; then
-        log_success "Auditd configured with 17 audit rules"
-        count_fix
-    else
+    load_audit_rules || true
+    # enable_service logs "enabled" unconditionally, and the rules were once
+    # reported as configured on Alpine where none had loaded: check both.
+    if ! is_service_active auditd; then
         log_warning "Audit rules written but auditd is not running — check: $(service_status_hint auditd)"
+    elif ! audit_rules_loaded; then
+        log_warning "Audit rules written but not loaded in the kernel (auditctl -l does not list them) — they apply at the next auditd start; check: auditctl -R $UH_AUDIT_RULES_FILE"
+    else
+        log_success "Auditd configured with 17 audit rules (loaded)"
+        count_fix
     fi
 }
 
@@ -1316,6 +1814,83 @@ apply_disable_services() {
 }
 
 # --- 13. Mandatory access control --------------------------------------------
+# AppArmor profiles that were in complain mode before this module, recorded
+# once in genesis so revert can put exactly those back. Lines are
+# "file|<profile>" (complain set in the profile's flags; the file itself is
+# backed up) or "link|<force-complain link>|<profile>". Earlier releases ran
+# aa-enforce on everything in /etc/apparmor.d with no record, and the only
+# advice for undoing it, aa-complain on everything, would also have weakened
+# profiles that were enforcing before.
+UH_APPARMOR_RECORD_NAME=apparmor_complain_before.txt
+
+_apparmor_dir() { echo "${UH_APPARMOR_DIR:-/etc/apparmor.d}"; }   # test hook
+
+# Prints the record lines for the profiles in complain mode right now.
+_apparmor_complain_entries() {
+    local dir f l; dir=$(_apparmor_dir)
+    for f in "$dir"/*; do
+        [[ -f "$f" && ! -L "$f" ]] || continue
+        grep -qE 'flags=\([^)]*complain' "$f" 2>/dev/null && echo "file|$f"
+    done
+    for l in "$dir"/force-complain/*; do
+        [[ -L "$l" ]] && echo "link|$l|$(readlink "$l")"
+    done
+    return 0
+}
+
+# Switch the profiles in complain mode to enforce, recording each first.
+_apparmor_enforce_complain_profiles() {
+    local rec="$BACKUP_GENESIS_DIR/$UH_APPARMOR_RECORD_NAME" entry kind path target
+    local -a profiles=()
+    while IFS= read -r entry; do
+        IFS='|' read -r kind path target <<<"$entry"
+        if [[ "$SKIP_BACKUP" != true ]] && ! grep -qxF "$entry" "$rec" 2>/dev/null; then
+            ( umask 077; mkdir -p "$BACKUP_GENESIS_DIR" ) 2>/dev/null
+            printf '%s\n' "$entry" >> "$rec" 2>/dev/null \
+                || log_warning "Could not record that $path was in complain mode — revert will not put it back"
+        fi
+        if [[ "$kind" == file ]]; then
+            backup_file "$path"
+            profiles+=("$path")
+        else
+            # A relative link target is relative to force-complain/.
+            [[ "$target" == /* ]] || target="$(dirname "$path")/$target"
+            profiles+=("$target")
+        fi
+    done < <(_apparmor_complain_entries)
+    if (( ${#profiles[@]} == 0 )); then
+        log_info "  no AppArmor profile was in complain mode"
+        return 0
+    fi
+    aa-enforce "${profiles[@]}" >>"$LOG_FILE" 2>&1 || true
+    log_info "  ${#profiles[@]} profile(s) moved from complain to enforce"
+}
+
+# Put back complain mode on exactly the profiles that had it before hardening.
+undo_apparmor_enforce() {
+    local rec="$BACKUP_GENESIS_DIR/$UH_APPARMOR_RECORD_NAME" kind path target restored=0
+    if [[ -f "$rec" ]]; then
+        while IFS='|' read -r kind path target; do
+            if [[ "$kind" == file ]]; then
+                revert_backed_up_file "$path" >/dev/null 2>&1 || continue
+                apparmor_parser -r "$path" >>"$LOG_FILE" 2>&1 || true
+            elif [[ "$kind" == link && -n "$target" ]]; then
+                [[ -e "$path" || -L "$path" ]] || ln -s "$target" "$path" 2>/dev/null || continue
+                local profile="$target"
+                [[ "$profile" == /* ]] || profile="$(dirname "$path")/$profile"
+                apparmor_parser -r -C "$profile" >>"$LOG_FILE" 2>&1 || true
+            else
+                continue
+            fi
+            bump restored
+        done < "$rec"
+        log_success "AppArmor: $restored profile(s) back in complain mode, as before hardening"
+    else
+        log_info "AppArmor: no record of profiles in complain mode — either none were, or they were changed by a release that kept no record. Nothing changed."
+    fi
+    restore_service_state apparmor
+}
+
 apply_apparmor() {
     log_message "${SHIELD} [13/22] Mandatory Access Control"
 
@@ -1324,15 +1899,15 @@ apply_apparmor() {
         return 0
     fi
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would set AppArmor or SELinux to enforcing mode"
+        log_dry "Would set AppArmor profiles in complain mode to enforce (recorded for revert), or SELinux to enforcing"
         return 0
     fi
 
     if command -v aa-status >/dev/null 2>&1; then
+        record_service_state apparmor
         install_package apparmor-utils || true
         enable_service apparmor
-        command -v aa-enforce >/dev/null 2>&1 && \
-            { aa-enforce /etc/apparmor.d/* >>"$LOG_FILE" 2>&1 || true; }
+        command -v aa-enforce >/dev/null 2>&1 && _apparmor_enforce_complain_profiles
         # enable_service logs "enabled" unconditionally — verify apparmor is
         # actually running before claiming profiles are enforced, same as
         # apply_fail2ban.
@@ -1515,26 +2090,84 @@ apply_docker_security() {
         return 0
     fi
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would write a hardened /etc/docker/daemon.json (userns-remap, icc off, log rotation, live-restore) and restart docker"
+        log_dry "Would merge hardening into /etc/docker/daemon.json (icc off, log rotation, live-restore; userns-remap only where Docker holds no data yet) and restart docker if no container would be stopped"
         return 0
     fi
     confirm "Apply Docker daemon hardening?" || { log_info "Skipped Docker security"; return 0; }
 
-    create_backup_dir
-    backup_file /etc/docker/daemon.json
-    mkdir -p /etc/docker 2>/dev/null || true
-    _docker_daemon_json > /etc/docker/daemon.json
+    local conf="${UH_DOCKER_CONF:-/etc/docker/daemon.json}" with_userns=yes   # UH_DOCKER_CONF: test hook
+    # userns-remap makes Docker keep everything in a separate folder, so the
+    # containers, images and volumes a host already has disappear from view
+    # until it is turned off again. Only turned on where there is nothing yet.
+    if ! grep -q '"userns-remap"' "$conf" 2>/dev/null && _docker_has_data; then
+        with_userns=no
+        log_warning "Docker: userns-remap left off — this host already has containers, images or volumes (or Docker is not running, so that cannot be checked), and turning it on would hide them. Turn it on by hand once they are moved, if you want it."
+    fi
 
-    restart_service docker || log_warning "Could not restart docker — the new daemon.json applies on next restart"
+    create_backup_dir
+    backup_file "$conf"
+    mkdir -p "$(dirname "$conf")" 2>/dev/null || true
+    # Merged into the existing file rather than replacing it: an admin's own
+    # settings (storage location, registry mirrors, DNS) were lost otherwise.
+    if [[ -s "$conf" ]] && grep -q '[^[:space:]]' "$conf"; then
+        local merged
+        if ! merged=$(_docker_merge_json "$conf" "$with_userns"); then
+            log_warning "Docker: $conf could not be merged (not valid JSON, or python3 is missing) — left unchanged. Add by hand: \"icc\": false, \"live-restore\": true, log rotation"
+            return 0
+        fi
+        printf '%s\n' "$merged" > "$conf"
+    else
+        _docker_daemon_json "$with_userns" > "$conf"
+    fi
+
+    # Restarting stops running containers unless live-restore is already on
+    # in the daemon that is running now.
+    local running; running=$(docker ps -q 2>/dev/null | wc -l)
+    if (( running > 0 )) && [[ "$(docker info --format '{{.LiveRestoreEnabled}}' 2>/dev/null)" != true ]]; then
+        log_warning "Docker: not restarted — $running running container(s) would be stopped. The new daemon.json applies at the next Docker restart, when it suits you."
+    else
+        restart_service docker || log_warning "Could not restart docker — the new daemon.json applies on next restart"
+    fi
     log_success "Docker daemon hardened"
     count_fix
     return 0
 }
 
+# Does Docker already hold containers, images or volumes? When Docker is not
+# running this cannot be told, so it answers yes, the safe side.
+_docker_has_data() {
+    docker info >/dev/null 2>&1 || return 0
+    [[ -n "$(docker ps -aq 2>/dev/null)$(docker images -q 2>/dev/null)$(docker volume ls -q 2>/dev/null)" ]]
+}
+
+# $1 = existing daemon.json, $2 = yes|no: add userns-remap. Prints the merged
+# JSON: the admin's keys are kept, this module's are added, and a log driver
+# the admin chose is left alone.
+_docker_merge_json() {
+    command -v python3 >/dev/null 2>&1 || return 1
+    python3 -I - "$1" "$2" << 'PY'
+import json, sys
+path, userns = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    cfg = json.load(f)
+if not isinstance(cfg, dict):
+    sys.exit(1)
+cfg["icc"] = False
+cfg["live-restore"] = True
+if userns == "yes":
+    cfg.setdefault("userns-remap", "default")
+if "log-driver" not in cfg:
+    cfg["log-driver"] = "json-file"
+    cfg.setdefault("log-opts", {"max-size": "10m", "max-file": "3"})
+print(json.dumps(cfg, indent=2))
+PY
+}
+
+# $1 = yes|no: include userns-remap (default yes).
 _docker_daemon_json() {
+    echo '{'
+    [[ "${1:-yes}" == yes ]] && echo '  "userns-remap": "default",'
     cat << 'EOF'
-{
-  "userns-remap": "default",
   "icc": false,
   "log-driver": "json-file",
   "log-opts": {
@@ -1551,7 +2184,9 @@ EOF
 tool_written_content() {
     case "$1" in
         /etc/fail2ban/jail.local) _fail2ban_jail_local ;;
-        /etc/docker/daemon.json)  _docker_daemon_json ;;
+        /etc/docker/daemon.json)
+            # Written with or without userns-remap (see apply_docker_security).
+            if grep -q '"userns-remap"' "$1" 2>/dev/null; then _docker_daemon_json yes; else _docker_daemon_json no; fi ;;
         *) return 1 ;;
     esac
 }
