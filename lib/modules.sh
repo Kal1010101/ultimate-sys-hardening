@@ -1217,6 +1217,25 @@ apply_password_policies() {
 }
 
 # --- 9. SUID/SGID ------------------------------------------------------------
+# First line of a v2 SUID inventory (one record per whole path). Older
+# inventories are restored only after confirmation (see undo_suid_hardening).
+UH_SUID_INVENTORY_HEADER='# uh-suid-inventory v2'
+
+# Module 9 and its revert chmod only a path that no one but root can redirect:
+# no symlink anywhere in it, the file owned by root, and every directory above
+# it owned by root and not group- or world-writable.
+suid_path_is_root_controlled() {
+    local path="$1" dir owner perms
+    [[ ! -L "$path" && "$(readlink -f "$path" 2>/dev/null)" == "$path" ]] || return 1
+    [[ "$(stat -c %u "$path" 2>/dev/null)" == 0 ]] || return 1
+    dir=${path%/*}
+    while [[ -n "$dir" ]]; do
+        read -r owner perms < <(stat -c '%u %a' "$dir" 2>/dev/null) || return 1
+        [[ "$owner" == 0 ]] && (( (8#$perms & 8#022) == 0 )) || return 1
+        dir=${dir%/*}
+    done
+}
+
 # Binaries that legitimately need SUID. fusermount/fusermount3 are here
 # because stripping them breaks Flatpak and any FUSE mount.
 #
@@ -1249,23 +1268,38 @@ apply_suid_hardening() {
 
     create_backup_dir
     if [[ "$SKIP_BACKUP" == false ]]; then
-        find / -xdev \( -perm -4000 -o -perm -2000 \) -type f \
-            -exec stat --format="%n %a" {} \; 2>/dev/null > "$SUID_BACKUP_FILE" || true
+        # One "path mode" record per line, so a name containing a newline
+        # can't be recorded as one record; skip it.
+        local suid_path suid_mode
+        printf '%s\n' "$UH_SUID_INVENTORY_HEADER" > "$SUID_BACKUP_FILE"
+        # -print0 rather than -printf, which BusyBox find (Alpine) lacks.
+        while IFS= read -r -d '' suid_path; do
+            if [[ "$suid_path" == *$'\n'* ]]; then
+                log_warning "  SUID/SGID file with a newline in its name, not recorded: ${suid_path//$'\n'/\\n}"
+                continue
+            fi
+            suid_mode=$(stat -c %a "$suid_path" 2>/dev/null) || continue
+            printf '%s %s\n' "$suid_path" "$suid_mode" >&3
+        done < <(find / -xdev \( -perm -4000 -o -perm -2000 \) -type f -print0 2>/dev/null) \
+            3>> "$SUID_BACKUP_FILE"
         log_info "SUID inventory recorded: $SUID_BACKUP_FILE"
     fi
 
     local -a safe=("${UH_SUID_SAFELIST[@]}")
 
     local removed=0
-    while IFS= read -r bin; do
+    # NUL-separated so each name is one whole path.
+    while IFS= read -r -d '' bin; do
         local keep=false
         for s in "${safe[@]}"; do
             [[ "$bin" == "$s" ]] && { keep=true; break; }
         done
         if [[ "$keep" == false ]]; then
+            suid_path_is_root_controlled "$bin" || {
+                log_warning "  not stripped, path is not under root's sole control (review by hand): $bin"; continue; }
             chmod u-s "$bin" 2>/dev/null && { log_info "  stripped SUID: $bin"; bump removed; } || true
         fi
-    done < <(find / -xdev -perm -4000 -type f 2>/dev/null)
+    done < <(find / -xdev -perm -4000 -type f -print0 2>/dev/null)
 
     log_success "SUID removed from $removed binaries (restore: --revert-suid)"
     count_fix

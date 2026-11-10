@@ -298,19 +298,51 @@ undo_suid_hardening() {
 
     local inv="$SUID_BACKUP_FILE"
     if [[ ! -f "$inv" ]]; then
-        inv=$(find /root -name 'suid_sgid_original_perms.txt' -type f 2>/dev/null | sort | tail -1)
+        inv=$(find /root -name 'suid_sgid_original_perms.txt' -type f -user root ! -perm /022 2>/dev/null | sort | tail -1)
         [[ -n "$inv" ]] || { log_error "No SUID inventory found — cannot revert"; return 1; }
         log_info "Using inventory: $inv"
         log_info "  └─ written by: $(describe_backup "$(dirname "$inv")")"
     fi
     [[ "$DRY_RUN" == true ]] && { log_dry "Would restore SUID bits from $inv"; return 0; }
 
-    local restored=0
-    while read -r file mode; do
+    # Module 9 only ever clears u+s, so put back only that bit, and only where the
+    # current mode is exactly the recorded one minus it.
+    local restored=0 line file mode current legacy=true
+    local -a to_restore=()
+    # The header counts only on the first line; records always start with "/".
+    IFS= read -r line < "$inv" && [[ "$line" == "$UH_SUID_INVENTORY_HEADER" ]] && legacy=false
+    while IFS= read -r line; do
+        [[ "$line" == "$UH_SUID_INVENTORY_HEADER" ]] && continue
+        file=${line% *}; mode=${line##* }
+        [[ "$mode" =~ ^[0-7]{3,4}$ && "$file" == /* && "$file" != "$line" ]] || {
+            log_warning "  skipping malformed inventory line: $line"; continue; }
         [[ -f "$file" ]] || continue
-        chmod "$mode" "$file" 2>/dev/null && bump restored || \
-            log_warning "  could not restore $file"
+        (( 8#$mode & 8#4000 )) || continue
+        suid_path_is_root_controlled "$file" || {
+            log_warning "  $file is not a root-owned path that only root can change — left as is"; continue; }
+        current=$(stat -c %a "$file" 2>/dev/null) || continue
+        (( 8#$current == 8#$mode )) && continue
+        (( 8#$current == (8#$mode & ~8#4000) )) || {
+            log_warning "  $file is mode $current, not $mode minus SUID — left as is"; continue; }
+        to_restore+=("$file")
     done < "$inv"
+
+    # Inventories from before the v2 format can't be fully checked line by
+    # line, so an admin confirms the list first.
+    if [[ "$legacy" == true && ${#to_restore[@]} -gt 0 ]]; then
+        log_warning "This inventory predates the v2 format. Files that would get SUID back:"
+        for file in "${to_restore[@]}"; do log_info "    $file"; done
+        if [[ "$AUTO_MODE" == true ]]; then
+            log_error "Not restoring SUID from an older inventory unattended — check the list, then rerun without --auto-mode"
+            return 1
+        fi
+        confirm_risky "Give SUID back to exactly these files?" || { log_info "SUID restore skipped"; return 0; }
+    fi
+
+    for file in "${to_restore[@]}"; do
+        chmod u+s "$file" 2>/dev/null && bump restored || \
+            log_warning "  could not restore $file"
+    done
 
     log_success "Restored SUID/SGID on $restored binaries"
 }

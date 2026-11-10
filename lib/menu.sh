@@ -161,20 +161,22 @@ disabled_services_state() {
 }
 
 # Module 9: the module strips SUID from every -perm -4000 file not in
-# UH_SUID_SAFELIST, so "no such file remains" means "nothing to do". This is
-# a full-filesystem walk — only called when UH_SUID_SCAN=1.
+# UH_SUID_SAFELIST whose path is root-controlled, so "no such file remains"
+# means "nothing to do". This is a full-filesystem walk — only called when
+# UH_SUID_SCAN=1.
 suid_scan_state() {
     local bin s keep
-    while IFS= read -r bin; do
+    while IFS= read -r -d '' bin; do
         keep=false
         for s in "${UH_SUID_SAFELIST[@]}"; do
             [[ "$bin" == "$s" ]] && { keep=true; break; }
         done
+        [[ "$keep" == false ]] && ! suid_path_is_root_controlled "$bin" && keep=true
         if [[ "$keep" == false ]]; then
             echo off
             return 0
         fi
-    done < <(find / -xdev -perm -4000 -type f 2>/dev/null)
+    done < <(find / -xdev -perm -4000 -type f -print0 2>/dev/null)
     echo on
 }
 
