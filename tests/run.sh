@@ -79,7 +79,7 @@ elif command -v dnf >/dev/null 2>&1; then
 elif command -v apk >/dev/null 2>&1; then
     apk add --no-cache bash procps iproute2 openssh gzip openssl >/dev/null 2>&1
 elif command -v pacman >/dev/null 2>&1; then
-    pacman -Sy --noconfirm bash procps-ng iproute2 openssh gzip openssl >/dev/null 2>&1
+    pacman -Syu --noconfirm bash procps-ng iproute2 openssh gzip openssl >/dev/null 2>&1
 fi
 BOOTSTRAP
 }
