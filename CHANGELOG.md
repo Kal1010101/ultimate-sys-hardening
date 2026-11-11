@@ -6,6 +6,28 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [2.5.1] — 2026-11-11
+
+### Security
+- The SUID/SGID revert (`--revert-suid`, and the SUID step of a full revert)
+  could be made, on versions up to 2.5.0, to set the SUID bit on files the
+  hardening never touched. On a host where untrusted users have local accounts,
+  that is a path to root. Update to 2.5.1. The revert now puts back only a SUID
+  bit module 9 removed, on a root-owned file whose path only root can change.
+- Module 9 writes its SUID inventory in a new format, one entry per file. Files
+  whose name contains a line break are not recorded or stripped, and are
+  reported instead.
+- An inventory written by 2.5.0 or earlier is never restored unattended
+  (`--auto-mode`). Interactively, the files are listed and restored only after
+  typing "yes". Re-running module 9 writes an inventory in the new format.
+
+### Changed
+- Module 9 no longer strips SUID from files on a path someone other than root
+  could change: a symlink, a file not owned by root, or a directory owned by
+  another account or writable by its group or everyone. It lists each one as
+  "not stripped, path is not under root's sole control (review by hand)". The
+  menu's module 9 state (`UH_SUID_SCAN=1`) ignores those files too.
+
 ## [2.5.0] — 2026-11-08
 
 ### Changed
@@ -451,7 +473,8 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
-[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.5.0...HEAD
+[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.5.1...HEAD
+[2.5.1]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.5.1
 [2.5.0]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.5.0
 [2.4.9]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.9
 [2.4.8]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.8

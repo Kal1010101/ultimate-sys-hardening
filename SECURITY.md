@@ -88,13 +88,14 @@ why that module no longer exists.
 
 | Version | Supported |
 |---------|-----------|
-| 2.4.x   | Yes |
-| < 2.4   | No |
+| 2.5.x   | Yes (2.5.1 or later) |
+| 2.4.x   | No  |
+| < 2.4   | No  |
 
 ## Verifying before you run
 
 ```bash
-git clone --branch v2.5.0 https://github.com/Kal1010101/ultimate-sys-hardening.git
+git clone --branch v2.5.1 https://github.com/Kal1010101/ultimate-sys-hardening.git
 cd ultimate-sys-hardening
 
 # Read it
