@@ -349,7 +349,7 @@ make sure both pass locally first:
 # the same invocation CI uses
 shellcheck --severity=warning -x -e SC2034 -e SC1091 -e SC2154 \
     lib/*.sh src/free/ultimate_hardening.sh scripts/*.sh \
-    tests/run.sh tests/lib/*.sh tests/cases/*.sh
+    tests/*.sh tests/lib/*.sh tests/cases/*.sh
 bash -n lib/*.sh src/free/*.sh
 
 # the integration suite, in throwaway containers (needs docker)

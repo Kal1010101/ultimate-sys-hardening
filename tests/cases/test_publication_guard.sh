@@ -208,7 +208,7 @@ if [[ -d "$COMMERCIAL" ]]; then
     leaked=0; checked=0
     while IFS= read -r cf; do
         checked=$((checked + 1))
-        dest="tests/$(printf '%s' "${cf#$UH_COMMERCIAL_REPO/}" | tr '/' '_')"
+        dest="tests/$(printf '%s' "${cf#"$UH_COMMERCIAL_REPO"/}" | tr '/' '_')"
         mkdir -p tests 2>/dev/null
         cp "$cf" "$dest" 2>/dev/null || continue
         git add -f "$dest" 2>/dev/null
