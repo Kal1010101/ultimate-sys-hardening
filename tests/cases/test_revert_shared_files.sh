@@ -1,7 +1,8 @@
 #!/bin/bash
-# jail.local and daemon.json are removed by a revert only while they hold
-# exactly what the module wrote and no earlier version was kept; an admin's
-# own file is restored or left alone.
+# jail.local, daemon.json and issue.net are removed by a revert only while
+# they hold exactly what the module wrote and no earlier version was kept; an
+# admin's own file is restored or left alone. issue.net: module 2 created it
+# on hosts that ship none (Alpine, Arch) and its revert used to leave it.
 source "${REPO_ROOT:-/repo}/tests/lib/assert.sh"
 REPO="${REPO_ROOT:-/repo}"
 require_root
@@ -9,10 +10,11 @@ require_root
 W=$(mktemp -d)
 J=/etc/fail2ban/jail.local
 D=/etc/docker/daemon.json
+I=/etc/issue.net
 saved="$W/saved"; mkdir -p "$saved"
-for f in "$J" "$D"; do [[ -f "$f" ]] && cp -a "$f" "$saved/${f##*/}"; done
+for f in "$J" "$D" "$I"; do [[ -f "$f" ]] && cp -a "$f" "$saved/${f##*/}"; done
 cleanup() {
-    for f in "$J" "$D"; do
+    for f in "$J" "$D" "$I"; do
         rm -f "$f"
         [[ -f "$saved/${f##*/}" ]] && cp -a "$saved/${f##*/}" "$f"
     done
@@ -37,7 +39,7 @@ revert_case() {
     ' _ "$1" "$3" >/dev/null 2>&1
 }
 
-for f in "$J" "$D"; do
+for f in "$J" "$D" "$I"; do
     revert_case "$f" none ours
     assert_file_absent "$f" "${f##*/}: the module's own file with no backup is removed"
 

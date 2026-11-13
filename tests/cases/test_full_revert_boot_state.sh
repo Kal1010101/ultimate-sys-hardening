@@ -71,6 +71,19 @@ run full_system_revert
 if grep -q '^BOOT-DISABLE' "$W/calls"; then fail "nftables enabled before hardening was disabled"; else pass_msg "nftables enabled before stays enabled"; fi
 if grep -q '^UNDO-APPARMOR$' "$W/calls"; then fail "AppArmor undo ran without a record"; else pass_msg "no AppArmor change without a record"; fi
 
+# firewalld: module 3 recorded the default zone (home) and that the drop zone
+# had no SSH. The full revert must put both back, as module 3's revert does.
+new_host no
+printf 'was_active=yes\ndefault_zone=home\nssh_in_drop=no\n' > "$W/h/backups/genesis/firewalld_state.txt"
+run 'command() { [[ "$1 $2" == "-v firewall-cmd" ]] && return 0; builtin command "$@"; }
+     is_service_active() { [[ "$1" == firewalld ]]; }
+     firewall-cmd() { echo "FIREWALL-CMD $*" >> "'"$W"'/calls"; [[ "$*" == "--permanent --zone=home --query-service=ssh" ]]; }
+     _fw_firewalld_reload() { echo "FIREWALLD-RELOAD" >> "'"$W"'/calls"; }
+     full_system_revert'
+assert_output_contains "$(cat "$W/calls")" '^FIREWALL-CMD --set-default-zone=home$' "full revert puts firewalld's recorded default zone back"
+assert_output_contains "$(cat "$W/calls")" '^FIREWALL-CMD --permanent --zone=drop --remove-service=ssh$' "and takes SSH out of the drop zone it was not in before"
+assert_output_contains "$(cat "$W/calls")" '^FIREWALLD-RELOAD$' "and reloads firewalld, which was running before"
+
 if grep -q '^FORBIDDEN' "$W/calls"; then
     fail "a real service manager would have been called: $(grep '^FORBIDDEN' "$W/calls" | head -2 | tr '\n' ';')"
 else

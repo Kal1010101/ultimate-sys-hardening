@@ -340,7 +340,15 @@ stop_service_now() {
     local svc="$1"
     [[ "${DRY_RUN:-false}" == true ]] && { log_info "DRY RUN: Would stop $svc"; return 0; }
     if _has_systemd; then
-        systemctl stop "$svc" >>"$LOG_FILE" 2>&1 || true
+        # auditd's unit sets RefuseManualStop=yes, so `systemctl stop` is
+        # refused and it kept running after a revert (Arch, VM lab). Its own
+        # documented stop (`service auditd stop`) signals the daemon, which
+        # then exits cleanly; systemctl kill does the same where there is no
+        # `service` wrapper.
+        if ! systemctl stop "$svc" >>"$LOG_FILE" 2>&1 \
+           && [[ "$(systemctl show -p RefuseManualStop --value "$svc" 2>/dev/null)" == yes ]]; then
+            systemctl kill --signal=TERM "$svc" >>"$LOG_FILE" 2>&1 || true
+        fi
     elif command -v rc-service >/dev/null 2>&1; then
         rc-service "$svc" stop >>"$LOG_FILE" 2>&1 || true
     elif command -v service >/dev/null 2>&1; then
@@ -385,7 +393,10 @@ restore_service_state() {
     read -r active enabled <<<"$state"
     [[ "$active" == no ]] && stop_service_now "$svc"
     [[ "$enabled" == no ]] && disable_service_at_boot "$svc"
-    if [[ "$active" == no || "$enabled" == no ]]; then
+    # Checked, not assumed: a refused stop used to be reported as done.
+    if [[ "$active" == no ]] && is_service_active "$svc"; then
+        log_warning "$svc: was not running before hardening, but is still running after the revert — stop it by hand (check: $(service_status_hint "$svc"))"
+    elif [[ "$active" == no || "$enabled" == no ]]; then
         log_success "$svc: back to how it was before hardening (running: $active, started at boot: $enabled)"
     fi
     return 0

@@ -56,6 +56,12 @@ apply_system_updates() {
 }
 
 # --- 2. SSH hardening --------------------------------------------------------
+# The pre-login banner module 2 writes to /etc/issue.net. One copy, so revert
+# can tell its own output from an admin's banner (see tool_written_content).
+_ssh_issue_net_banner() {
+    echo "Authorized access only. All activity is monitored and logged."
+}
+
 apply_ssh_hardening() {
     log_message "${LOCK} [2/22] SSH Hardening"
     local cfg="/etc/ssh/sshd_config"
@@ -90,8 +96,7 @@ apply_ssh_hardening() {
     set_config "Banner"                          "/etc/issue.net"  "$cfg"
 
     backup_file_for_rewrite /etc/issue.net
-    echo "Authorized access only. All activity is monitored and logged." \
-        > /etc/issue.net 2>/dev/null || true
+    _ssh_issue_net_banner > /etc/issue.net 2>/dev/null || true
     relabel_path "$cfg" /etc/issue.net
 
     # sshd_config uses first-obtained-value-wins: whichever value for a
@@ -2218,6 +2223,7 @@ EOF
 tool_written_content() {
     case "$1" in
         /etc/fail2ban/jail.local) _fail2ban_jail_local ;;
+        /etc/issue.net) _ssh_issue_net_banner ;;
         /etc/docker/daemon.json)
             # Written with or without userns-remap (see apply_docker_security).
             if grep -q '"userns-remap"' "$1" 2>/dev/null; then _docker_daemon_json yes; else _docker_daemon_json no; fi ;;

@@ -541,8 +541,13 @@ full_system_revert() {
     local -a drop=()
     local src sp
     for sp in "${UH_SHARED_WRITTEN_PATHS[@]}"; do
+        # Genesis decides this even for a pinned revert: a per-run backup that
+        # predates the module has no copy, which is not proof the file was
+        # ours (a pinned revert deleted Debian's stock /etc/issue.net that way,
+        # and Fedora's link was never put back).
+        _genesis_symlink_target "$sp" >/dev/null && continue
         src=""
-        if [[ "$have_genesis" == true && -f "$BACKUP_GENESIS_DIR/files$sp" ]]; then
+        if [[ -f "$BACKUP_GENESIS_DIR/files$sp" ]]; then
             src="$BACKUP_GENESIS_DIR/files$sp"
         elif [[ -f "${BACKUP_DIR:-}/files$sp" ]]; then
             src="$BACKUP_DIR/files$sp"
@@ -554,7 +559,7 @@ full_system_revert() {
     local restored=0
     if [[ "$have_genesis" == true ]]; then
         while IFS= read -r stored; do
-            local target="${stored#$BACKUP_GENESIS_DIR/files}"
+            local target="${stored#"$BACKUP_GENESIS_DIR"/files}"
             cp -a "$stored" "$target" 2>/dev/null && { relabel_path "$target"; log_info "  restored (genesis): $target"; bump restored; } || \
                 log_warning "  could not restore $target"
         done < <(find "$BACKUP_GENESIS_DIR/files" -type f 2>/dev/null)
@@ -564,7 +569,7 @@ full_system_revert() {
     # doesn't have (only relevant on hosts that predate genesis tracking).
     if [[ -n "${BACKUP_DIR:-}" ]] && [[ -d "$BACKUP_DIR/files" ]]; then
         while IFS= read -r stored; do
-            local target="${stored#$BACKUP_DIR/files}"
+            local target="${stored#"$BACKUP_DIR"/files}"
             [[ -f "$BACKUP_GENESIS_DIR/files$target" ]] && continue  # already restored above
             cp -a "$stored" "$target" 2>/dev/null && { relabel_path "$target"; log_info "  restored (per-run): $target"; bump restored; } || \
                 log_warning "  could not restore $target"
@@ -611,6 +616,13 @@ full_system_revert() {
     # ufw's restored files only take effect once ufw re-reads them.
     if command -v ufw >/dev/null 2>&1 && [[ -f "$BACKUP_GENESIS_DIR/files$UFW_CONF" ]]; then
         ufw_apply_restored_config
+    fi
+    # firewalld keeps module 3's changes in the daemon and its zone files, not
+    # in a file restored above: put back the recorded default zone, drop-zone
+    # SSH and running state, as module 3's own revert does. The full revert
+    # used to skip this, leaving firewalld on the drop zone (Rocky 9, VM lab).
+    if command -v firewall-cmd >/dev/null 2>&1 && is_service_active firewalld; then
+        _restore_firewalld_state || true
     fi
     # The merged audit rules file auditd loads at start (Alpine never
     # rebuilds it): restored, or removed if hardening created it.

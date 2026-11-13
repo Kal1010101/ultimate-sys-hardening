@@ -540,6 +540,7 @@ UH_TOOL_CREATED_PATHS=(
 UH_SHARED_WRITTEN_PATHS=(
     "/etc/fail2ban/jail.local"
     "/etc/docker/daemon.json"
+    "/etc/issue.net"
 )
 
 # $1 = live file, $2 = the backup a revert would restore (may be empty).
