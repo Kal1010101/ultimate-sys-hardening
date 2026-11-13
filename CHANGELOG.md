@@ -6,6 +6,24 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [2.5.2] — 2026-11-12
+
+### Fixed
+- A revert left auditd running where it was installed but stopped before
+  hardening (Arch), and still reported it as put back: auditd's systemd unit
+  refuses `systemctl stop`. The revert now stops it the way auditd documents,
+  and warns if a service it should have stopped is still running.
+- A full revert left firewalld on the drop zone. It now puts back the default
+  zone, the drop zone's SSH setting and whether firewalld was running, as
+  reverting module 3 on its own already did.
+- Reverting module 2 (SSH) on its own, or a full revert, left the
+  `/etc/issue.net` banner behind on hosts that ship no such file (Alpine,
+  Arch). It is now removed when it still holds only the module's banner; an
+  admin's own banner is restored as before.
+- A full revert restored nothing when the backup folder's path held `[`, `*`
+  or `?` (for example `UH_BACKUP_ROOT=/mnt/backups[1]`), reporting every file
+  as "could not restore".
+
 ## [2.5.1] — 2026-11-11
 
 ### Security
@@ -473,7 +491,8 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
-[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.5.1...HEAD
+[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.5.2...HEAD
+[2.5.2]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.5.2
 [2.5.1]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.5.1
 [2.5.0]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.5.0
 [2.4.9]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.4.9
