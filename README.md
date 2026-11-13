@@ -150,8 +150,11 @@ Here's what it does and doesn't do:
 Auto-detected, or selectable from a menu.
 
 **Linux** — Debian, Ubuntu, Mint, Kali, Raspbian, RHEL, CentOS, Fedora, Rocky,
-AlmaLinux, Amazon Linux, Arch, Manjaro, EndeavourOS, Artix, openSUSE, SLES,
-Alpine, Void, Gentoo, NixOS
+AlmaLinux, Amazon Linux, Arch, Manjaro, EndeavourOS, Artix (untested),
+openSUSE, SLES, Alpine, Void, Gentoo, NixOS
+
+*Artix is detected and treated as Arch, but it has not been tested. It runs
+without systemd, so service handling takes a different path than on Arch.*
 
 **Unix / BSD** — macOS (Homebrew), FreeBSD, OpenBSD, NetBSD, Solaris
 *(detected and adapted; coverage is thinner than Linux)*
