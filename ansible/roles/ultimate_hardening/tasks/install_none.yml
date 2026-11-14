@@ -1,0 +1,13 @@
+---
+- name: Check the tool is already at uh_command
+  ansible.builtin.stat:
+    path: "{{ uh_command | default('') }}"
+  register: uh_existing
+
+- name: Stop when it is not there
+  ansible.builtin.assert:
+    that: uh_existing.stat.exists | default(false) and uh_existing.stat.executable | default(false)
+    fail_msg: >-
+      uh_install_method is none, so uh_command must name the installed tool
+      (for example /usr/bin/ultimate-harden); got '{{ uh_command | default('') }}'.
+    quiet: true
