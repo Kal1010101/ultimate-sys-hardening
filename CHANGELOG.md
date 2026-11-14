@@ -6,6 +6,16 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+- Module 2 (SSH) turned off password login and root login even when no other
+  account could log in with a key, which locked operators out of hosts they
+  reach as root or with a password (the usual fresh cloud VPS). It now writes
+  those two settings only when an account other than root has a key sshd
+  accepts in an authorized_keys file, or sshd trusts a `TrustedUserCAKeys` CA.
+  Otherwise it applies the other 11 settings and says how to finish.
+  `--dry-run` reports the same. Keys served by an `AuthorizedKeysCommand`
+  (LDAP, SSSD) cannot be checked, so those hosts set `UH_SSH_LOCKOUT_CHECK=false`.
+
 ## [2.5.2] — 2026-11-12
 
 ### Fixed

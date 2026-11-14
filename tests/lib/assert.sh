@@ -43,6 +43,29 @@ require_root() {
     [[ $EUID -eq 0 ]] || skip "test requires root"
 }
 
+# $1 = user name, $2 = login shell. Creates the account with a home directory:
+# useradd where the image has it, busybox adduser on Alpine.
+add_login_user() {
+    if command -v useradd >/dev/null 2>&1; then
+        useradd -m -s "$2" "$1"
+    elif command -v adduser >/dev/null 2>&1; then
+        adduser -D -s "$2" "$1"
+    else
+        skip "no useradd or adduser to create test accounts"
+    fi
+}
+
+# $1 = authorized_keys path. Appends a freshly generated public key, so module
+# 2's lockout check sees an account that can log in by key.
+add_ssh_key() {
+    local keydir; keydir=$(mktemp -d)
+    ssh-keygen -q -t ed25519 -N '' -f "$keydir/k" >/dev/null 2>&1 \
+        || skip "ssh-keygen could not make a test key"
+    mkdir -p "$(dirname "$1")"
+    cat "$keydir/k.pub" >> "$1"
+    rm -rf "$keydir"
+}
+
 # ---------------------------------------------------------------- assertions --
 assert_file_contains() {
     local file="$1" pattern="$2"

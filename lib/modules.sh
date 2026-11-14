@@ -62,6 +62,89 @@ _ssh_issue_net_banner() {
     echo "Authorized access only. All activity is monitored and logged."
 }
 
+# Lockout guard. Turning off password login and root login on a host where no
+# other account can log in with a key locks the operator out: the usual state
+# of a fresh cloud VPS reached as root with a password. Module 2 writes those
+# two settings only when a way in by key survives them.
+UH_SSH_DEFAULT_KEY_FILES=".ssh/authorized_keys .ssh/authorized_keys2"
+
+# Prints sshd's effective settings (sshd -T), or nothing when sshd cannot
+# report them. Like sshd_config_valid, it uses a throwaway host key where sshd
+# has never started and so has none.
+_sshd_effective_settings() {
+    command -v sshd >/dev/null 2>&1 || return 0
+    if compgen -G '/etc/ssh/ssh_host_*_key' >/dev/null; then
+        sshd -T 2>/dev/null || true
+        return 0
+    fi
+    local keydir
+    keydir=$(mktemp -d) || return 0
+    ssh-keygen -q -t ed25519 -N '' -f "$keydir/k" >/dev/null 2>&1 \
+        && sshd -T -h "$keydir/k" 2>/dev/null
+    rm -rf "$keydir"
+    return 0
+}
+
+# $1 = sshd -T output, $2 = lower-case keyword. Prints the keyword's value.
+# OpenSSH 10.4 and later print keywords in mixed case, hence tolower.
+_sshd_setting() {
+    awk -v key="$2" 'tolower($1) == key { $1 = ""; sub(/^ /, ""); print; exit }' <<< "$1"
+}
+
+# $1 = file. True when it holds a public key line, not only comments. Option
+# and cert-authority prefixes before the key type are allowed.
+_file_has_ssh_key() {
+    [[ -r "$1" ]] && grep -qE '^[^#]*(ssh-|ecdsa-|sk-)[^[:space:]]+[[:space:]]+AAAA' "$1"
+}
+
+# Can an account other than root still log in once password and root login
+# are off? A TrustedUserCAKeys CA counts as yes: an admin sets one up only to
+# log in with certificates. An AuthorizedKeysCommand does not count, because
+# it says nothing about whether it serves anyone a key: stock Arch sets
+# userdbctl as one on every host, keys or not. Hosts whose keys come from such
+# a command set UH_SSH_LOCKOUT_CHECK=false.
+ssh_key_login_possible() {
+    local settings user_ca key_file_setting
+    settings=$(_sshd_effective_settings)
+    user_ca=$(_sshd_setting "$settings" trustedusercakeys)
+    [[ -n "$user_ca" && "$user_ca" != none ]] && return 0
+    key_file_setting=$(_sshd_setting "$settings" authorizedkeysfile)
+
+    local -a key_file_patterns
+    read -ra key_file_patterns <<< "${key_file_setting:-$UH_SSH_DEFAULT_KEY_FILES}"
+
+    local user uid home shell pattern path
+    while IFS=: read -r user _ uid _ _ home shell; do
+        [[ "$uid" == 0 ]] && continue
+        case "$shell" in */nologin|*/false) continue ;; esac
+        for pattern in "${key_file_patterns[@]}"; do
+            [[ "$pattern" == none ]] && continue
+            path=${pattern//%h/$home}; path=${path//%u/$user}; path=${path//%U/$uid}
+            [[ "$path" == /* ]] || path="$home/$path"
+            _file_has_ssh_key "$path" && return 0
+        done
+    done < <(getent passwd 2>/dev/null || cat /etc/passwd)
+    return 1
+}
+
+# True when module 2 may turn off password login and root login.
+# UH_SSH_LOCKOUT_CHECK=false skips the check, for hosts where sshd finds keys in a
+# way this cannot see (an AuthorizedKeysCommand, a per-user Match block).
+ssh_login_lockdown_safe() {
+    local check="${UH_SSH_LOCKOUT_CHECK:-true}"
+    if [[ "$check" != true && "$check" != false ]]; then
+        log_warning "UH_SSH_LOCKOUT_CHECK='$check' is not true/false — keeping the SSH key check"
+        check=true
+    fi
+    [[ "$check" == false ]] && return 0
+    ssh_key_login_possible
+}
+
+_ssh_no_key_warning() {
+    log_warning "SSH: no account other than root has a key sshd accepts — password login and root login are left as they are, so this run cannot lock you out"
+    log_warning "  Add a key for a sudo user (ssh-copy-id user@host), check you can log in with it, then run module 2 again. If your keys come from an AuthorizedKeysCommand (LDAP, SSSD), UH_SSH_LOCKOUT_CHECK=false skips this check."
+}
+
 apply_ssh_hardening() {
     log_message "${LOCK} [2/22] SSH Hardening"
     local cfg="/etc/ssh/sshd_config"
@@ -71,8 +154,16 @@ apply_ssh_hardening() {
         log_warning "sshd_config not found — SSH not installed, skipping"
         return 0
     fi
+
+    local lockdown=true setting_count=13
+    if ! ssh_login_lockdown_safe; then
+        lockdown=false
+        setting_count=11
+    fi
+
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would apply 13 hardened settings to $cfg"
+        log_dry "Would apply $setting_count hardened settings to $cfg"
+        [[ "$lockdown" == true ]] || _ssh_no_key_warning
         return 0
     fi
 
@@ -81,8 +172,12 @@ apply_ssh_hardening() {
 
     backup_file "$cfg"
 
-    set_config "PermitRootLogin"                 "no"              "$cfg"
-    set_config "PasswordAuthentication"          "no"              "$cfg"
+    if [[ "$lockdown" == true ]]; then
+        set_config "PermitRootLogin"             "no"              "$cfg"
+        set_config "PasswordAuthentication"      "no"              "$cfg"
+    else
+        _ssh_no_key_warning
+    fi
     set_config "ChallengeResponseAuthentication" "no"              "$cfg"
     set_config "X11Forwarding"                   "no"              "$cfg"
     set_config "AllowTcpForwarding"              "no"              "$cfg"
@@ -121,19 +216,22 @@ apply_ssh_hardening() {
     # config on any host with no conflicting drop-in and as a visible record
     # of intent for anyone reading sshd_config directly.
     if [[ -d /etc/ssh/sshd_config.d ]]; then
-        cat > "$dropin" << 'EOF'
+        {
+        cat << 'EOF'
 # Written by Ultimate Hardening. Named to sort first among
 # /etc/ssh/sshd_config.d/*.conf so it wins sshd's first-value-wins parsing
 # over drop-ins (e.g. cloud-init's 50-cloud-init.conf) that would otherwise
 # silently override the settings below.
-PermitRootLogin no
-PasswordAuthentication no
+EOF
+        [[ "$lockdown" == true ]] && printf 'PermitRootLogin no\nPasswordAuthentication no\n'
+        cat << 'EOF'
 ChallengeResponseAuthentication no
 PermitEmptyPasswords no
 MaxAuthTries 3
 X11Forwarding no
 AllowTcpForwarding no
 EOF
+        } > "$dropin"
         chmod 600 "$dropin" 2>/dev/null || true
         relabel_path "$dropin"
     fi
@@ -151,7 +249,7 @@ EOF
     # not allowed to read. Only a running sshd proves the restart worked.
     if sshd_config_valid; then
         if restart_sshd && { is_service_active sshd || is_service_active ssh; }; then
-            log_success "SSH hardened (13 settings) and daemon restarted"
+            log_success "SSH hardened ($setting_count settings) and daemon restarted"
         elif [[ "$was_running" == true ]]; then
             log_error "sshd did not come back after the restart — restoring the previous config"
             restore_file "$cfg" || log_error "Restore failed. Inspect $cfg manually before disconnecting."
@@ -159,7 +257,7 @@ EOF
             restart_sshd || log_error "sshd is still down — check $(service_status_hint sshd) before disconnecting"
             return 1
         else
-            log_success "SSH hardened (13 settings); sshd is not running, so nothing was restarted"
+            log_success "SSH hardened ($setting_count settings); sshd is not running, so nothing was restarted"
         fi
     else
         log_error "sshd config failed validation — restoring backup, no restart"

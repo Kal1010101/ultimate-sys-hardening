@@ -11,6 +11,11 @@ if [[ -d /etc/ssh/sshd_config.d ]] && grep -qE '^Include[[:space:]]+/etc/ssh/ssh
     printf 'X11Forwarding yes\nAllowTcpForwarding yes\n' > "$vendor"
 fi
 
+# Password and root login are turned off only when another account can log
+# in by key (test_ssh_key_check covers the other side).
+add_login_user uhadmin /bin/sh
+add_ssh_key /home/uhadmin/.ssh/authorized_keys
+
 before=$(checksum /etc/ssh/sshd_config)
 run_hardening --auto-mode --skip-backup >/dev/null
 

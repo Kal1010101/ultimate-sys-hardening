@@ -87,7 +87,7 @@ from the same compliance checks `--cis-only` runs:
 | # | Module | Risk | What it does |
 |---|--------|------|--------------|
 | 1 | System updates | Safe | Distro-aware package upgrade |
-| 2 | SSH hardening | Medium | 13 settings, validated with `sshd -t` before restart |
+| 2 | SSH hardening | Medium | 13 settings, validated with `sshd -t` before restart. Password and root login are turned off only when an account other than root has an SSH key (`UH_SSH_LOCKOUT_CHECK=false` skips the check) |
 | 3 | Firewall | Medium | nftables, UFW or firewalld — default-deny inbound on **IPv4 and IPv6** |
 | 4 | Fail2Ban | Safe | SSH jail, ban after 3 failures |
 | 5 | File permissions | Safe | `/etc/shadow`, `/etc/passwd`, sticky `/tmp` |
