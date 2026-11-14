@@ -18,7 +18,7 @@ run() {   # $1 = docker stub mode: empty | data | running | running-lr | down
     env DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent DBUS_SYSTEM_BUS_ADDRESS=unix:path=/nonexistent \
         bash -c "set -uo pipefail
         source '$REPO/lib/core.sh'; source '$REPO/lib/platform.sh'; source '$REPO/lib/modules.sh'
-        DRY_RUN=false; SKIP_BACKUP=false; LOG_FILE='$W/run.log'; UH_DOCKER_CONF='$W/daemon.json'
+        DRY_RUN=${T_DRY_RUN:-false}; SKIP_BACKUP=false; LOG_FILE='$W/run.log'; UH_DOCKER_CONF='$W/daemon.json'
         UH_BACKUP_ROOT='$W/backups'; BACKUP_GENESIS_DIR='$W/backups/genesis'; BACKUP_DIR='$W/backups/hardening_backup_1'
         count_fix() { :; }; confirm() { return 0; }
         restart_service() { echo \"RESTART \$1\" >> '$W/calls'; }
@@ -30,6 +30,7 @@ run() {   # $1 = docker stub mode: empty | data | running | running-lr | down
                 'info --format') [[ \$MODE == running-lr ]] && echo true || echo false ;;
                 'ps -aq'|'images -q'|'volume ls') [[ \$MODE == empty ]] || echo abc123 ;;
                 'ps -q') [[ \$MODE == running* ]] && echo abc123 ;;
+                'network inspect') echo ${T_BRIDGE:-0} ;;
             esac
             [[ \$MODE != down ]]
         }
@@ -97,4 +98,28 @@ revert_run idle
 assert_output_contains "$(cat "$W/calls")" '^RESTART docker$' "with nothing running, revert restarts Docker to load the restored file"
 
 grep -q FORBIDDEN "$W/calls" && fail "the host's real systemctl was reached" || pass_msg "no real service manager was reached"
+# --- --dry-run says what a real run would do on this host ---------------------
+printf '{}\n' > "$W/daemon.json"; rm -rf "$W/backups"
+before=$(checksum "$W/daemon.json")
+T_DRY_RUN=true run empty
+out=$(cat "$W/out")
+assert_output_contains "$out" 'userns-remap: would be turned on' "dry run: userns-remap would be turned on where Docker holds nothing"
+assert_output_contains "$out" 'Docker would be restarted' "dry run: a restart that stops nothing is announced"
+assert_unchanged "$W/daemon.json" "$before" "dry run: daemon.json is untouched"
+if grep -q '^RESTART' "$W/calls"; then fail "dry run restarted Docker"; else pass_msg "dry run restarts nothing"; fi
+
+T_DRY_RUN=true run running
+out=$(cat "$W/out")
+assert_output_contains "$out" 'userns-remap: would be left off' "dry run: userns-remap would stay off over existing data"
+assert_output_contains "$out" 'would not be restarted: 1 running container' "dry run: it says running containers would hold the restart back"
+
+# --- containers sharing the default bridge ---------------------------------------
+T_DRY_RUN=true T_BRIDGE=3 run running
+assert_output_contains "$(cat "$W/out")" '3 running containers share the default bridge' "dry run warns when containers share the default bridge"
+printf '{}\n' > "$W/daemon.json"; rm -rf "$W/backups"
+T_BRIDGE=2 run running
+assert_output_contains "$(cat "$W/out")" '2 running containers share the default bridge' "a real run warns too"
+T_DRY_RUN=true T_BRIDGE=1 run running
+if grep -q 'default bridge network' "$W/out"; then fail "warned about one lone container on the bridge"; else pass_msg "a single container on the bridge is no warning"; fi
+
 finish

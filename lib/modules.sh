@@ -2244,20 +2244,19 @@ apply_docker_security() {
         log_warning "Docker is not installed — skipping Docker hardening"
         return 0
     fi
+    local conf="${UH_DOCKER_CONF:-/etc/docker/daemon.json}"   # UH_DOCKER_CONF: test hook
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would merge hardening into /etc/docker/daemon.json (icc off, log rotation, live-restore; userns-remap only where Docker holds no data yet) and restart docker if no container would be stopped"
+        _docker_preview "$conf"
         return 0
     fi
     confirm "Apply Docker daemon hardening?" || { log_info "Skipped Docker security"; return 0; }
 
-    local conf="${UH_DOCKER_CONF:-/etc/docker/daemon.json}" with_userns=yes   # UH_DOCKER_CONF: test hook
-    # userns-remap makes Docker keep everything in a separate folder, so the
-    # containers, images and volumes a host already has disappear from view
-    # until it is turned off again. Only turned on where there is nothing yet.
-    if ! grep -q '"userns-remap"' "$conf" 2>/dev/null && _docker_has_data; then
+    local with_userns=yes
+    if ! _docker_userns_allowed "$conf"; then
         with_userns=no
         log_warning "Docker: userns-remap left off — this host already has containers, images or volumes (or Docker is not running, so that cannot be checked), and turning it on would hide them. Turn it on by hand once they are moved, if you want it."
     fi
+    _docker_warn_default_bridge
 
     create_backup_dir
     backup_file "$conf"
@@ -2277,15 +2276,63 @@ apply_docker_security() {
 
     # Restarting stops running containers unless live-restore is already on
     # in the daemon that is running now.
-    local running; running=$(docker ps -q 2>/dev/null | wc -l)
-    if (( running > 0 )) && [[ "$(docker info --format '{{.LiveRestoreEnabled}}' 2>/dev/null)" != true ]]; then
-        log_warning "Docker: not restarted — $running running container(s) would be stopped. The new daemon.json applies at the next Docker restart, when it suits you."
+    local stopped; stopped=$(_docker_containers_a_restart_stops)
+    if (( stopped > 0 )); then
+        log_warning "Docker: not restarted — $stopped running container(s) would be stopped. The new daemon.json applies at the next Docker restart, when it suits you."
     else
         restart_service docker || log_warning "Could not restart docker — the new daemon.json applies on next restart"
     fi
     log_success "Docker daemon hardened"
     count_fix
     return 0
+}
+
+# userns-remap makes Docker keep everything in a separate folder, so the
+# containers, images and volumes a host already has disappear from view until
+# it is turned off again. $1 = daemon.json. True where it is already set (the
+# merge keeps it) or Docker holds nothing yet.
+_docker_userns_allowed() {
+    grep -q '"userns-remap"' "$1" 2>/dev/null || ! _docker_has_data
+}
+
+# Prints how many running containers a Docker restart would stop: none when
+# live-restore is already on in the daemon running now.
+_docker_containers_a_restart_stops() {
+    local running; running=$(docker ps -q 2>/dev/null | wc -l)
+    if (( running > 0 )) && [[ "$(docker info --format '{{.LiveRestoreEnabled}}' 2>/dev/null)" != true ]]; then
+        echo "$running"
+    else
+        echo 0
+    fi
+}
+
+# "icc": false stops containers on Docker's default bridge network reaching
+# each other; user-defined networks are not affected. Warns when two or more
+# running containers share that network, since they may rely on it.
+_docker_warn_default_bridge() {
+    local on_bridge
+    on_bridge=$(docker network inspect bridge --format '{{len .Containers}}' 2>/dev/null) || return 0
+    [[ "$on_bridge" =~ ^[0-9]+$ ]] && (( on_bridge >= 2 )) || return 0
+    log_warning "Docker: $on_bridge running containers share the default bridge network. With inter-container traffic off they can no longer reach each other there once Docker restarts. Move any that talk to each other to a user-defined network (docker network create) first."
+}
+
+# --dry-run: what a real run would do on THIS host, from the same read-only
+# checks it makes. $1 = daemon.json.
+_docker_preview() {
+    local conf="$1" stopped
+    log_dry "Would merge hardening into $conf (inter-container traffic off on the default bridge, log rotation, live-restore)"
+    if _docker_userns_allowed "$conf"; then
+        log_dry "  userns-remap: would be turned on (Docker holds no containers, images or volumes yet)"
+    else
+        log_dry "  userns-remap: would be left off — Docker already holds data it would hide, or is not running"
+    fi
+    stopped=$(_docker_containers_a_restart_stops)
+    if (( stopped > 0 )); then
+        log_dry "  Docker would not be restarted: $stopped running container(s) would stop. The change would wait for the next Docker restart."
+    else
+        log_dry "  Docker would be restarted (no running container would stop)"
+    fi
+    _docker_warn_default_bridge
 }
 
 # Does Docker already hold containers, images or volumes? When Docker is not
