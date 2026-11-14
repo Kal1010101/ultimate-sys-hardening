@@ -6,6 +6,8 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [2.5.3] — 2026-11-14
+
 ### Fixed
 - Module 2 (SSH) turned off password login and root login even when no other
   account could log in with a key, which locked operators out of hosts they
@@ -502,7 +504,8 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
-[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.5.2...HEAD
+[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.5.3...HEAD
+[2.5.3]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.5.3
 [2.5.2]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.5.2
 [2.5.1]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.5.1
 [2.5.0]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.5.0
