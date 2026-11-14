@@ -162,7 +162,16 @@ apply_ssh_hardening() {
     fi
 
     if [[ "$DRY_RUN" == true ]]; then
+        # The keywords set below, for the preview's count only.
+        local keyword skipped=""
+        for keyword in PermitRootLogin PasswordAuthentication ChallengeResponseAuthentication \
+                       X11Forwarding AllowTcpForwarding PermitEmptyPasswords MaxAuthTries \
+                       LoginGraceTime ClientAliveInterval ClientAliveCountMax UsePAM PrintLastLog Banner; do
+            [[ "$lockdown" == false && ( "$keyword" == PermitRootLogin || "$keyword" == PasswordAuthentication ) ]] && continue
+            setting_skipped "$keyword" && { skipped+="$keyword "; setting_count=$((setting_count - 1)); }
+        done
         log_dry "Would apply $setting_count hardened settings to $cfg"
+        [[ -n "$skipped" ]] && log_info "  Left as they are (UH_SKIP_SETTINGS): ${skipped% }"
         [[ "$lockdown" == true ]] || _ssh_no_key_warning
         return 0
     fi
@@ -172,6 +181,7 @@ apply_ssh_hardening() {
 
     backup_file "$cfg"
 
+    UH_SETTINGS_SKIPPED_COUNT=0
     if [[ "$lockdown" == true ]]; then
         set_config "PermitRootLogin"             "no"              "$cfg"
         set_config "PasswordAuthentication"      "no"              "$cfg"
@@ -189,6 +199,7 @@ apply_ssh_hardening() {
     set_config "UsePAM"                          "yes"             "$cfg"
     set_config "PrintLastLog"                    "yes"             "$cfg"
     set_config "Banner"                          "/etc/issue.net"  "$cfg"
+    setting_count=$((setting_count - UH_SETTINGS_SKIPPED_COUNT))
 
     backup_file_for_rewrite /etc/issue.net
     _ssh_issue_net_banner > /etc/issue.net 2>/dev/null || true
@@ -231,7 +242,7 @@ MaxAuthTries 3
 X11Forwarding no
 AllowTcpForwarding no
 EOF
-        } > "$dropin"
+        } | drop_skipped_settings > "$dropin"
         chmod 600 "$dropin" 2>/dev/null || true
         relabel_path "$dropin"
     fi
@@ -1122,6 +1133,11 @@ EOF
 # revert does not change live values; they stayed hardened until a reboot.
 UH_SYSCTL_RECORD_NAME=sysctl_before.txt
 
+# The sysctl settings this run writes: the module's set minus UH_SKIP_SETTINGS.
+_kernel_sysctl_settings() {
+    _kernel_sysctl_conf | drop_skipped_settings
+}
+
 # $1 = this module's drop-in. Hosts hardened by a release that kept no record
 # already run the hardened values, so nothing is recorded for them.
 _record_sysctl_before() {
@@ -1133,7 +1149,7 @@ _record_sysctl_before() {
         grep -q "^${key}=" "$rec" 2>/dev/null && continue
         val=$(sysctl -n "$key" 2>/dev/null) || continue
         printf '%s=%s\n' "$key" "$val" >> "$rec" 2>/dev/null || true
-    done < <(_kernel_sysctl_conf | awk -F'[[:space:]]*=[[:space:]]*' '/^[a-z]/ {print $1}')
+    done < <(_kernel_sysctl_settings | awk -F'[[:space:]]*=[[:space:]]*' '/^[a-z]/ {print $1}')
 }
 
 # Put the recorded live values back, then re-read every sysctl config so the
@@ -1156,8 +1172,10 @@ apply_kernel_hardening() {
         log_warning "sysctl hardening is Linux-specific — skipping on ${DISTRO_TYPE}"
         return 0
     fi
+    local skipped; skipped=$(_kernel_sysctl_conf | skipped_settings_in)
+    [[ -n "$skipped" ]] && log_info "  Left as they are (UH_SKIP_SETTINGS): $skipped"
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would write 27 sysctl parameters to /etc/sysctl.d/99-hardening.conf"
+        log_dry "Would write $(_kernel_sysctl_settings | grep -c '^[a-z]') sysctl parameters to /etc/sysctl.d/99-hardening.conf"
         return 0
     fi
 
@@ -1166,7 +1184,7 @@ apply_kernel_hardening() {
     mkdir -p /etc/sysctl.d 2>/dev/null || true
 
     _record_sysctl_before "$sysctl_file"
-    _kernel_sysctl_conf > "$sysctl_file"
+    _kernel_sysctl_settings > "$sysctl_file"
 
     sysctl -p "$sysctl_file" >>"$LOG_FILE" 2>&1 || true
     local n; n=$(grep -c '^[a-z]' "$sysctl_file" 2>/dev/null || echo 0)

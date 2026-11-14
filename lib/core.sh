@@ -746,13 +746,67 @@ remove_line() {
     rm -f "$tmp"
 }
 
+# UH_SKIP_SETTINGS lists settings every module leaves as they are, so one
+# conflicting rule does not mean skipping its whole module: sshd keywords,
+# login.defs keys or sysctl keys, separated by spaces or commas. Shell
+# patterns work (net.ipv6.*). Names are compared without regard to case, as
+# sshd does.
+UH_SETTINGS_SKIPPED_COUNT=0
+
+setting_skipped() {
+    local key="${1,,}" pattern list="${UH_SKIP_SETTINGS:-}"
+    [[ -n "$list" ]] || return 1
+    local -a patterns
+    read -ra patterns <<< "${list//,/ }"
+    for pattern in "${patterns[@]}"; do
+        # shellcheck disable=SC2053  # the right side is a pattern on purpose
+        [[ "$key" == ${pattern,,} ]] && return 0
+    done
+    return 1
+}
+
+# The setting name a "key value" or "key = value" line sets; empty for
+# comments, blank lines and indented lines.
+_setting_line_key() {
+    local line="$1"
+    [[ "$line" == [A-Za-z]* ]] || return 0
+    printf '%s' "${line%%[[:space:]=]*}"
+}
+
+# Filters generated config on stdin: lines setting a skipped key are dropped.
+drop_skipped_settings() {
+    local line key
+    while IFS= read -r line; do
+        key=$(_setting_line_key "$line")
+        [[ -n "$key" ]] && setting_skipped "$key" && continue
+        printf '%s\n' "$line"
+    done
+}
+
+# Prints the skipped keys that generated config on stdin would have set,
+# space separated, for the log.
+skipped_settings_in() {
+    local line key found=""
+    while IFS= read -r line; do
+        key=$(_setting_line_key "$line")
+        [[ -n "$key" ]] && setting_skipped "$key" && found+="$key "
+    done
+    printf '%s' "${found% }"
+}
+
 # Set key/value in a config file, replacing an existing line or appending.
 # Only the global section is touched: from the first active Match line on,
 # settings belong to a Match block (sshd_config) and are the admin's to keep.
 # A key with no global line goes in above that Match line, since below it
 # the setting would apply only inside the block.
+# A key listed in UH_SKIP_SETTINGS is left as it is.
 set_config() {
     local key="$1" value="$2" file="$3" sep="${4:- }" tmp rc
+    if setting_skipped "$key"; then
+        log_info "  Left $key as it is in $file (UH_SKIP_SETTINGS)"
+        bump UH_SETTINGS_SKIPPED_COUNT
+        return 0
+    fi
     [[ "$DRY_RUN" == true ]] && { log_dry "Would set $key${sep}$value in $file"; return 0; }
     [[ -f "$file" ]] || touch "$file" 2>/dev/null || return 1
     # The key is spliced into an awk regex; awk -v would strip any escaping.
