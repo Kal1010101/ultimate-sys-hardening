@@ -1,0 +1,78 @@
+---
+- name: Check the role's settings
+  ansible.builtin.assert:
+    that:
+      - uh_mode in ['dry-run', 'apply', 'cis']
+      - uh_install_method in ['package', 'git', 'none']
+      - uh_settings is mapping
+    fail_msg: >-
+      uh_mode must be dry-run, apply or cis (got {{ uh_mode }}); uh_install_method
+      must be package, git or none (got {{ uh_install_method }}); uh_settings must be a mapping.
+    quiet: true
+
+- name: Install the tool
+  ansible.builtin.include_tasks: "install_{{ uh_install_method }}.yml"
+
+- name: Score the host before any change
+  ansible.builtin.command: "{{ uh_command }} --json"
+  environment: "{{ uh_settings }}"
+  register: uh_cis_before
+  changed_when: false
+  check_mode: false
+
+- name: Preview every change (dry run)
+  ansible.builtin.command: "{{ uh_command }} --auto-mode --dry-run{{ ' --safe-only' if uh_safe_only else '' }}"
+  environment: "{{ uh_settings }}"
+  register: uh_preview
+  changed_when: false
+  check_mode: false
+  when: uh_mode == 'dry-run' or ansible_check_mode
+
+- name: Harden the host
+  ansible.builtin.command: "{{ uh_command }} --auto-mode{{ ' --safe-only' if uh_safe_only else '' }}"
+  environment: "{{ uh_settings }}"
+  register: uh_apply
+  # Exit 10: done, but a kernel upgrade needs a reboot.
+  failed_when: uh_apply.rc not in [0, 10]
+  # Judged from the compliance checks below; every run rewrites the same files.
+  changed_when: false
+  when: uh_mode == 'apply' and not ansible_check_mode
+
+- name: Score the host after hardening
+  ansible.builtin.command: "{{ uh_command }} --json"
+  environment: "{{ uh_settings }}"
+  register: uh_cis_after
+  changed_when: >-
+    (uh_cis_after.stdout | from_json).checks | map(attribute='passed') | list
+    != (uh_cis_before.stdout | from_json).checks | map(attribute='passed') | list
+  when: uh_apply is not skipped
+
+- name: Record the results
+  ansible.builtin.set_fact:
+    uh_cis: "{{ ((uh_cis_after if uh_apply is not skipped else uh_cis_before).stdout) | from_json }}"
+    uh_reboot_required: "{{ uh_apply is not skipped and uh_apply.rc == 10 }}"
+
+- name: Show the compliance score
+  ansible.builtin.debug:
+    msg: >-
+      CIS score {{ uh_cis.score }}% ({{ uh_cis.passed }}/{{ uh_cis.total }} checks passed){{
+      '' if uh_apply is skipped else ', was ' ~ (uh_cis_before.stdout | from_json).score ~ '% before' }}
+
+- name: Save the compliance results on the controller
+  ansible.builtin.copy:
+    content: "{{ uh_cis | to_nice_json }}\n"
+    dest: "{{ uh_report_dir }}/{{ inventory_hostname }}.json"
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+  when: uh_report_dir | length > 0
+
+- name: Reboot for the upgraded kernel
+  ansible.builtin.reboot:
+    msg: "Rebooting after Ultimate Hardening upgraded the kernel"
+  when: uh_reboot_required and uh_reboot_when_required
+
+- name: Say a reboot is still needed
+  ansible.builtin.debug:
+    msg: "A kernel upgrade needs a reboot. Set uh_reboot_when_required: true to have the role reboot."
+  when: uh_reboot_required and not uh_reboot_when_required

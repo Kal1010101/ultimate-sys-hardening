@@ -290,6 +290,166 @@ print_cis_score() {
 }
 
 # =============================================================================
+#  MACHINE-READABLE REPORTS (--json, --sarif)
+# =============================================================================
+# Both read CHECK_RESULTS after a run, so they report exactly what the terminal
+# summary would. The stored detail carries the suggested fix appended by
+# record_check; it is split back out here into its own field. A result's state
+# is true, false, or "waived" where a paid tier's waiver register rewrote it
+# (the detail then holds the waiver's justification); waived checks are in
+# neither CHECKS_PASSED nor CHECKS_FAILED.
+
+UH_SARIF_SCHEMA="https://json.schemastore.org/sarif-2.1.0.json"
+UH_PROJECT_URL="https://github.com/Kal1010101/ultimate-sys-hardening"
+
+# $1 = text. Prints it as a JSON string literal. Control characters other than
+# newline, carriage return and tab are dropped rather than escaped: none
+# belong in a check label or detail.
+_json_string() {
+    local s="$1"
+    s=${s//\\/\\\\}
+    s=${s//\"/\\\"}
+    s=${s//$'\n'/\\n}
+    s=${s//$'\r'/\\r}
+    s=${s//$'\t'/\\t}
+    s=$(LC_ALL=C tr -d '\000-\010\013\014\016-\037' <<< "$s")
+    printf '"%s"' "$s"
+}
+
+# $1 = check label. Prints a stable id: the label in lower case, every run of
+# other characters turned into one hyphen.
+_cis_check_id() {
+    local id="${1,,}"
+    LC_ALL=C sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' <<< "$id"
+}
+
+# $1 = label, $2 = detail. Prints the file a failed check is about, for SARIF
+# locations: code scanning needs one per result. Checks with no single file
+# (running services, the firewall, MAC) point at /etc.
+_cis_check_location() {
+    local label="$1" detail="$2"
+    case "$label" in
+        *"separate partition"*)  echo "/etc/fstab" ;;
+        *"SSH"*|"sshd_config present") echo "/etc/ssh/sshd_config" ;;
+        *"Password max age"*)    echo "/etc/login.defs" ;;
+        /*" permissions are"*)   echo "${label%% *}" ;;
+        *"blacklisted"*)         echo "/etc/modprobe.d" ;;
+        *)
+            # A failed sysctl check's detail starts with key=value.
+            if [[ "$detail" =~ ^([a-z0-9_]+(\.[a-z0-9_]+)+)= ]]; then
+                local key="${BASH_REMATCH[1]}"
+                echo "/proc/sys/${key//./\/}"
+            else
+                echo "/etc"
+            fi
+            ;;
+    esac
+}
+
+# Splits one CHECK_RESULTS entry into the globals below, for the reports.
+_cis_split_result() {
+    local entry="$1" rest
+    CIS_R_LABEL="${entry%%|*}"
+    rest="${entry#*|}"
+    CIS_R_PASSED="${rest%%|*}"
+    CIS_R_DETAIL="${rest#*|}"
+    CIS_R_HINT=""
+    if [[ "$CIS_R_PASSED" == false ]]; then
+        CIS_R_HINT=$(_cis_remediation_hint "$CIS_R_LABEL")
+        [[ -n "$CIS_R_HINT" ]] && CIS_R_DETAIL="${CIS_R_DETAIL% — "$CIS_R_HINT"}"
+    fi
+    CIS_R_MODULE=$(cis_check_module "$CIS_R_LABEL")
+}
+
+cis_report_json() {
+    local total=$((CHECKS_PASSED + CHECKS_FAILED)) entry sep=""
+    printf '{\n'
+    printf '  "tool": "ultimate-hardening",\n'
+    printf '  "version": %s,\n' "$(_json_string "$UH_VERSION")"
+    printf '  "host": %s,\n' "$(_json_string "$(hostname 2>/dev/null || echo unknown)")"
+    printf '  "platform": %s,\n' "$(_json_string "${DISTRO_TYPE:-unknown}")"
+    printf '  "generated": %s,\n' "$(_json_string "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
+    local waived=$(( ${#CHECK_RESULTS[@]} - total )) status
+    printf '  "score": %d,\n  "passed": %d,\n  "failed": %d,\n  "waived": %d,\n  "total": %d,\n' \
+        "$CIS_SCORE" "$CHECKS_PASSED" "$CHECKS_FAILED" "$waived" "$total"
+    printf '  "checks": ['
+    for entry in "${CHECK_RESULTS[@]}"; do
+        _cis_split_result "$entry"
+        case "$CIS_R_PASSED" in
+            true)   status=pass ;;
+            waived) status=waived ;;
+            *)      status=fail ;;
+        esac
+        printf '%s\n    {"id": %s, "title": %s, "status": "%s", "passed": %s, "detail": %s, "module": %s, "remediation": %s}' \
+            "$sep" \
+            "$(_json_string "$(_cis_check_id "$CIS_R_LABEL")")" \
+            "$(_json_string "$CIS_R_LABEL")" \
+            "$status" \
+            "$([[ "$CIS_R_PASSED" == true ]] && echo true || echo false)" \
+            "$(_json_string "$CIS_R_DETAIL")" \
+            "$(_json_string "$CIS_R_MODULE")" \
+            "$(_json_string "$CIS_R_HINT")"
+        sep=","
+    done
+    printf '\n  ]\n}\n'
+}
+
+# SARIF 2.1.0: every check is a rule; failed and waived checks are results,
+# as code scanning expects findings, not passes.
+cis_report_sarif() {
+    local entry rule_sep="" result_sep="" rules="" results="" id location
+    for entry in "${CHECK_RESULTS[@]}"; do
+        _cis_split_result "$entry"
+        id=$(_cis_check_id "$CIS_R_LABEL")
+        rules+="${rule_sep}"$'\n'"            {\"id\": $(_json_string "$id"), \"shortDescription\": {\"text\": $(_json_string "$CIS_R_LABEL")}}"
+        rule_sep=","
+        [[ "$CIS_R_PASSED" == true ]] && continue
+        location=$(_cis_check_location "$CIS_R_LABEL" "$CIS_R_DETAIL")
+        local message="$CIS_R_LABEL: ${CIS_R_DETAIL}" suppression=""
+        [[ -n "$CIS_R_HINT" ]] && message+=". ${CIS_R_HINT}"
+        # A waived check stays a finding, marked as accepted, with the
+        # waiver's justification: what SARIF calls an external suppression.
+        if [[ "$CIS_R_PASSED" == waived ]]; then
+            message="$CIS_R_LABEL: waived"
+            suppression=", \"suppressions\": [{\"kind\": \"external\", \"justification\": $(_json_string "$CIS_R_DETAIL")}]"
+        fi
+        results+="${result_sep}"$'\n'"        {\"ruleId\": $(_json_string "$id"), \"level\": \"warning\", \"message\": {\"text\": $(_json_string "$message")}, \"locations\": [{\"physicalLocation\": {\"artifactLocation\": {\"uri\": $(_json_string "file://${location}")}}}]${suppression}}"
+        result_sep=","
+    done
+    printf '{\n'
+    printf '  "$schema": %s,\n' "$(_json_string "$UH_SARIF_SCHEMA")"
+    printf '  "version": "2.1.0",\n'
+    printf '  "runs": [\n    {\n'
+    printf '      "tool": {\n        "driver": {\n'
+    printf '          "name": "ultimate-hardening",\n'
+    printf '          "version": %s,\n' "$(_json_string "$UH_VERSION")"
+    printf '          "informationUri": %s,\n' "$(_json_string "$UH_PROJECT_URL")"
+    printf '          "rules": [%s\n          ]\n' "$rules"
+    printf '        }\n      },\n'
+    printf '      "results": [%s\n      ]\n' "$results"
+    printf '    }\n  ]\n}\n'
+}
+
+# $1 = json | sarif. Prints the report for the results already in
+# CHECK_RESULTS on stdout.
+cis_report() {
+    case "$1" in
+        json)  cis_report_json ;;
+        sarif) cis_report_sarif ;;
+        *)     log_error "Unknown report format '$1' (expected json or sarif)" >&2; return 1 ;;
+    esac
+}
+
+# $1 = json | sarif. Runs the checks and prints the report on stdout alone:
+# anything the checks print goes to stderr, so it cannot end up inside the
+# document.
+print_cis_report() {
+    local UH_QUIET_CHECKS=true
+    run_cis_checks >&2
+    cis_report "$1"
+}
+
+# =============================================================================
 #  REVERT
 # =============================================================================
 

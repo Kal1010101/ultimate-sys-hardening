@@ -6,6 +6,31 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+- `--json` and `--sarif` print the compliance results as JSON or SARIF 2.1.0
+  on stdout, with everything else on stderr, for scripts, CI and code
+  scanning. JSON gives the score and, per check, an id, title, result,
+  detail, owning module and suggested fix; SARIF lists each failed check as a
+  result with the file it concerns.
+- `UH_SKIP_SETTINGS` leaves single settings alone (sshd keywords, login.defs
+  keys, sysctl keys; shell patterns work) instead of skipping their whole
+  module. Skipped settings are named in the output and counted by
+  `--dry-run`, and revert does not record them.
+- An Ansible role in `ansible/`: installs the release package after checking
+  it against `SHA256SUMS`, then previews, applies or scores the hardening and
+  can save each host's results as JSON. It defaults to a dry run, `--check`
+  runs the tool's dry run, and `tests/ansible/run.sh` tests it in containers.
+- `--dry-run` for module 17 (Docker) now says what a real run would do on
+  this host: whether userns-remap would be turned on, and whether Docker
+  would be restarted or left alone so running containers keep going.
+
+### Changed
+- Module 17 warns when two or more running containers share Docker's default
+  bridge network, since turning off inter-container traffic stops them
+  reaching each other there.
+- The README's Quick start begins with a throwaway-container demo and the
+  checksum-verified package install. The pricing table moved to the website.
+
 ## [2.5.3] — 2026-11-14
 
 ### Fixed

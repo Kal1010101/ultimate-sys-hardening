@@ -64,16 +64,49 @@ sudo ./src/free/ultimate_hardening.sh --revert
 
 ## Quick start
 
+### Try it first in a throwaway container
+
+Nothing touches your machine: the container is deleted when you quit. This
+opens the interactive menu in dry-run mode on Ubuntu (for Rocky Linux, use
+`rockylinux:9` and `dnf install -y git openssh-server`):
+
+```bash
+docker run --rm -it ubuntu:24.04 bash -c "apt-get update -qq && apt-get install -y -qq git ca-certificates openssh-server >/dev/null && git clone --branch v2.5.3 https://github.com/Kal1010101/ultimate-sys-hardening.git && cd ultimate-sys-hardening && ./src/free/ultimate_hardening.sh --dry-run"
+```
+
+Swap `--dry-run` for `--cis-only` to see the compliance score, or apply it
+for real with `--auto-mode`; it is a container, so nothing is at stake.
+
+### Install a release package
+
+Each release attaches `.deb`, `.rpm`, `.apk` and Arch packages plus a
+`SHA256SUMS` file to its [release page](https://github.com/Kal1010101/ultimate-sys-hardening/releases).
+Check the checksum before installing:
+
+```bash
+V=2.5.3
+BASE=https://github.com/Kal1010101/ultimate-sys-hardening/releases/download/v$V
+curl -fLO "$BASE/ultimate-hardening_${V}_all.deb"      # RHEL family: ultimate-hardening-${V}-1.noarch.rpm
+curl -fLO "$BASE/SHA256SUMS"
+sha256sum --check --ignore-missing SHA256SUMS
+sudo apt install "./ultimate-hardening_${V}_all.deb"   # RHEL family: sudo dnf install ./ultimate-hardening-${V}-1.noarch.rpm
+sudo ultimate-harden --dry-run --auto-mode             # preview, changes nothing
+```
+
+Installing a package only places files; it applies nothing until you run
+`ultimate-harden`. See [docs/installation.md](docs/installation.md) for Alpine
+and Arch.
+
+### Or run it from a checkout
+
 ```bash
 git clone --branch v2.5.3 https://github.com/Kal1010101/ultimate-sys-hardening.git
 cd ultimate-sys-hardening
-chmod +x src/free/ultimate_hardening.sh
 sudo ./src/free/ultimate_hardening.sh
 ```
 
 This checks out the latest release, not `main`. To upgrade later:
-`git fetch --tags && git checkout v<new version>` (see
-[Releases](https://github.com/Kal1010101/ultimate-sys-hardening/releases)).
+`git fetch --tags && git checkout v<new version>`.
 
 Running it with no flags opens an interactive menu. Nothing is applied without
 confirmation.
@@ -102,7 +135,7 @@ from the same compliance checks `--cis-only` runs:
 | 14 | etckeeper | Safe | Git version control for `/etc` |
 | 15 | Boot security | Safe | GRUB permissions, USB storage blacklist (`UH_USB_STORAGE_BLACKLIST=false` skips it) |
 | 16 | GRUB password | **High** | PBKDF2 bootloader password; interactive only |
-| 17 | Docker security | Medium | Inter-container comms off, live-restore, log rotation, merged into your daemon.json; userns-remap where Docker holds no data yet |
+| 17 | Docker security | Medium | Inter-container comms off, live-restore, log rotation, merged into your daemon.json; userns-remap where Docker holds no data yet. `--dry-run` says whether Docker would restart and warns when containers share the default bridge |
 | 18 | ModSecurity | Medium | WAF + core rule set, only if Apache/httpd is present |
 | 19 | Unused kernel modules | Safe | Blacklists DCCP, SCTP, RDS, TIPC and the CIS uncommon filesystems (cramfs, freevxfs, hfs, hfsplus, jffs2, squashfs, udf). squashfs is left alone where snapd needs it. |
 | 20 | Compiler access | Medium | Restricts gcc/clang to root, records original modes |
@@ -172,6 +205,8 @@ sudo ./src/free/ultimate_hardening.sh [OPTIONS]
   --safe-only      With --auto-mode, skip the two High-risk modules (9, 16)
   --dry-run        Show what would change, apply nothing
   --cis-only       Run read-only CIS checks, print score, exit
+  --json           Like --cis-only, but print the results as JSON on stdout
+  --sarif          Like --cis-only, but print them as SARIF 2.1.0 (code scanning)
   --skip-backup    Skip creating the backup directory (disables revert)
   --revert         Restore everything from backup
   --revert-suid    Restore only SUID/SGID permissions
@@ -189,6 +224,44 @@ Settings such as the USB storage blacklist, backup location and retention, and
 the remote syslog destination are environment variables. They are listed with
 their defaults in [`examples/.env.example`](examples/.env.example); pass one
 directly with `sudo UH_USB_STORAGE_BLACKLIST=false ./src/free/ultimate_hardening.sh`.
+
+### Skipping single settings
+
+When one setting conflicts with how a host is used, leave that setting alone
+instead of skipping its whole module. `UH_SKIP_SETTINGS` takes sshd keywords,
+`login.defs` keys and sysctl keys, separated by spaces or commas; shell patterns
+work:
+
+```bash
+sudo UH_SKIP_SETTINGS="AllowTcpForwarding net.ipv6.*" ./src/free/ultimate_hardening.sh --auto-mode
+```
+
+Each skipped setting is named in the output, and `--dry-run` counts it. The
+compliance checks still report a skipped setting as failing, since the host
+does not meet it.
+
+### Compliance results for scripts and CI
+
+`--json` and `--sarif` run the same read-only checks as `--cis-only` and print
+only the document on stdout; everything else goes to stderr. JSON carries the
+score and, per check, an id, title, pass/fail, detail, owning module and
+suggested fix. SARIF lists every check as a rule and each failed check as a
+result, for GitHub code scanning or any SARIF viewer:
+
+```bash
+sudo ./src/free/ultimate_hardening.sh --json | jq '.checks[] | select(.passed == false) | .title'
+sudo ./src/free/ultimate_hardening.sh --sarif > hardening.sarif
+```
+
+Both exit 0 whatever the score, as `--cis-only` does; read the score from the
+document to gate a pipeline.
+
+### Ansible
+
+[`ansible/`](ansible/) holds a role that installs a release package (checked
+against `SHA256SUMS`), then previews, applies or scores the hardening on each
+host and can save every host's results as JSON. It defaults to a dry run, and
+`ansible-playbook --check` always runs the tool's own dry run.
 
 ### AIDE baseline fingerprint
 
@@ -282,32 +355,16 @@ What the free tier looks like:
 <sub><i>Click any shot to open it full size.</i></sub>
 </div>
 
-| | Free | Pro (coming soon) | Enterprise (coming soon) |
-|---|---|---|---|
-| **Price** | $0 | $9/mo · $79/yr | $49/mo · $490/yr (≤10 hosts) |
-| Hardening modules (22) | ✅ | ✅ | ✅ |
-| Extra hardening modules: SSH rate limiting, sshd resource caps, USB device control | — | ✅ | ✅ |
-| AI directory lock-down | — | ✅ | ✅ |
-| CIS checks | ✅ | ✅ | ✅ |
-| Dry-run + revert | ✅ | ✅ | ✅ |
-| HTML compliance reports | — | ✅ | ✅ |
-| Open ports / failed logins | — | ✅ | ✅ |
-| Exception register (waivers) | — | ✅ | ✅ |
-| Intrusion activity report + new-ban alerts | — | ✅ | ✅ |
-| Compromise indicator scan + baseline + scheduled email | — | ✅ | ✅ |
-| Asset inventory + SBOM export (CycloneDX / SPDX) | — | ✅ | ✅ |
-| CVE exposure report | — | ✅ | ✅ |
-| Scheduled runs + email | — | ✅ | ✅ |
-| Multi-host dashboard | — | — | ✅ |
-| Remote SSH deploy | — | — | ✅ |
-| Fleet compromise-scan view + remote scan | — | — | ✅ |
-| Policy-as-code + drift | — | — | ✅ |
-| JSON / CSV export | — | — | ✅ |
-| OpenSCAP integration | — | — | ✅ |
-| GitOps policy delivery + signed approvals | — | — | ✅ |
-| Host tags (per-role policy) | — | — | ✅ |
+The free tier stands on its own. Everything a single host needs is here and
+stays here: the 22 modules, the compliance checks with their results as JSON or
+SARIF (`--json`, `--sarif`), per-setting exclusions, dry-run and full revert.
 
-[Full comparison →](https://Kal1010101.github.io/ultimate-sys-hardening/#pricing)
+Pro and Enterprise are not released yet. When they are, they run these same 22
+modules unchanged. Pro adds reports, scheduled runs with email alerts, a waiver
+register and three extra hardening modules; Enterprise adds fleet management:
+a multi-host dashboard, remote deploy, policy-as-code with drift detection,
+GitOps delivery and OpenSCAP scanning. Nothing moves out of the free tier to
+make room for them. [What each tier adds →](https://Kal1010101.github.io/ultimate-sys-hardening/#pricing)
 
 ## Standards coverage
 
@@ -331,15 +388,15 @@ those tiers, which are coming soon.
 | TLS log forwarding | Available — all tiers, module 21 |
 | USB / removable media | Free: all-or-nothing — module 15 blocks every USB storage device, or none with `UH_USB_STORAGE_BLACKLIST=false`. Pro and Enterprise: per-device allow-list on usbguard — devices connected at setup keep working, new ones are blocked (where the distro packages usbguard). |
 | NIST SP 800-70 | Roadmap |
-| Ansible role | Roadmap |
+| Ansible role | Available — [`ansible/`](ansible/) |
 
 ## Roadmap
 
 - [ ] DISA STIG remediation mapping (STIG scanning comes with Enterprise — see above)
 - [ ] NIST SP 800-70 checklist mapping
-- [ ] Ansible role packaging
+- [x] Ansible role ([`ansible/`](ansible/))
 - [ ] Parallel remote deploy (beyond sequential SSH)
-- [ ] Service-impact simulation before apply
+- [ ] Service-impact simulation before apply (started: `--dry-run` warns before an SSH lockout and before Docker changes that would disrupt containers)
 
 ## Contributing
 

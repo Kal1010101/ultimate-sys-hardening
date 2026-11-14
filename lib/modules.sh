@@ -162,7 +162,16 @@ apply_ssh_hardening() {
     fi
 
     if [[ "$DRY_RUN" == true ]]; then
+        # The keywords set below, for the preview's count only.
+        local keyword skipped=""
+        for keyword in PermitRootLogin PasswordAuthentication ChallengeResponseAuthentication \
+                       X11Forwarding AllowTcpForwarding PermitEmptyPasswords MaxAuthTries \
+                       LoginGraceTime ClientAliveInterval ClientAliveCountMax UsePAM PrintLastLog Banner; do
+            [[ "$lockdown" == false && ( "$keyword" == PermitRootLogin || "$keyword" == PasswordAuthentication ) ]] && continue
+            setting_skipped "$keyword" && { skipped+="$keyword "; setting_count=$((setting_count - 1)); }
+        done
         log_dry "Would apply $setting_count hardened settings to $cfg"
+        [[ -n "$skipped" ]] && log_info "  Left as they are (UH_SKIP_SETTINGS): ${skipped% }"
         [[ "$lockdown" == true ]] || _ssh_no_key_warning
         return 0
     fi
@@ -172,6 +181,7 @@ apply_ssh_hardening() {
 
     backup_file "$cfg"
 
+    UH_SETTINGS_SKIPPED_COUNT=0
     if [[ "$lockdown" == true ]]; then
         set_config "PermitRootLogin"             "no"              "$cfg"
         set_config "PasswordAuthentication"      "no"              "$cfg"
@@ -189,6 +199,7 @@ apply_ssh_hardening() {
     set_config "UsePAM"                          "yes"             "$cfg"
     set_config "PrintLastLog"                    "yes"             "$cfg"
     set_config "Banner"                          "/etc/issue.net"  "$cfg"
+    setting_count=$((setting_count - UH_SETTINGS_SKIPPED_COUNT))
 
     backup_file_for_rewrite /etc/issue.net
     _ssh_issue_net_banner > /etc/issue.net 2>/dev/null || true
@@ -231,7 +242,7 @@ MaxAuthTries 3
 X11Forwarding no
 AllowTcpForwarding no
 EOF
-        } > "$dropin"
+        } | drop_skipped_settings > "$dropin"
         chmod 600 "$dropin" 2>/dev/null || true
         relabel_path "$dropin"
     fi
@@ -1122,6 +1133,11 @@ EOF
 # revert does not change live values; they stayed hardened until a reboot.
 UH_SYSCTL_RECORD_NAME=sysctl_before.txt
 
+# The sysctl settings this run writes: the module's set minus UH_SKIP_SETTINGS.
+_kernel_sysctl_settings() {
+    _kernel_sysctl_conf | drop_skipped_settings
+}
+
 # $1 = this module's drop-in. Hosts hardened by a release that kept no record
 # already run the hardened values, so nothing is recorded for them.
 _record_sysctl_before() {
@@ -1133,7 +1149,7 @@ _record_sysctl_before() {
         grep -q "^${key}=" "$rec" 2>/dev/null && continue
         val=$(sysctl -n "$key" 2>/dev/null) || continue
         printf '%s=%s\n' "$key" "$val" >> "$rec" 2>/dev/null || true
-    done < <(_kernel_sysctl_conf | awk -F'[[:space:]]*=[[:space:]]*' '/^[a-z]/ {print $1}')
+    done < <(_kernel_sysctl_settings | awk -F'[[:space:]]*=[[:space:]]*' '/^[a-z]/ {print $1}')
 }
 
 # Put the recorded live values back, then re-read every sysctl config so the
@@ -1156,8 +1172,10 @@ apply_kernel_hardening() {
         log_warning "sysctl hardening is Linux-specific — skipping on ${DISTRO_TYPE}"
         return 0
     fi
+    local skipped; skipped=$(_kernel_sysctl_conf | skipped_settings_in)
+    [[ -n "$skipped" ]] && log_info "  Left as they are (UH_SKIP_SETTINGS): $skipped"
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would write 27 sysctl parameters to /etc/sysctl.d/99-hardening.conf"
+        log_dry "Would write $(_kernel_sysctl_settings | grep -c '^[a-z]') sysctl parameters to /etc/sysctl.d/99-hardening.conf"
         return 0
     fi
 
@@ -1166,7 +1184,7 @@ apply_kernel_hardening() {
     mkdir -p /etc/sysctl.d 2>/dev/null || true
 
     _record_sysctl_before "$sysctl_file"
-    _kernel_sysctl_conf > "$sysctl_file"
+    _kernel_sysctl_settings > "$sysctl_file"
 
     sysctl -p "$sysctl_file" >>"$LOG_FILE" 2>&1 || true
     local n; n=$(grep -c '^[a-z]' "$sysctl_file" 2>/dev/null || echo 0)
@@ -2226,20 +2244,19 @@ apply_docker_security() {
         log_warning "Docker is not installed — skipping Docker hardening"
         return 0
     fi
+    local conf="${UH_DOCKER_CONF:-/etc/docker/daemon.json}"   # UH_DOCKER_CONF: test hook
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would merge hardening into /etc/docker/daemon.json (icc off, log rotation, live-restore; userns-remap only where Docker holds no data yet) and restart docker if no container would be stopped"
+        _docker_preview "$conf"
         return 0
     fi
     confirm "Apply Docker daemon hardening?" || { log_info "Skipped Docker security"; return 0; }
 
-    local conf="${UH_DOCKER_CONF:-/etc/docker/daemon.json}" with_userns=yes   # UH_DOCKER_CONF: test hook
-    # userns-remap makes Docker keep everything in a separate folder, so the
-    # containers, images and volumes a host already has disappear from view
-    # until it is turned off again. Only turned on where there is nothing yet.
-    if ! grep -q '"userns-remap"' "$conf" 2>/dev/null && _docker_has_data; then
+    local with_userns=yes
+    if ! _docker_userns_allowed "$conf"; then
         with_userns=no
         log_warning "Docker: userns-remap left off — this host already has containers, images or volumes (or Docker is not running, so that cannot be checked), and turning it on would hide them. Turn it on by hand once they are moved, if you want it."
     fi
+    _docker_warn_default_bridge
 
     create_backup_dir
     backup_file "$conf"
@@ -2259,15 +2276,63 @@ apply_docker_security() {
 
     # Restarting stops running containers unless live-restore is already on
     # in the daemon that is running now.
-    local running; running=$(docker ps -q 2>/dev/null | wc -l)
-    if (( running > 0 )) && [[ "$(docker info --format '{{.LiveRestoreEnabled}}' 2>/dev/null)" != true ]]; then
-        log_warning "Docker: not restarted — $running running container(s) would be stopped. The new daemon.json applies at the next Docker restart, when it suits you."
+    local stopped; stopped=$(_docker_containers_a_restart_stops)
+    if (( stopped > 0 )); then
+        log_warning "Docker: not restarted — $stopped running container(s) would be stopped. The new daemon.json applies at the next Docker restart, when it suits you."
     else
         restart_service docker || log_warning "Could not restart docker — the new daemon.json applies on next restart"
     fi
     log_success "Docker daemon hardened"
     count_fix
     return 0
+}
+
+# userns-remap makes Docker keep everything in a separate folder, so the
+# containers, images and volumes a host already has disappear from view until
+# it is turned off again. $1 = daemon.json. True where it is already set (the
+# merge keeps it) or Docker holds nothing yet.
+_docker_userns_allowed() {
+    grep -q '"userns-remap"' "$1" 2>/dev/null || ! _docker_has_data
+}
+
+# Prints how many running containers a Docker restart would stop: none when
+# live-restore is already on in the daemon running now.
+_docker_containers_a_restart_stops() {
+    local running; running=$(docker ps -q 2>/dev/null | wc -l)
+    if (( running > 0 )) && [[ "$(docker info --format '{{.LiveRestoreEnabled}}' 2>/dev/null)" != true ]]; then
+        echo "$running"
+    else
+        echo 0
+    fi
+}
+
+# "icc": false stops containers on Docker's default bridge network reaching
+# each other; user-defined networks are not affected. Warns when two or more
+# running containers share that network, since they may rely on it.
+_docker_warn_default_bridge() {
+    local on_bridge
+    on_bridge=$(docker network inspect bridge --format '{{len .Containers}}' 2>/dev/null) || return 0
+    [[ "$on_bridge" =~ ^[0-9]+$ ]] && (( on_bridge >= 2 )) || return 0
+    log_warning "Docker: $on_bridge running containers share the default bridge network. With inter-container traffic off they can no longer reach each other there once Docker restarts. Move any that talk to each other to a user-defined network (docker network create) first."
+}
+
+# --dry-run: what a real run would do on THIS host, from the same read-only
+# checks it makes. $1 = daemon.json.
+_docker_preview() {
+    local conf="$1" stopped
+    log_dry "Would merge hardening into $conf (inter-container traffic off on the default bridge, log rotation, live-restore)"
+    if _docker_userns_allowed "$conf"; then
+        log_dry "  userns-remap: would be turned on (Docker holds no containers, images or volumes yet)"
+    else
+        log_dry "  userns-remap: would be left off — Docker already holds data it would hide, or is not running"
+    fi
+    stopped=$(_docker_containers_a_restart_stops)
+    if (( stopped > 0 )); then
+        log_dry "  Docker would not be restarted: $stopped running container(s) would stop. The change would wait for the next Docker restart."
+    else
+        log_dry "  Docker would be restarted (no running container would stop)"
+    fi
+    _docker_warn_default_bridge
 }
 
 # Does Docker already hold containers, images or volumes? When Docker is not

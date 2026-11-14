@@ -1,0 +1,40 @@
+---
+# Release to install. Bumped with every release (tests/cases/test_install_docs_version.sh
+# checks it matches lib/core.sh).
+uh_version: "2.5.3"
+
+# What the role does on each host:
+#   dry-run  preview every change, modify nothing (the default: opt in to change)
+#   apply    harden the host
+#   cis      run the read-only compliance checks only
+# Ansible's --check mode always runs a dry run, whatever this says.
+uh_mode: dry-run
+
+# With apply: leave out the two High-risk modules (9 SUID/SGID, 16 GRUB password).
+uh_safe_only: true
+
+# package: the release's .deb/.rpm/.apk/Arch package, checked against the
+#          release's SHA256SUMS before it is installed.
+# git:     a checkout of the release tag in uh_git_dest (needs git on the host).
+# none:    use a tool already installed at uh_command (set it too).
+uh_install_method: package
+
+uh_release_url: "https://github.com/Kal1010101/ultimate-sys-hardening/releases/download/v{{ uh_version }}"
+uh_git_repo: "https://github.com/Kal1010101/ultimate-sys-hardening.git"
+uh_git_dest: /opt/ultimate-hardening
+
+# Settings passed to the tool as environment variables, for example:
+#   uh_settings:
+#     UH_SKIP_SETTINGS: "AllowTcpForwarding net.ipv4.ip_forward"
+#     UH_SSH_LOCKOUT_CHECK: "true"
+#     UH_USB_STORAGE_BLACKLIST: "false"
+# See examples/.env.example in the repository for every setting.
+uh_settings: {}
+
+# Reboot when a run upgraded the kernel (the tool exits 10 and never reboots
+# by itself). Off by default: plan reboots yourself.
+uh_reboot_when_required: false
+
+# Where on the controller to save each host's compliance results as JSON
+# (one file per host, named after it). Empty: not saved.
+uh_report_dir: ""

@@ -1,0 +1,73 @@
+---
+- name: Pick the release package for this platform
+  ansible.builtin.set_fact:
+    uh_package_file: >-
+      {{ {
+        'Debian': 'ultimate-hardening_' ~ uh_version ~ '_all.deb',
+        'RedHat': 'ultimate-hardening-' ~ uh_version ~ '-1.noarch.rpm',
+        'Suse': 'ultimate-hardening-' ~ uh_version ~ '-1.noarch.rpm',
+        'Alpine': 'ultimate-hardening_' ~ uh_version ~ '_noarch.apk',
+        'Archlinux': 'ultimate-hardening-' ~ uh_version ~ '-1-any.pkg.tar.zst'
+      }[ansible_os_family] | default('') }}
+
+- name: Check a package exists for this platform
+  ansible.builtin.assert:
+    that: uh_package_file | length > 0
+    fail_msg: >-
+      No release package for the {{ ansible_os_family }} family. Set
+      uh_install_method: git to run the tool from a checkout instead.
+    quiet: true
+
+- name: Make a private download folder
+  ansible.builtin.file:
+    path: /var/cache/ultimate-hardening
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+# get_url reads the expected hash for this file out of the release's
+# SHA256SUMS and refuses a download that does not match it.
+- name: Download the package, checked against the release's SHA256SUMS
+  ansible.builtin.get_url:
+    url: "{{ uh_release_url }}/{{ uh_package_file }}"
+    dest: "/var/cache/ultimate-hardening/{{ uh_package_file }}"
+    checksum: "sha256:{{ uh_release_url }}/SHA256SUMS"
+    mode: "0600"
+  register: uh_download
+
+- name: Install the package (Debian family)
+  ansible.builtin.apt:
+    deb: "{{ uh_download.dest }}"
+  when: ansible_os_family == 'Debian'
+
+# The package is not GPG-signed; its integrity comes from the SHA256SUMS check
+# above.
+- name: Install the package (RHEL family)
+  ansible.builtin.dnf:
+    name: "{{ uh_download.dest }}"
+    state: present
+    disable_gpg_check: true
+  when: ansible_os_family == 'RedHat'
+
+- name: Install the package (SUSE)
+  ansible.builtin.command: zypper --non-interactive install --allow-unsigned-rpm {{ uh_download.dest | quote }}
+  register: uh_zypper
+  changed_when: "'Nothing to do' not in uh_zypper.stdout"
+  when: ansible_os_family == 'Suse'
+
+- name: Install the package (Alpine)
+  ansible.builtin.command: apk add --allow-untrusted {{ uh_download.dest | quote }}
+  register: uh_apk
+  changed_when: "'Installing' in uh_apk.stdout or 'Upgrading' in uh_apk.stdout"
+  when: ansible_os_family == 'Alpine'
+
+- name: Install the package (Arch)
+  ansible.builtin.command: pacman -U --noconfirm --needed {{ uh_download.dest | quote }}
+  register: uh_pacman
+  changed_when: "'there is nothing to do' not in uh_pacman.stdout"
+  when: ansible_os_family == 'Archlinux'
+
+- name: Use the installed command
+  ansible.builtin.set_fact:
+    uh_command: /usr/bin/ultimate-harden

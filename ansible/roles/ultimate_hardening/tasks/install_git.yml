@@ -1,0 +1,19 @@
+---
+- name: Check out the release tag
+  ansible.builtin.git:
+    repo: "{{ uh_git_repo }}"
+    dest: "{{ uh_git_dest }}"
+    version: "v{{ uh_version }}"
+    depth: 1
+
+- name: Keep the checkout writable by root only, since it runs as root
+  ansible.builtin.file:
+    path: "{{ uh_git_dest }}"
+    owner: root
+    group: root
+    mode: "go-w"
+    recurse: true
+
+- name: Use the checkout's script
+  ansible.builtin.set_fact:
+    uh_command: "{{ uh_git_dest }}/src/free/ultimate_hardening.sh"

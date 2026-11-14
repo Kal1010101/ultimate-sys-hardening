@@ -516,7 +516,7 @@
       <button type="button" data-full="images/menu-pro.png" aria-label="Enlarge: the Pro tier menu">
         <img src="images/menu-pro.png" alt="The Pro tier menu: the same 22 free core hardening modules in one panel, and a second panel of Pro-only features including CIS auto-fix, HTML compliance reports, AI directory locking, scheduling and email notifications." loading="lazy" width="729" height="1276">
       </button>
-      <figcaption><b>What the paid tiers add</b>The Pro menu keeps all 22 free modules and adds a second panel. Nothing is taken out of the free tier.</figcaption>
+      <figcaption><b>What the paid tiers add</b> The Pro menu keeps all 22 free modules and adds a second panel. Nothing is taken out of the free tier.</figcaption>
     </figure>
 
     <div class="tiers">
@@ -583,7 +583,7 @@
           <li>GitOps policy delivery with signed approvals and host tags</li>
           <li>Remote deployment over SSH</li>
           <li>Fleet compromise-scan view &amp; remote scans over SSH</li>
-          <li>JSON / CSV audit export</li>
+          <li>Run history export (JSON / CSV)</li>
           <li>SQLite state history &amp; trend tracking</li>
           <li>Fleet-wide syslog: one collector, every host</li>
           <li>Priority support</li>
@@ -603,7 +603,9 @@
           <tr><td class="feat">Hardening modules</td><td class="y">22</td><td class="y">22</td><td class="y">22</td></tr>
           <tr><td class="feat">Dry-run &amp; full revert</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">Built-in CIS checks</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
-          <tr><td class="feat">Automated CIS auto-fix</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="feat">CIS results as JSON / SARIF (<code>--json</code>, <code>--sarif</code>)</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="feat">Skip single settings (<code>UH_SKIP_SETTINGS</code>)</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="feat">One-step fix for each failed CIS check (Free applies all 22 modules)</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">HTML compliance report</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">Posture: ports, logins, services</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">Extra hardening modules (SSH rate limiting, sshd resource caps, USB device control)</td><td class="n">—</td><td class="y">3</td><td class="y">3</td></tr>
@@ -621,7 +623,7 @@
           <tr><td class="feat">Multi-host dashboard</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
           <tr><td class="feat">Remote SSH deployment</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
           <tr><td class="feat">Fleet compromise-scan view &amp; remote scan</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
-          <tr><td class="feat">JSON / CSV export</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
+          <tr><td class="feat">Run history export (JSON / CSV)</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
           <tr><td class="feat">Remote syslog forwarding</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">Fleet-wide syslog (one collector, pushed on deploy)</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
           <tr><td class="feat">Support</td><td class="n">Community</td><td class="y">Email</td><td class="y">Priority</td></tr>
@@ -742,6 +744,9 @@
 <div class="term-body"><span class="c-f">$</span> <span class="c-w">git clone --branch v2.5.3 https://github.com/Kal1010101/ultimate-sys-hardening.git</span>
 <span class="c-f">$</span> <span class="c-w">cd ultimate-sys-hardening</span>
 <span class="c-f">$</span> <span class="c-w">sudo ./src/free/ultimate_hardening.sh --dry-run</span>
+
+<span class="c-c"># or try it in a throwaway container, with nothing on your machine touched:</span>
+<span class="c-f">$</span> <span class="c-w">docker run --rm -it ubuntu:24.04 bash -c "apt-get update -qq &amp;&amp; apt-get install -y -qq git ca-certificates openssh-server &gt;/dev/null &amp;&amp; git clone --branch v2.5.3 https://github.com/Kal1010101/ultimate-sys-hardening.git &amp;&amp; cd ultimate-sys-hardening &amp;&amp; ./src/free/ultimate_hardening.sh --dry-run"</span>
 </div>
     </div>
     <div class="cta" style="justify-content:center">

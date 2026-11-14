@@ -70,6 +70,7 @@ AIDE_REFRESH=false
 AIDE_FINGERPRINT=false
 AIDE_VERIFY=""
 SAFE_ONLY=false
+REPORT_FORMAT=""
 
 usage() {
     cat << EOF
@@ -81,6 +82,9 @@ Usage: sudo $0 [OPTIONS]
   --safe-only     With --auto-mode, skip the High-risk modules (9, 16)
   --dry-run       Print every intended change, modify nothing
   --cis-only      Run read-only compliance checks, print score, exit
+  --json          Like --cis-only, but print the results as JSON on stdout
+  --sarif         Like --cis-only, but print the results as SARIF 2.1.0 on stdout
+                  (for code scanning). Other output goes to stderr.
   --skip-backup   Skip backup creation (disables revert)
   --revert        Restore everything from the most recent backup
   --revert-suid   Restore only SUID/SGID permissions
@@ -99,6 +103,7 @@ Examples:
   sudo $0 --auto-mode              Apply all 22 modules
   sudo $0 --auto-mode --safe-only  Apply everything except the High-risk modules
   sudo $0 --cis-only               Score the system, change nothing
+  sudo $0 --json > cis.json        The same checks, as JSON for scripts and CI
   sudo $0 --revert                 Undo the most recent run
 
 Exit status: 0 done; 10 done, but the kernel was upgraded and a reboot is
@@ -117,6 +122,10 @@ while [[ $# -gt 0 ]]; do
         --dry-run)     DRY_RUN=true ;;
         --skip-backup) SKIP_BACKUP=true ;;
         --cis-only)    CIS_ONLY=true; AUTO_MODE=true ;;
+        --json|--sarif)
+            [[ -z "$REPORT_FORMAT" || "$REPORT_FORMAT" == "${1#--}" ]] || \
+                { echo -e "${RED}--json and --sarif cannot be used together${NC}" >&2; exit 1; }
+            REPORT_FORMAT="${1#--}"; CIS_ONLY=true; AUTO_MODE=true ;;
         --revert)      REVERT_MODE=true ;;
         --revert-suid) REVERT_SUID_ONLY=true ;;
         --aide-refresh) AIDE_REFRESH=true ;;
@@ -136,6 +145,12 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
+
+# A report goes to stdout alone: everything else the run prints (platform
+# detection, warnings) moves to stderr, and the report is written to fd 3.
+if [[ -n "$REPORT_FORMAT" ]]; then
+    exec 3>&1 1>&2
+fi
 
 show_menu() {
     # Re-derive every module's [enable ]/[disable] tag from the compliance
@@ -230,6 +245,10 @@ main() {
     show_distro_menu
 
     if [[ "$CIS_ONLY" == true ]]; then
+        if [[ -n "$REPORT_FORMAT" ]]; then
+            print_cis_report "$REPORT_FORMAT" >&3
+            exit $?
+        fi
         run_cis_checks
         exit 0
     fi
