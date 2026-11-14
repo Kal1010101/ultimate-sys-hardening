@@ -32,6 +32,7 @@ and the project follows [Semantic Versioning](https://semver.org).
   hardening never touched. On a host where untrusted users have local accounts,
   that is a path to root. Update to 2.5.1. The revert now puts back only a SUID
   bit module 9 removed, on a root-owned file whose path only root can change.
+  Advisory: [GHSA-q47v-xh3h-vfvv](https://github.com/Kal1010101/ultimate-sys-hardening/security/advisories/GHSA-q47v-xh3h-vfvv).
 - Module 9 writes its SUID inventory in a new format, one entry per file. Files
   whose name contains a line break are not recorded or stripped, and are
   reported instead.
