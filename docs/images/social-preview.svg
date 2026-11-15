@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <!-- GitHub social preview (Settings → Social preview). Colours are the site's
+       palette from docs/index.html. Render: rsvg-convert -o social-preview.png social-preview.svg -->
+  <rect width="1280" height="640" fill="#0d1117"/>
+  <rect x="0" y="0" width="1280" height="6" fill="#3fb950"/>
+
+  <text x="80" y="128" font-family="DejaVu Sans Mono, monospace" font-size="22" letter-spacing="3" fill="#6e7d8d">OPEN SOURCE · MIT · PLAIN BASH</text>
+  <text x="80" y="200" font-family="DejaVu Sans, sans-serif" font-size="68" font-weight="bold" fill="#e6edf3">Ultimate Hardening</text>
+  <text x="80" y="256" font-family="DejaVu Sans, sans-serif" font-size="30" fill="#9aa7b4">CIS-aligned Linux hardening that fixes what it finds —</text>
+  <text x="80" y="298" font-family="DejaVu Sans, sans-serif" font-size="30" fill="#9aa7b4">with backup, dry-run, and full revert.</text>
+
+  <rect x="80" y="350" width="1120" height="210" rx="10" fill="#161b22" stroke="#232c38" stroke-width="2"/>
+  <circle cx="108" cy="376" r="7" fill="#f85149"/>
+  <circle cx="132" cy="376" r="7" fill="#d29922"/>
+  <circle cx="156" cy="376" r="7" fill="#3fb950"/>
+  <g font-family="DejaVu Sans Mono, monospace" font-size="24" xml:space="preserve">
+    <text x="108" y="434"><tspan fill="#3fb950">$</tspan><tspan fill="#e6edf3"> sudo ultimate-harden --auto-mode --dry-run</tspan><tspan fill="#6e7d8d">   # preview</tspan></text>
+    <text x="108" y="480"><tspan fill="#3fb950">$</tspan><tspan fill="#e6edf3"> sudo ultimate-harden --auto-mode --safe-only</tspan><tspan fill="#6e7d8d"> # apply</tspan></text>
+    <text x="108" y="526"><tspan fill="#3fb950">$</tspan><tspan fill="#e6edf3"> sudo ultimate-harden --revert</tspan><tspan fill="#6e7d8d">                # undo</tspan></text>
+  </g>
+
+  <text x="80" y="606" font-family="DejaVu Sans Mono, monospace" font-size="20" fill="#39c5cf">22 modules · 26 platforms · tested on 10 distros every push</text>
+</svg>

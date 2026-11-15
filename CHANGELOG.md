@@ -11,6 +11,12 @@ and the project follows [Semantic Versioning](https://semver.org).
   it as a fix, so a preview that changes nothing now ends with
   "0 fixes applied".
 
+### Documentation
+- The README opens with a demo of a preview, an apply and a revert, recorded
+  in a Debian 12 container.
+- The README says how to upgrade from 2.5.0 or earlier, and mentions the KVM
+  virtual machine round trips run before a release.
+
 ## [2.6.0] — 2026-11-14
 
 ### Added

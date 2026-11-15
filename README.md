@@ -17,6 +17,13 @@
 
 </div>
 
+<p align="center">
+  <img src="docs/images/readme/demo.gif" width="900"
+       alt="Terminal demo: a dry-run previews the changes, the apply run backs up first and raises the CIS score from 36% to 60%, and --revert restores the original files">
+  <br>
+  <sub>Preview, apply, revert. Recorded in a throwaway Debian 12 container with v2.6.0; lines are excerpts of the real output.</sub>
+</p>
+
 ---
 
 ## About this project
@@ -36,7 +43,9 @@ runs as root on my own servers to be built.
   (plus macOS and the BSDs, detected and adapted); every push runs the
   integration suite in a fresh container on each of 10 distro images, plus
   ShellCheck. The tests apply real hardening and assert the system actually
-  changed.
+  changed. Before a release it also runs in real KVM virtual machines
+  (Debian 12, Rocky 9, Alpine, Arch): apply, revert, then check that every
+  recorded item is back as it was.
 - **Learning from failure in public.** An early version broke a login screen on an
   eCryptfs system; PAM modification was removed entirely and the reason is
   written down in [SECURITY.md](SECURITY.md). Fixes are recorded in the
@@ -110,6 +119,16 @@ This checks out the latest release, not `main`. To upgrade later:
 
 Running it with no flags opens an interactive menu. Nothing is applied without
 confirmation.
+
+### Upgrading from 2.5.0 or earlier
+
+Update to 2.5.1 or later; see advisory
+[GHSA-q47v-xh3h-vfvv](https://github.com/Kal1010101/ultimate-sys-hardening/security/advisories/GHSA-q47v-xh3h-vfvv).
+2.5.1 changed the format of the SUID inventory that module 9 writes. An
+inventory written by 2.5.0 or earlier is never restored by `--auto-mode`; run
+interactively, the revert lists those files and restores them only after you
+type "yes". Re-run module 9 once after upgrading to write an inventory in the
+new format.
 
 ## What it hardens
 
