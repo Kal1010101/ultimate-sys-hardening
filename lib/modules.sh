@@ -28,6 +28,9 @@ apply_system_updates() {
     fi
 
     update_packages
+    # update_packages printed its "Would upgrade" line; nothing was upgraded,
+    # so report no success and count no fix.
+    [[ "$DRY_RUN" == true ]] && return 0
     # The menu caches the pending-upgrade count; this run just changed it.
     declare -F invalidate_pending_updates_cache >/dev/null && invalidate_pending_updates_cache
 

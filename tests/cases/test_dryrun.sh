@@ -54,6 +54,16 @@ out=$(run_hardening --auto-mode --dry-run)
 assert_output_contains "$out" "\[22/22\]"      "dry-run reaches the final module"
 assert_output_contains "$out" "DRY.RUN"        "dry-run mode is announced"
 
+# ---- And it must not claim anything was done ---------------------------------
+# Module 1 used to print "System packages updated" and count a fix in dry-run,
+# so a preview that changed nothing ended with "1 fixes applied".
+if grep -q "System packages updated" <<<"$out"; then
+    fail "dry-run claims the system packages were updated"
+else
+    pass_msg "dry-run does not claim the packages were updated"
+fi
+assert_output_contains "$out" " 0 fixes applied" "dry-run summary counts no fixes"
+
 # ---- And it must have changed absolutely nothing ----------------------------
 for f in "${WATCHED[@]}"; do
     want="${SNAP[$f]}"

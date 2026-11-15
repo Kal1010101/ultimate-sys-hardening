@@ -6,6 +6,11 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+- `--dry-run` no longer says "System packages updated" for module 1 or counts
+  it as a fix, so a preview that changes nothing now ends with
+  "0 fixes applied".
+
 ## [2.6.0] — 2026-11-14
 
 ### Added
