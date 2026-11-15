@@ -21,6 +21,8 @@ and the project follows [Semantic Versioning](https://semver.org).
 - The test that keeps `cmd | grep -q` out of the code now also catches
   pipes into `head`, `grep -m` and `awk … exit` that do not handle their
   status, the same SIGPIPE-under-`pipefail` bug class.
+- OpenSSF Scorecard runs on every push to main and weekly, publishing its
+  results to the Security tab and the public Scorecard API.
 
 ### Documentation
 - The README opens with a demo of a preview, an apply and a revert, recorded
