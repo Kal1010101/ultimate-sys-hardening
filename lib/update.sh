@@ -60,7 +60,7 @@ check_for_updates() {
     }
 
     local latest_tag
-    latest_tag=$(echo "$response" | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v?([^"]+)".*/\1/')
+    latest_tag=$(grep -m1 '"tag_name"' <<<"$response" | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v?([^"]+)".*/\1/')
     [[ -n "$latest_tag" ]] || { log_info "Update check: couldn't parse GitHub's response"; return 0; }
 
     latest_tag="${latest_tag//[^0-9A-Za-z._-]/}"

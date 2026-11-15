@@ -10,6 +10,17 @@ and the project follows [Semantic Versioning](https://semver.org).
 - `--dry-run` no longer says "System packages updated" for module 1 or counts
   it as a fix, so a preview that changes nothing now ends with
   "0 fixes applied".
+- `--check-update` died silently with exit 141 when GitHub's release response
+  was larger than a pipe buffer (64 KB): `echo` was killed by SIGPIPE once
+  `grep -m1` had its match, and `set -o pipefail` ended the run. It now
+  searches the saved response directly.
+- Reading AIDE's database path and an `--aide-verify` fingerprint file no
+  longer depends on `sed` finishing before `head` exits.
+
+### Changed
+- The test that keeps `cmd | grep -q` out of the code now also catches
+  pipes into `head`, `grep -m` and `awk … exit` that do not handle their
+  status, the same SIGPIPE-under-`pipefail` bug class.
 
 ### Documentation
 - The README opens with a demo of a preview, an apply and a revert, recorded

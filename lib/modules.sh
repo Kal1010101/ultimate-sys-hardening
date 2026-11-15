@@ -1536,8 +1536,8 @@ EOF
 # Prints the path AIDE's config gives for database_in or database_out.
 aide_config_db_path() {
     local conf="$1" key="$2" dbdir path
-    dbdir=$(sed -n 's/^@@define[[:space:]]\+DBDIR[[:space:]]\+\([^[:space:]]*\).*/\1/p' "$conf" | head -n 1)
-    path=$(sed -n "s/^${key}=file:\([^[:space:]]*\).*/\1/p" "$conf" | head -n 1)
+    dbdir=$(sed -n 's/^@@define[[:space:]]\+DBDIR[[:space:]]\+\([^[:space:]]*\).*/\1/p' "$conf" | head -n 1 || true)
+    path=$(sed -n "s/^${key}=file:\([^[:space:]]*\).*/\1/p" "$conf" | head -n 1 || true)
     path="${path//@@\{DBDIR\}/$dbdir}"
     [[ -n "$path" && "$path" != *'@@'* ]] && printf '%s\n' "$path"
 }
@@ -1881,8 +1881,8 @@ aide_fingerprint_current() {
 aide_verify() {
     local given="$1" expected="" file_host="" db actual
     if [[ -f "$given" ]]; then
-        expected=$(sed -n 's/^sha256=//p' "$given" | head -n 1)
-        file_host=$(sed -n 's/^host=//p' "$given" | head -n 1)
+        expected=$(sed -n 's/^sha256=//p' "$given" | head -n 1 || true)
+        file_host=$(sed -n 's/^host=//p' "$given" | head -n 1 || true)
         if [[ -n "$file_host" && "$file_host" != "$(uname -n)" ]]; then
             log_error "That fingerprint is for $file_host, not $(uname -n)"
             return 2

@@ -50,4 +50,29 @@ else
     pass_msg "no command is piped into grep -q in lib/ or src/free/"
 fi
 
+# The same SIGPIPE applies to every reader that stops early: head, grep -m N
+# and awk with exit. There the output is still right, but the pipeline's
+# status is not, and under `set -e` that ends the run. Each such pipe needs a
+# `||` on the line to handle the status (usually `|| true`), or must read
+# captured output instead: `head -n 1 <<<"$(cmd)"`.
+EARLY_EXIT_READER='(^|[^|])\|[[:space:]]*(head([[:space:]]|\)|$)|grep([[:space:]]+-[A-Za-z]+)*[[:space:]]+-[A-Za-z]*m[[:space:]]*[0-9]|awk[[:space:]][^|]*[^A-Za-z_]exit([^A-Za-z_]|$))'
+unguarded=$(join_continued "$REPO"/lib/*.sh "$REPO"/src/free/*.sh 2>/dev/null \
+    | grep -E "$EARLY_EXIT_READER" | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' | grep -v '||' || true)
+
+caught_early() { join_continued <(printf '%s\n' "$@") | grep -E "$EARLY_EXIT_READER" | grep -qv '||'; }
+for bad in 'x=$(cmd | head -n 1)' 'x=$(cmd | head)' 'cmd | head -5' 'cmd | grep -m1 x' 'cmd | grep -E -m 1 x' \
+           'cmd | awk "/x/ { print; exit }"'; do
+    caught_early "$bad" || fail "the check misses: $bad"
+done
+for good in 'x=$(cmd | head -n 1 || true)' 'x=$(cmd | head -1) || return 0' 'head -n 1 <<<"$(cmd)"' \
+            'grep -m1 x <<<"$response"' 'cmd | header' 'cmd | awk "{ print }"'; do
+    caught_early "$good" && fail "the check wrongly flags: $good"
+done
+
+if [[ -n "$unguarded" ]]; then
+    fail "early-exit reader on a pipe with no || (add || true, or read captured output): $(head -3 <<<"$unguarded" | tr '\n' ';')"
+else
+    pass_msg "every pipe into head, grep -m or awk exit in lib/ or src/free/ handles its status"
+fi
+
 finish
