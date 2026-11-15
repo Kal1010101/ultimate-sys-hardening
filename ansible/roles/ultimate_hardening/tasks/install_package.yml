@@ -26,13 +26,15 @@
     group: root
     mode: "0700"
 
-# get_url reads the expected hash for this file out of the release's
-# SHA256SUMS and refuses a download that does not match it.
-- name: Download the package, checked against the release's SHA256SUMS
+# get_url refuses a download that does not match the expected hash: the one
+# pinned in uh_package_sha256 when set, otherwise the one for this file in the
+# release's SHA256SUMS (which only catches corruption, as it comes from the
+# same release as the package).
+- name: Download the package, checked against the pinned hash or the release's SHA256SUMS
   ansible.builtin.get_url:
     url: "{{ uh_release_url }}/{{ uh_package_file }}"
     dest: "/var/cache/ultimate-hardening/{{ uh_package_file }}"
-    checksum: "sha256:{{ uh_release_url }}/SHA256SUMS"
+    checksum: "sha256:{{ uh_package_sha256 if uh_package_sha256 | default('') | length > 0 else uh_release_url ~ '/SHA256SUMS' }}"
     mode: "0600"
   register: uh_download
 

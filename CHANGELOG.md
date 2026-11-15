@@ -16,6 +16,9 @@ and the project follows [Semantic Versioning](https://semver.org).
   searches the saved response directly.
 - Reading AIDE's database path and an `--aide-verify` fingerprint file no
   longer depends on `sed` finishing before `head` exits.
+- Ansible role: `uh_install_method: git` failed on every run after the first
+  (ansible-core 2.19's git module cannot update a shallow tag checkout). The
+  role now makes a full clone, about 11 MB.
 
 ### Changed
 - The test that keeps `cmd | grep -q` out of the code now also catches
@@ -23,6 +26,18 @@ and the project follows [Semantic Versioning](https://semver.org).
   status, the same SIGPIPE-under-`pipefail` bug class.
 - OpenSSF Scorecard runs on every push to main and weekly, publishing its
   results to the Security tab and the public Scorecard API.
+
+### Security
+- Ansible role: `uh_settings` accepts only `UH_*` keys. It becomes the
+  environment of the tool, which runs as root, so a key such as `BASH_ENV`
+  or `LD_PRELOAD` could run code as root.
+- Ansible role: `uh_package_sha256` pins the package's hash in your own
+  playbook, checked instead of the release's `SHA256SUMS`, so a release whose
+  package and checksums were both replaced is caught. `uh_git_commit` does
+  the same for a git install: the role stops if the release tag does not
+  point at that commit.
+- Ansible role: saved compliance reports are mode 0600 instead of 0644; they
+  list each host's failed checks.
 
 ### Documentation
 - The README opens with a demo of a preview, an apply and a revert, recorded

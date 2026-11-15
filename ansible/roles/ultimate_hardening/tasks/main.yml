@@ -10,6 +10,26 @@
       must be package, git or none (got {{ uh_install_method }}); uh_settings must be a mapping.
     quiet: true
 
+# uh_settings becomes the environment of a root process. Only the tool's own
+# settings belong there: BASH_ENV, LD_PRELOAD and the like would run code as root.
+- name: Check uh_settings holds only the tool's UH_ settings
+  ansible.builtin.assert:
+    that: uh_settings.keys() | reject('match', '^UH_[A-Z0-9_]+$') | list | length == 0
+    fail_msg: >-
+      uh_settings may only hold UH_* settings, since they become the environment
+      of a process running as root; refused: {{ uh_settings.keys() | reject('match', '^UH_[A-Z0-9_]+$') | join(', ') }}
+    quiet: true
+
+- name: Check the pins are well formed
+  ansible.builtin.assert:
+    that:
+      - uh_package_sha256 == '' or uh_package_sha256 is match('^[0-9a-f]{64}$')
+      - uh_git_commit == '' or uh_git_commit is match('^[0-9a-f]{40}$')
+    fail_msg: >-
+      uh_package_sha256 must be a 64-character lowercase SHA-256 (got '{{ uh_package_sha256 }}');
+      uh_git_commit must be a full 40-character commit, not a tag (got '{{ uh_git_commit }}').
+    quiet: true
+
 - name: Install the tool
   ansible.builtin.include_tasks: "install_{{ uh_install_method }}.yml"
 
@@ -62,7 +82,8 @@
   ansible.builtin.copy:
     content: "{{ uh_cis | to_nice_json }}\n"
     dest: "{{ uh_report_dir }}/{{ inventory_hostname }}.json"
-    mode: "0644"
+    # It lists the host's failed checks: a map of its weak spots.
+    mode: "0600"
   delegate_to: localhost
   become: false
   when: uh_report_dir | length > 0

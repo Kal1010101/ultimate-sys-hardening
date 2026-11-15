@@ -4,7 +4,21 @@
     repo: "{{ uh_git_repo }}"
     dest: "{{ uh_git_dest }}"
     version: "v{{ uh_version }}"
-    depth: 1
+    # A full clone (about 11 MB), not depth: 1. With a shallow tag checkout
+    # already in place, ansible-core 2.19's git module fails every later run
+    # with "'NoneType' object has no attribute 'startswith'".
+  register: uh_git_checkout
+
+# A tag can be moved to another commit; a commit cannot. Checked before the
+# checkout is used.
+- name: Check the release tag points at the pinned commit
+  ansible.builtin.assert:
+    that: uh_git_checkout.after == uh_git_commit
+    fail_msg: >-
+      Tag v{{ uh_version }} points at {{ uh_git_checkout.after }}, not the pinned
+      uh_git_commit {{ uh_git_commit }}. Not using this checkout.
+    quiet: true
+  when: uh_git_commit | default('') | length > 0
 
 - name: Keep the checkout writable by root only, since it runs as root
   ansible.builtin.file:

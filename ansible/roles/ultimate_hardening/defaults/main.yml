@@ -23,7 +23,19 @@ uh_release_url: "https://github.com/Kal1010101/ultimate-sys-hardening/releases/d
 uh_git_repo: "https://github.com/Kal1010101/ultimate-sys-hardening.git"
 uh_git_dest: /opt/ultimate-hardening
 
-# Settings passed to the tool as environment variables, for example:
+# Pins, checked against what you reviewed rather than what the release says.
+# The release's SHA256SUMS comes from the same place as the package, so it
+# cannot catch a release where both were replaced; a hash in your playbook can.
+#   uh_package_sha256  SHA-256 of this host's package file (one per OS family),
+#                      used instead of the release's SHA256SUMS.
+#   uh_git_commit      full 40-character commit that tag v{{ uh_version }} must
+#                      point at; tags can be moved, commits cannot.
+uh_package_sha256: ""
+uh_git_commit: ""
+
+# Settings passed to the tool as environment variables. The tool runs as root,
+# so only UH_* keys are accepted (BASH_ENV or LD_PRELOAD would run code as
+# root). For example:
 #   uh_settings:
 #     UH_SKIP_SETTINGS: "AllowTcpForwarding net.ipv4.ip_forward"
 #     UH_SSH_LOCKOUT_CHECK: "true"

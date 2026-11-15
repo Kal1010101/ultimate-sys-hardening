@@ -19,6 +19,9 @@ set -uo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 PKG_VERSION="${UH_ANSIBLE_PKG_VERSION:-2.6.0}"
+# The commit tag v$PKG_VERSION points at, for the uh_git_commit test. Bump
+# with PKG_VERSION: git rev-parse "v<version>^{commit}".
+PKG_GIT_COMMIT="${UH_ANSIBLE_PKG_GIT_COMMIT:-da86544a5a32932e3ac2ad3fecfd4f50ec5159bf}"
 FAILED=0
 
 command -v docker >/dev/null 2>&1 || { echo "docker not found" >&2; exit 1; }
@@ -77,7 +80,9 @@ modes_test() {
         out=$(play -e uh_mode=cis -e uh_report_dir=/tmp/reports) || bad "cis play failed: $out"
         python3 -c "import json; d=json.load(open(\"/tmp/reports/localhost.json\")); assert d[\"total\"] == len(d[\"checks\"])" \
             || bad "saved report is not the compliance JSON"
-        ok "uh_mode=cis saves the results as JSON on the controller"
+        [ "$(stat -c %a /tmp/reports/localhost.json)" = 600 ] \
+            || bad "saved report is mode $(stat -c %a /tmp/reports/localhost.json), not 600"
+        ok "uh_mode=cis saves the results as JSON on the controller, readable by its owner only"
 
         out=$(play -e uh_mode=apply -e "{\"uh_settings\": {\"UH_SKIP_SETTINGS\": \"X11Forwarding\"}}") \
             || bad "apply play failed: $out"
@@ -94,7 +99,79 @@ modes_test() {
         out=$(play -e uh_mode=bogus 2>&1) && bad "a bad uh_mode was accepted"
         grep -q "uh_mode must be" <<<"$out" || bad "bad uh_mode not explained"
         ok "a bad uh_mode is refused with the reason"
+
+        # uh_settings becomes the environment of a root process: BASH_ENV or
+        # LD_PRELOAD there would run code as root, so only UH_* keys pass.
+        out=$(play -e "{\"uh_settings\": {\"BASH_ENV\": \"/tmp/x.sh\"}}" 2>&1) && bad "uh_settings accepted BASH_ENV"
+        grep -q "BASH_ENV" <<<"$out" || bad "the refused uh_settings key is not named"
+        ok "uh_settings refuses keys that are not UH_ settings"
+
+        out=$(play -e uh_package_sha256=nothex 2>&1) && bad "a malformed uh_package_sha256 was accepted"
+        grep -q "uh_package_sha256" <<<"$out" || bad "malformed uh_package_sha256 not explained"
+        out=$(play -e uh_git_commit=v2.6.0 2>&1) && bad "a tag was accepted as uh_git_commit"
+        grep -q "uh_git_commit" <<<"$out" || bad "malformed uh_git_commit not explained"
+        ok "malformed pins are refused with the reason"
     '
+}
+
+# A hash pinned in the playbook replaces the release's own SHA256SUMS, so a
+# release whose package and SHA256SUMS were both replaced is still caught.
+pinned_package_test() {
+    in_container debian:12 "$DEBIAN_SETUP" "
+        ok() { echo \"OK: \$*\"; }
+        bad() { echo \"ASSERT: \$*\"; exit 1; }
+        install() { ansible-playbook -i localhost, /dev/stdin -e uh_version=$PKG_VERSION \"\$@\" <<'PLAY'
+- hosts: localhost
+  connection: local
+  gather_facts: true
+  tasks:
+    - ansible.builtin.include_role:
+        name: ultimate_hardening
+        tasks_from: install_package
+PLAY
+        }
+        zeros=\$(printf '0%.0s' \$(seq 64))
+        out=\$(install -e uh_package_sha256=\$zeros 2>&1) && bad 'a wrong pinned hash was accepted'
+        command -v ultimate-harden >/dev/null && bad 'the package was installed despite the wrong hash'
+        ok 'a wrong uh_package_sha256 stops the install'
+
+        sums=\$(python3 -c 'import sys, urllib.request; print(urllib.request.urlopen(sys.argv[1]).read().decode())' \
+            https://github.com/Kal1010101/ultimate-sys-hardening/releases/download/v$PKG_VERSION/SHA256SUMS)
+        right=\$(awk '\$2 ~ /_all\\.deb\$/ { print \$1 }' <<<\"\$sums\")
+        [ \${#right} -eq 64 ] || bad 'could not read the .deb hash from SHA256SUMS'
+        rm -f /var/cache/ultimate-hardening/*
+        out=\$(install -e uh_package_sha256=\$right 2>&1) || bad \"the right pinned hash was refused: \$out\"
+        ultimate-harden --version | grep -q 'Ultimate Hardening $PKG_VERSION' || bad 'wrong version installed'
+        ok 'the right uh_package_sha256 installs the package'
+    "
+}
+
+# uh_git_commit checks the commit the release tag points at, since a tag can
+# be moved and a commit cannot.
+pinned_git_test() {
+    in_container debian:12 "$DEBIAN_SETUP
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends git >/dev/null" "
+        ok() { echo \"OK: \$*\"; }
+        bad() { echo \"ASSERT: \$*\"; exit 1; }
+        install() { ansible-playbook -i localhost, /dev/stdin -e uh_version=$PKG_VERSION \"\$@\" <<'PLAY'
+- hosts: localhost
+  connection: local
+  gather_facts: true
+  tasks:
+    - ansible.builtin.include_role:
+        name: ultimate_hardening
+        tasks_from: install_git
+PLAY
+        }
+        zeros=\$(printf '0%.0s' \$(seq 40))
+        out=\$(install -e uh_git_commit=\$zeros 2>&1) && bad 'a wrong pinned commit was accepted'
+        grep -q 'uh_git_commit' <<<\"\$out\" || bad 'the commit mismatch is not explained'
+        ok 'a wrong uh_git_commit stops the git install'
+
+        out=\$(install -e uh_git_commit=$PKG_GIT_COMMIT 2>&1) || bad \"the right pinned commit was refused: \$out\"
+        [ -x /opt/ultimate-hardening/src/free/ultimate_hardening.sh ] || bad 'no checkout after the right pin'
+        ok 'the right uh_git_commit passes'
+    "
 }
 
 package_test() {  # $1 = image, $2 = setup
@@ -117,5 +194,7 @@ echo "Ansible role tests"
 part "modes on debian:12"            modes_test
 part "package install on debian:12"  package_test debian:12 "$DEBIAN_SETUP"
 part "package install on rockylinux:9" package_test rockylinux:9 'dnf install -y -q python3 python3-pip >/dev/null'
+part "pinned package hash on debian:12" pinned_package_test
+part "pinned git commit on debian:12"  pinned_git_test
 echo "  failed: $FAILED"
 exit "$FAILED"
