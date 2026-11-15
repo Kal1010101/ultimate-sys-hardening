@@ -40,6 +40,9 @@ and the project follows [Semantic Versioning](https://semver.org).
   list each host's failed checks.
 
 ### Documentation
+- `docs/comparison.md` compares the tool with Lynis, OpenSCAP and
+  ComplianceAsCode, ansible-lockdown and dev-sec, says when to pick one of
+  those instead, and how to use them together. The README links it.
 - The README opens with a demo of a preview, an apply and a revert, recorded
   in a Debian 12 container.
 - The README says how to upgrade from 2.5.0 or earlier, and mentions the KVM

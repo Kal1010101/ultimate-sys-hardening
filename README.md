@@ -11,6 +11,7 @@
 
 [Website](https://Kal1010101.github.io/ultimate-sys-hardening/) ·
 [Security policy](SECURITY.md) ·
+[How it compares](docs/comparison.md) ·
 [Packer example](examples/packer/) ·
 [Releases](https://github.com/Kal1010101/ultimate-sys-hardening/releases) ·
 [Changelog](CHANGELOG.md)
