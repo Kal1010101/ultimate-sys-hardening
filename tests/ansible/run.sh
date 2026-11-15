@@ -18,10 +18,23 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-PKG_VERSION="${UH_ANSIBLE_PKG_VERSION:-2.6.0}"
-# The commit tag v$PKG_VERSION points at, for the uh_git_commit test. Bump
-# with PKG_VERSION: git rev-parse "v<version>^{commit}".
-PKG_GIT_COMMIT="${UH_ANSIBLE_PKG_GIT_COMMIT:-da86544a5a32932e3ac2ad3fecfd4f50ec5159bf}"
+PKG_VERSION="${UH_ANSIBLE_PKG_VERSION:-2.6.1}"
+# The commit tag v$PKG_VERSION points at on GitHub, for the uh_git_commit test.
+# Looked up rather than written here: a release commit cannot contain its own
+# hash. An annotated tag lists its commit as "<tag>^{}"; a lightweight one
+# points at the commit directly.
+GIT_REPO="https://github.com/Kal1010101/ultimate-sys-hardening.git"
+tag_commit() {
+    local refs
+    refs=$(git ls-remote "$GIT_REPO" "refs/tags/v$1" "refs/tags/v$1^{}" 2>/dev/null) || return 1
+    awk '$2 ~ /\^\{\}$/ { peeled = $1 } { any = $1 } END { print (peeled != "" ? peeled : any) }' <<<"$refs"
+}
+PKG_GIT_COMMIT="${UH_ANSIBLE_PKG_GIT_COMMIT:-$(tag_commit "$PKG_VERSION")}"
+[[ "$PKG_GIT_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+    echo "Could not find the commit for tag v$PKG_VERSION on GitHub (no network, or not released yet)." >&2
+    echo "Set UH_ANSIBLE_PKG_GIT_COMMIT, or UH_ANSIBLE_PKG_VERSION to a released version." >&2
+    exit 1
+}
 FAILED=0
 
 command -v docker >/dev/null 2>&1 || { echo "docker not found" >&2; exit 1; }
