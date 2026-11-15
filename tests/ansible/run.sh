@@ -18,7 +18,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-PKG_VERSION="${UH_ANSIBLE_PKG_VERSION:-2.5.3}"
+PKG_VERSION="${UH_ANSIBLE_PKG_VERSION:-2.6.0}"
 FAILED=0
 
 command -v docker >/dev/null 2>&1 || { echo "docker not found" >&2; exit 1; }

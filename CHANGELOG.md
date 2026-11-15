@@ -6,6 +6,8 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-11-14
+
 ### Added
 - `--json` and `--sarif` print the compliance results as JSON or SARIF 2.1.0
   on stdout, with everything else on stderr, for scripts, CI and code
@@ -529,7 +531,8 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
-[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.5.3...HEAD
+[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.0
 [2.5.3]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.5.3
 [2.5.2]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.5.2
 [2.5.1]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.5.1
