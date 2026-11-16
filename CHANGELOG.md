@@ -12,6 +12,8 @@ and the project follows [Semantic Versioning](https://semver.org).
 - The Ansible role tests (`tests/ansible/run.sh`) now run in CI on every
   push and pull request, and weekly to catch a new ansible-core release
   breaking the role.
+- ShellCheck now also lints `tests/ansible/run.sh`, which the helper-script
+  globs had missed.
 
 ## [2.6.1] — 2026-11-15
 

@@ -38,7 +38,7 @@ jobs:
         run: shellcheck --severity=warning -x -e SC2034 -e SC1091 -e SC2154 src/free/ultimate_hardening.sh
 
       - name: ShellCheck — helper scripts
-        run: shellcheck --severity=warning -x -e SC2034 -e SC1091 -e SC2154 scripts/*.sh tests/*.sh tests/lib/*.sh tests/cases/*.sh
+        run: shellcheck --severity=warning -x -e SC2034 -e SC1091 -e SC2154 scripts/*.sh tests/*.sh tests/lib/*.sh tests/cases/*.sh tests/ansible/*.sh
 
       # Not distro-dependent, and the matrix's minimal containers have no git,
       # so it would only ever skip there. The integration suite per distro is
