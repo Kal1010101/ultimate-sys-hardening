@@ -14,6 +14,9 @@ and the project follows [Semantic Versioning](https://semver.org).
   breaking the role.
 - ShellCheck now also lints `tests/ansible/run.sh`, which the helper-script
   globs had missed.
+- CodeQL now analyses the GitHub Actions workflows on every push, pull
+  request and weekly. CodeQL cannot read Bash; ShellCheck still covers the
+  scripts.
 
 ## [2.6.1] — 2026-11-15
 

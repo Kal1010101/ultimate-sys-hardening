@@ -1,0 +1,42 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 4 * * 1'
+
+# CodeQL has no Bash support, so it cannot read the tool itself; ShellCheck
+# (shellcheck.yml) covers the scripts. What CodeQL can analyse here is the
+# GitHub Actions workflows: script injection from untrusted input, overly
+# broad token permissions, unpinned actions and similar. Those are the files
+# that hold the release and package-publishing permissions.
+#
+# Runner policy: pin runs-on to ubuntu-24.04 and actions to a full commit SHA
+# (version in the trailing comment), never ubuntu-latest. See shellcheck.yml.
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze workflows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # Upload the results to the repository's code scanning alerts.
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: actions
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:actions
