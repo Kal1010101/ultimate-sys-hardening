@@ -8,6 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-E8A33D.svg)](LICENSE)
 [![ShellCheck](https://img.shields.io/badge/shellcheck-clean-5FB88F.svg)](https://www.shellcheck.net/)
 [![Platforms](https://img.shields.io/badge/platforms-26-5FB88F.svg)](#supported-systems)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16753/badge)](https://www.bestpractices.dev/projects/16753)
 
 [Website](https://Kal1010101.github.io/ultimate-sys-hardening/) ·
 [Security policy](SECURITY.md) ·

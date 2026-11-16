@@ -18,6 +18,10 @@ and the project follows [Semantic Versioning](https://semver.org).
   request and weekly. CodeQL cannot read Bash; ShellCheck still covers the
   scripts.
 
+### Documentation
+- The project earned the OpenSSF Best Practices "passing" badge; the README
+  and the site show it.
+
 ## [2.6.1] — 2026-11-15
 
 ### Fixed
