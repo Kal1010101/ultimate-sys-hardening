@@ -1,0 +1,36 @@
+name: Ansible role
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  # ansible-core is installed unpinned from PyPI, so a new ansible-core
+  # release can break the role without any change here. The weekly run
+  # catches that.
+  schedule:
+    - cron: '0 3 * * 0'
+
+# Runner policy: pin runs-on to ubuntu-24.04 and actions to a full commit SHA
+# (major tag in the trailing comment), never ubuntu-latest. See
+# shellcheck.yml for the reasoning.
+
+# Read-only token: no job here writes to the repository.
+permissions:
+  contents: read
+
+jobs:
+  ansible:
+    name: Ansible role tests
+    runs-on: ubuntu-24.04
+    # A full local run takes about 8 minutes. The cap stops a hang from
+    # burning GitHub's 6h default.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      # Runs every part in its own throwaway Docker container, exactly as it
+      # does locally. The modes part tests this checkout's script; the install
+      # parts test the published release named in run.sh (PKG_VERSION).
+      - name: Run tests/ansible/run.sh
+        run: bash tests/ansible/run.sh

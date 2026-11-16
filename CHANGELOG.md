@@ -9,6 +9,9 @@ and the project follows [Semantic Versioning](https://semver.org).
 ### Changed
 - Dependabot now opens one grouped pull request a week for GitHub Actions
   updates, keeping the SHA pins in `.github/workflows/` current.
+- The Ansible role tests (`tests/ansible/run.sh`) now run in CI on every
+  push and pull request, and weekly to catch a new ansible-core release
+  breaking the role.
 
 ## [2.6.1] — 2026-11-15
 

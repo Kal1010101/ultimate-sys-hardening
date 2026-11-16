@@ -93,3 +93,5 @@ Elsewhere, use `uh_install_method: git`.
 `tests/ansible/run.sh` runs the role in throwaway containers: every mode,
 `--check`, `uh_settings`, the saved report and a repeat run on Debian, and the
 package install on Debian and Rocky Linux. It needs Docker and network access.
+CI runs it on every push and pull request, and weekly
+(`.github/workflows/ansible.yml`).
