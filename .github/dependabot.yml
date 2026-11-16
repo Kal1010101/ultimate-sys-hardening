@@ -1,0 +1,17 @@
+# Dependabot keeps the GitHub Actions in .github/workflows/ up to date.
+# Every action is pinned to a full commit SHA with its version in a trailing
+# comment; Dependabot updates both. Updates are grouped into one weekly pull
+# request so a routine bump does not mean a pile of PRs to review.
+#
+# Not covered: the Go toolchain (`go-version`) and the tools installed with
+# `go install ...@vX` in packages.yml and secrets.yml. Bump those by hand.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"

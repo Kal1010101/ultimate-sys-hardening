@@ -6,6 +6,10 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Changed
+- Dependabot now opens one grouped pull request a week for GitHub Actions
+  updates, keeping the SHA pins in `.github/workflows/` current.
+
 ## [2.6.1] — 2026-11-15
 
 ### Fixed
