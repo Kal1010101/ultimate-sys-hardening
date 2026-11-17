@@ -6,13 +6,20 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [2.6.2] — 2026-11-17
+
+### Security
+- Reverting module 20 (compiler restriction), on versions 2.3.0 to 2.6.1,
+  could leave the real compiler binaries world-writable (mode 777), letting
+  any local user replace gcc before root's next build. Update to 2.6.2. The
+  module recorded symlinks such as `/usr/bin/cc` with the link's own mode. It
+  now records the real binary, and the revert never restores group or other
+  write, including from inventories written by earlier versions. A host that
+  already reverted needs `chmod go-w` on its compilers and a package check;
+  the advisory has the commands.
+  Advisory: [GHSA-wff7-cm5c-jw75](https://github.com/Kal1010101/ultimate-sys-hardening/security/advisories/GHSA-wff7-cm5c-jw75).
+
 ### Fixed
-- Security: reverting module 20 (compiler restriction) could leave the real
-  compiler binaries world-writable (mode 777), letting any local user replace
-  gcc before root's next build. The module recorded symlinks such as
-  `/usr/bin/cc` with the link's own mode. It now records the real binary, and
-  the revert never restores group or other write, including from inventories
-  written by earlier versions.
 - On macOS the tool crashed at once ("unbound variable" in `lib/menu.sh`):
   macOS ships bash 3.2 as `/bin/bash` and the library needs bash 4. The script
   now restarts itself under a newer bash when one is installed (Homebrew's),
@@ -630,7 +637,8 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
-[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.6.1...HEAD
+[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.6.2...HEAD
+[2.6.2]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.2
 [2.6.1]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.1
 [2.6.0]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.0
 [2.5.3]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.5.3

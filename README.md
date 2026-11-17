@@ -82,7 +82,7 @@ opens the interactive menu in dry-run mode on Ubuntu (for Rocky Linux, use
 `rockylinux:9` and `dnf install -y git openssh-server`):
 
 ```bash
-docker run --rm -it ubuntu:24.04 bash -c "apt-get update -qq && apt-get install -y -qq git ca-certificates openssh-server >/dev/null && git clone --branch v2.6.1 https://github.com/Kal1010101/ultimate-sys-hardening.git && cd ultimate-sys-hardening && ./src/free/ultimate_hardening.sh --dry-run"
+docker run --rm -it ubuntu:24.04 bash -c "apt-get update -qq && apt-get install -y -qq git ca-certificates openssh-server >/dev/null && git clone --branch v2.6.2 https://github.com/Kal1010101/ultimate-sys-hardening.git && cd ultimate-sys-hardening && ./src/free/ultimate_hardening.sh --dry-run"
 ```
 
 Swap `--dry-run` for `--cis-only` to see the compliance score, or apply it
@@ -95,7 +95,7 @@ Each release attaches `.deb`, `.rpm`, `.apk` and Arch packages plus a
 Check the checksum before installing:
 
 ```bash
-V=2.6.1
+V=2.6.2
 BASE=https://github.com/Kal1010101/ultimate-sys-hardening/releases/download/v$V
 curl -fLO "$BASE/ultimate-hardening_${V}_all.deb"      # RHEL family: ultimate-hardening-${V}-1.noarch.rpm
 curl -fLO "$BASE/SHA256SUMS"
@@ -111,7 +111,7 @@ and Arch.
 ### Or run it from a checkout
 
 ```bash
-git clone --branch v2.6.1 https://github.com/Kal1010101/ultimate-sys-hardening.git
+git clone --branch v2.6.2 https://github.com/Kal1010101/ultimate-sys-hardening.git
 cd ultimate-sys-hardening
 sudo ./src/free/ultimate_hardening.sh
 ```
