@@ -57,8 +57,8 @@ package and `SHA256SUMS` were both replaced. To be sure you install the exact
 file you reviewed, pin its hash in your own playbook or group vars:
 
 ```yaml
-uh_version: "2.6.2"
-uh_package_sha256: "<sha256 of ultimate-hardening_2.6.2_all.deb>"   # per OS family
+uh_version: "2.6.3"
+uh_package_sha256: "<sha256 of ultimate-hardening_2.6.3_all.deb>"   # per OS family
 ```
 
 The hash is per package file, so a mixed fleet sets it per OS family (for

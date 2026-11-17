@@ -6,13 +6,17 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [2.6.3] — 2026-11-17
+
 ### Security
-- The run log can no longer be redirected through a symlink. Where someone
-  other than root can write to `/var/log` (Ubuntu's syslog group), a link
-  planted at the log's predictable name, or swapped in during a run, made root
-  append its output to a file of their choosing. The log is now created
-  exclusively, or under a fresh random name next to it with a warning, and
-  every write goes to the file the run opened, whatever happens to its name.
+- The run log can no longer be redirected through a symlink, on versions up
+  to 2.6.2. Where someone other than root can write to `/var/log` (Ubuntu's
+  syslog group), a link planted at the log's predictable name, or swapped in
+  during a run, made root append its output to a file of their choosing.
+  Update to 2.6.3. The log is now created exclusively, or under a fresh random
+  name next to it with a warning, and every write goes to the file the run
+  opened, whatever happens to its name.
+  Advisory: [GHSA-x3vq-fxmf-vjh3](https://github.com/Kal1010101/ultimate-sys-hardening/security/advisories/GHSA-x3vq-fxmf-vjh3).
 
 ## [2.6.2] — 2026-11-17
 
@@ -645,7 +649,8 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
-[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.6.2...HEAD
+[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.6.3...HEAD
+[2.6.3]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.3
 [2.6.2]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.2
 [2.6.1]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.1
 [2.6.0]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.0
