@@ -18,6 +18,28 @@
 
 set -euo pipefail
 
+# ------------------------------------------------------------ bash 4 or newer --
+# macOS ships bash 3.2 as /bin/bash and the shebang picks it, but lib/ needs
+# bash 4+ (associative arrays): under 3.2 every run died at lib/menu.sh with
+# "unbound variable". So under an older bash, restart under a newer one if the
+# system has it (Homebrew's, or another on PATH; sudo's PATH usually lacks
+# Homebrew, hence the fixed paths), else stop and say how to get one. Keep this
+# block bash-3.2 compatible: ${1+"$@"} because "$@" trips set -u there when no
+# options are given. UH_BASH_REEXEC stops a restart loop.
+MIN_BASH_MAJOR=4
+if (( BASH_VERSINFO[0] < MIN_BASH_MAJOR )); then
+    if [[ -z "${UH_BASH_REEXEC:-}" ]]; then
+        for newer_bash in /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash 2>/dev/null || true)"; do
+            [[ -x "$newer_bash" ]] || continue
+            "$newer_bash" -c "(( BASH_VERSINFO[0] >= $MIN_BASH_MAJOR ))" 2>/dev/null || continue
+            UH_BASH_REEXEC=1 exec "$newer_bash" "$0" ${1+"$@"}
+        done
+    fi
+    echo "ERROR: Ultimate Hardening needs bash ${MIN_BASH_MAJOR} or newer; this is bash ${BASH_VERSION}." >&2
+    echo "On macOS, install it with 'brew install bash', then run this command again." >&2
+    exit 1
+fi
+
 # ------------------------------------------------------------ locate the lib --
 # Resolve symlinks before locating lib/. `ultimate-harden` on PATH is a
 # symlink into the install directory, so an unresolved BASH_SOURCE makes every
@@ -254,6 +276,8 @@ main() {
         run_cis_checks
         exit 0
     fi
+
+    refuse_changes_on_macos
 
     if [[ "$AUTO_MODE" == true ]]; then
         if [[ "$SAFE_ONLY" == true ]]; then

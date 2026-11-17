@@ -18,7 +18,7 @@ out of date, please [open an issue](https://github.com/Kal1010101/ultimate-sys-h
 | **Undo** | `--revert`, or per module from the menu, from backups taken before the first write | Not needed | None documented | None documented | None documented |
 | **Standard** | CIS-*aligned* checks (25 in the free tier); not certified | Own tests; helps with HIPAA, ISO 27001, PCI DSS | SCAP profiles: CIS, DISA STIG, ANSSI, PCI-DSS and more, where the distro's content ships them | The CIS Benchmark for that one OS release | DevSec Linux Baseline (not CIS) |
 | **Checks its own work** | Built-in compliance score before and after | It *is* the check | Re-evaluates each rule after fixing it | Optional goss audit (separate repo, off by default) | Use the DevSec InSpec baseline |
-| **Platforms** | 8 Linux families; macOS and the BSDs detected and adapted (thinner) | Linux, macOS, BSD, other UNIX | Wherever SCAP content exists (strongest on RHEL family) | One role per release (RHEL 9, Ubuntu 24, …) | EL, Ubuntu, Debian, Amazon, Fedora, Arch, openSUSE, SmartOS |
+| **Platforms** | 8 Linux families; the BSDs detected and adapted (thinner); macOS: read-only checks and dry run only | Linux, macOS, BSD, other UNIX | Wherever SCAP content exists (strongest on RHEL family) | One role per release (RHEL 9, Ubuntu 24, …) | EL, Ubuntu, Debian, Amazon, Fedora, Arch, openSUSE, SmartOS |
 | **Needs** | Bash, root | Shell; no install needed | `oscap` and the content package | Ansible 2.16+ and a controller | Ansible and a controller |
 | **Licence** | MIT | GPL-3.0 | LGPL-2.1 (scanner), BSD-3-Clause (content) | MIT | Apache-2.0 |
 

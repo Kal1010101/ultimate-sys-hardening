@@ -7,6 +7,14 @@ and the project follows [Semantic Versioning](https://semver.org).
 ## [Unreleased]
 
 ### Fixed
+- On macOS the tool crashed at once ("unbound variable" in `lib/menu.sh`):
+  macOS ships bash 3.2 as `/bin/bash` and the library needs bash 4. The script
+  now restarts itself under a newer bash when one is installed (Homebrew's),
+  and otherwise stops and says to run `brew install bash`.
+- On macOS, runs that would apply hardening now stop before changing anything
+  and say that macOS is read-only for now. Most modules write Linux
+  configuration (sysctl.d, auditd, AppArmor, GRUB, modprobe) that does nothing
+  useful there. The read-only checks and `--dry-run` work as before.
 - A revert that finds nothing to revert now returns to the menu instead of
   ending the program. On a host the tool had not hardened, menu choices R
   (full revert), S (SUID/SGID), 9, 12 and 20 (module reverts), and the Pro and
@@ -31,6 +39,9 @@ and the project follows [Semantic Versioning](https://semver.org).
   died before any assertion, so a crash or timeout is no longer a bare FAIL.
 
 ### Documentation
+- README, site and comparison page now say plainly that on macOS the tool
+  runs the read-only checks and dry run only, and needs bash 4 (`brew install
+  bash`), instead of "detected and adapted".
 - The project earned the OpenSSF Best Practices "passing" badge; the README
   and the site show it.
 - The site has an interactive replay (`docs/demo.html`): click through the

@@ -42,9 +42,9 @@ runs as root on my own servers to be built.
   first, and `--revert` restores it. SSH config is validated with `sshd -t` and
   rolled back automatically if it fails.
 - **Portability, tested rather than claimed.** 22 modules across 8 Linux families
-  (plus macOS and the BSDs, detected and adapted); every push runs the
-  integration suite in a fresh container on each of 10 distro images, plus
-  ShellCheck. The tests apply real hardening and assert the system actually
+  (plus the BSDs, detected and adapted, and read-only checks on macOS); every
+  push runs the integration suite in a fresh container on each of 10 distro
+  images, plus ShellCheck. The tests apply real hardening and assert the system actually
   changed. Before a release it also runs in real KVM virtual machines
   (Debian 12, Rocky 9, Alpine, Arch): apply, revert, then check that every
   recorded item is back as it was.
@@ -212,6 +212,10 @@ without systemd, so service handling takes a different path than on Arch.*
 
 **Unix / BSD** — macOS (Homebrew), FreeBSD, OpenBSD, NetBSD, Solaris
 *(detected and adapted; coverage is thinner than Linux)*
+
+*On macOS the tool runs the read-only checks (`--cis-only`) and `--dry-run`
+only; applying hardening there is not supported yet. It needs bash 4 or newer,
+and macOS ships 3.2: run `brew install bash` once and the script uses it.*
 
 Package managers: `apt`, `dnf`, `yum`, `pacman`, `zypper`, `apk`, `xbps`,
 `emerge`, `brew`, `pkg`, `nix`

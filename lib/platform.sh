@@ -130,6 +130,18 @@ show_distro_menu() {
     log_success "Platform: $DISTRO_TYPE"
 }
 
+# On macOS the tool runs its read-only checks and --dry-run, but applies
+# nothing: most modules write Linux configuration (sysctl.d, auditd, AppArmor,
+# GRUB, modprobe) that does nothing there or worse. Each tier calls this right
+# after the platform is chosen, before any backup directory or change, on every
+# path that could write. Read-only paths (--cis-only, reports) never call it.
+refuse_changes_on_macos() {
+    [[ "${DISTRO_TYPE:-}" == "macos" && "$DRY_RUN" != true ]] || return 0
+    log_error "On macOS this version runs the read-only checks (--cis-only) and --dry-run only."
+    log_error "Applying hardening is Linux-only for now. Nothing was changed."
+    exit 1
+}
+
 # ---------------------------------------------------------- package manager --
 get_package_manager() {
     case "${DISTRO_TYPE:-debian}" in
