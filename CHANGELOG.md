@@ -6,6 +6,15 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+- A revert that finds nothing to revert now returns to the menu instead of
+  ending the program. On a host the tool had not hardened, menu choices R
+  (full revert), S (SUID/SGID), 9, 12 and 20 (module reverts), and the Pro and
+  Enterprise revert menu, printed their error and exited to the shell.
+- The full-revert error no longer tells free-tier users to run
+  `--list-backups`, an option only Pro and Enterprise accept. It now lists the
+  available restore points itself.
+
 ### Changed
 - Dependabot now opens one grouped pull request a week for GitHub Actions
   updates, keeping the SHA pins in `.github/workflows/` current.

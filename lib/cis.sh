@@ -636,7 +636,10 @@ full_system_revert() {
     if [[ -n "$_target" ]]; then
         local _resolved; _resolved=$(resolve_revert_target "$_target") || _resolved=""
         if [[ -z "$_resolved" ]]; then
-            log_error "No backup matches '${_target}'. Run --list-backups to see the options."
+            # The options are listed here rather than by pointing at
+            # --list-backups, which only Pro and Enterprise accept.
+            log_error "No backup matches '${_target}'."
+            list_backups_cli
             return 1
         fi
         if [[ "$_resolved" != "$BACKUP_GENESIS_DIR" ]]; then

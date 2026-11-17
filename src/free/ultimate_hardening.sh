@@ -217,8 +217,10 @@ show_menu() {
         24) confirm "Apply all 22 modules, including the High-risk ones?" && apply_all_modules ;;
         C|c) run_cis_checks ;;
         U|u) check_for_updates ;;
-        R|r) confirm_risky "Revert ALL hardening changes?" && full_system_revert ;;
-        S|s) undo_suid_hardening ;;
+        # Both return 1 when there is nothing to revert (they log why); under
+        # set -e that ended the program instead of returning to this menu.
+        R|r) confirm_risky "Revert ALL hardening changes?" && { full_system_revert || true; } ;;
+        S|s) undo_suid_hardening || true ;;
         Q|q)
             log_info "Log file: $LOG_FILE"
             [[ -d "$BACKUP_DIR" ]] && echo -e "  ${CYAN}Backup: $BACKUP_DIR${NC}"

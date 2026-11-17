@@ -516,10 +516,12 @@ revert_menu() {
     local ans=""
     read -r -p "  Choice: " ans
     case "$ans" in
+        # A failed revert logs why and returns 1; under set -e that would end
+        # the program, so it comes back here like every other menu action.
         1) confirm_risky "Revert ALL hardening to the original (genesis) state?" \
-             && UH_REVERT_TARGET=genesis full_system_revert ;;
+             && { UH_REVERT_TARGET=genesis full_system_revert || true; } ;;
         2) confirm_risky "Restore all SUID/SGID bits to their originals?" \
-             && undo_suid_hardening ;;
+             && { undo_suid_hardening || true; } ;;
         3) revert_pick_date ;;
         0|"") return 0 ;;
         *) log_error "Invalid choice: '$ans'" ;;
@@ -547,7 +549,7 @@ revert_pick_date() {
     (( ans >= 1 && ans <= ${#paths[@]} )) || return 0
     local chosen="${paths[$((ans - 1))]}"
     confirm_risky "Revert to: ${labels[$((ans - 1))]}?" \
-        && UH_REVERT_TARGET="$chosen" full_system_revert
+        && { UH_REVERT_TARGET="$chosen" full_system_revert || true; }
     return 0
 }
 
@@ -573,12 +575,14 @@ revert_module() {
     case "$key" in
         suid)
             confirm_risky "Revert ${label} — restore original SUID/SGID bits?" || { log_info "Revert cancelled"; return 0; }
-            undo_suid_hardening
+            # Returns 1 when there is no inventory (it logs why); same as
+            # revert_firewall below, under set -e that ended the whole program.
+            undo_suid_hardening || true
             return 0
             ;;
         compiler)
             confirm "Revert ${label} — restore original compiler permissions?" || { log_info "Revert cancelled"; return 0; }
-            undo_compiler_restriction
+            undo_compiler_restriction || true
             return 0
             ;;
         apparmor)
@@ -612,7 +616,7 @@ revert_module() {
             # (type "yes"), since re-enabling services this tool disabled
             # is exactly the kind of action that stance existed to slow down.
             confirm_risky "Revert ${label} — re-enable and start whatever this tool disabled? This overrides SECURITY.md's own documented manual-only stance." || { log_info "Revert cancelled"; return 0; }
-            undo_disabled_services
+            undo_disabled_services || true
             return 0
             ;;
         aide)
