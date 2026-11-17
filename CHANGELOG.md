@@ -35,6 +35,8 @@ and the project follows [Semantic Versioning](https://semver.org).
   Debian 12 VM. `docs/capture-demo.sh` records it and `docs/build-demo.sh`
   builds the page.
 - The README demo GIF was re-recorded on a Debian 12 VM with 2.6.1.
+- The README's local ShellCheck command now includes `tests/ansible/*.sh`,
+  matching CI.
 
 ## [2.6.1] — 2026-11-15
 
