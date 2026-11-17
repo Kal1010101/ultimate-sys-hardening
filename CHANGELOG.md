@@ -6,6 +6,12 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+- The run log is now opened after the library resets `PATH`. A caller whose
+  `PATH` lacked `dirname` or `readlink` (a stripped cron or test environment)
+  got "Refusing to run: the run log ... was replaced" with an empty path
+  instead of a log.
+
 ## [2.6.3] — 2026-11-17
 
 ### Security

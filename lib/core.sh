@@ -114,7 +114,6 @@ _uh_init_log() {
     chmod 600 "$LOG_FILE" 2>/dev/null || true
     return 0
 }
-_uh_init_log
 
 # Backup directory name is <timestamp>_<tier>, deliberately timestamp-FIRST:
 # find_latest_backup() picks the newest by lexical sort, so putting the tier
@@ -159,6 +158,9 @@ _uh_harden_path() {
     export PATH
 }
 _uh_harden_path
+# After the PATH above: _uh_init_log runs id, stat, dirname and readlink by bare
+# name, and the caller's PATH may not have them or may shadow them.
+_uh_init_log
 
 # Is the library this run just sourced writable by anyone who is not root and
 # not the person who invoked it? If so, that party chooses what runs as root

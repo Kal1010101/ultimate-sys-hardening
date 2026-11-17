@@ -135,6 +135,16 @@ fi
 out=$(bash -c "LOG_FILE='$TMP/shown.log'; $_lib; printf '%s' \"\$UH_LOG_PATH\"" 2>/dev/null)
 [[ "$out" == "$TMP/shown.log" ]] && pass_msg "UH_LOG_PATH shows the log's real name" \
     || fail "UH_LOG_PATH is '$out', expected $TMP/shown.log"
+# The log is opened after core.sh resets PATH, so a caller whose PATH lacks the
+# tools it uses (cron, a stripped test harness) still gets a log, not a refusal.
+mkdir -p "$TMP/bashonly"; ln -sf "$(command -v bash)" "$TMP/bashonly/bash"
+out=$(env -i PATH="$TMP/bashonly" LOG_FILE="$TMP/minpath.log" "$TMP/bashonly/bash" -c \
+    "source '$REPO/lib/core.sh'; echo opened >>\"\$LOG_FILE\"" 2>&1)
+if grep -q opened "$TMP/minpath.log" 2>/dev/null && ! grep -q 'Refusing' <<<"$out"; then
+    pass_msg "with only bash on the caller's PATH, the log is still opened"
+else
+    fail "with a minimal PATH the log was not opened: $out"
+fi
 
 # --- remote syslog destination is validated ----------------------------------
 # It is appended to rsyslog.conf verbatim, and rsyslog's config can run
