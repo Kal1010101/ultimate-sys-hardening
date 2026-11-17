@@ -6,7 +6,7 @@
      recomputes it, so edit the script and re-run that rather than hand-editing
      the hash. The recordings sit in a type="application/json" block, which the
      browser never executes, so CSP does not need to allow it. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Nn6GlX6Ho8hQ9AdK/im718IB0EGnHyXGY6NohqfLS3A='; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-/OEWHQRmOR9m8UFLEx0Oq/T0dKgteiFofXnKucK3CU0='; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Try Ultimate Hardening — interactive replay</title>
@@ -150,6 +150,7 @@
   // The quick buttons need it to get from wherever the visitor is to the menu.
   var state = 'distro';
   var pendingChoice = null;
+  var menuTimer = null;
 
   function el(tag, cls, text) {
     var node = document.createElement(tag);
@@ -205,8 +206,14 @@
     screen.appendChild(row);
     scrollToEnd();
     input.focus({ preventScroll: true });
+    var answered = false;
     function submit(value) {
-      if (busy) return;
+      // A prompt takes one answer. Until the next prompt opens there is none
+      // to answer, so a second click (or a quick button) must not reach this
+      // one, whose input is already gone.
+      if (busy || answered) return;
+      answered = true;
+      if (activePrompt === submit) activePrompt = null;
       var answer = value.trim();
       row.removeChild(input);
       row.appendChild(el('span', 'typed', answer));
@@ -294,6 +301,9 @@
   }
 
   function start() {
+    // A Restart during the pause after "Platform" must not let the old
+    // session's menu draw over the new distro screen.
+    clearTimeout(menuTimer);
     clearScreen();
     state = 'distro';
     pendingChoice = null;
@@ -305,7 +315,7 @@
                'The other platforms are real menu options, but this replay only has the Debian run.');
           return false;
         }
-        play(data.detected, function () { setTimeout(showMenu, reduceMotion ? 0 : 500); });
+        play(data.detected, function () { menuTimer = setTimeout(showMenu, reduceMotion ? 0 : 500); });
         return true;
       });
       if (pendingChoice) activePrompt('0');
@@ -319,6 +329,9 @@
       b.addEventListener('click', function () {
         if (busy) return;
         if (state === 'done') { pendingChoice = q.key; start(); return; }
+        // Between prompts (the pause before the menu): the menu takes the
+        // choice as soon as it opens.
+        if (!activePrompt) { pendingChoice = q.key; return; }
         if (state === 'menu') { activePrompt(q.key); return; }
         // Distro prompt or "Press Enter": answer it, and take the choice as
         // soon as the menu is back.
