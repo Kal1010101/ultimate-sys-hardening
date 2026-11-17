@@ -1,0 +1,87 @@
+name: macOS
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+
+# macOS is a supported platform (menu option 9) but no other job runs on it:
+# the Linux matrix uses Docker, which has no macOS images. GitHub's hosted
+# macOS runners are real Apple machines and free for public repositories.
+#
+# What is supported there, and what this checks: the read-only CIS checks and
+# --dry-run. Applying hardening is Linux-only for now and must be refused.
+# Nothing here changes the runner.
+#
+# Runner policy, as in test-matrix.yml: pin the runner image and actions to a
+# full commit SHA, never macos-latest.
+
+# Read-only token: no job here writes to the repository.
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS checks, dry run and bash 3.2
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The shebang is /bin/bash, which on macOS is Apple's bash 3.2.
+      - name: Show the shells on this runner
+        run: |
+          sw_vers
+          /bin/bash --version | head -1
+
+      # Under 3.2 the script must still parse, or its bash-version check at
+      # the top could never run.
+      - name: Script parses under Apple's bash 3.2
+        run: |
+          /bin/bash -n src/free/ultimate_hardening.sh
+          for f in lib/*.sh; do /bin/bash -n "$f"; done
+
+      # Before Homebrew bash is installed: a clear message, not a crash deep
+      # inside lib/ ("unbound variable" at lib/menu.sh, as before the check).
+      - name: Without a newer bash it stops and says how to get one
+        run: |
+          set +e
+          out=$(sudo ./src/free/ultimate_hardening.sh --dry-run --auto-mode 2>&1)
+          rc=$?
+          set -e
+          echo "$out"
+          [ "$rc" -ne 0 ] || { echo "::error::expected a non-zero exit under bash 3.2"; exit 1; }
+          grep -q 'brew install bash' <<<"$out" || { echo "::error::no install hint in the output"; exit 1; }
+          if grep -q 'unbound variable' <<<"$out"; then
+            echo "::error::crashed inside lib/ instead of stopping cleanly"; exit 1
+          fi
+
+      - name: Install a newer bash with Homebrew
+        run: brew install bash && "$(brew --prefix)/bin/bash" --version | head -1
+
+      # Run it the way the README says, with sudo and the script path: the
+      # shebang still starts bash 3.2, which must restart under Homebrew's.
+      # The 'Q' quits if the menu is reached.
+      - name: Dry run restarts under the newer bash and completes
+        run: printf 'Q\n' | sudo ./src/free/ultimate_hardening.sh --dry-run --auto-mode
+
+      - name: Read-only CIS checks
+        run: sudo ./src/free/ultimate_hardening.sh --cis-only
+
+      - name: Applying hardening is refused on macOS
+        run: |
+          set +e
+          out=$(sudo ./src/free/ultimate_hardening.sh --auto-mode --safe-only 2>&1)
+          rc=$?
+          set -e
+          echo "$out"
+          [ "$rc" -ne 0 ] || { echo "::error::an apply run exited 0 on macOS"; exit 1; }
+          grep -q 'Linux-only for now' <<<"$out" || { echo "::error::no explanation that macOS is read-only"; exit 1; }
+          if grep -q 'Applying all\|Applying Safe' <<<"$out"; then
+            echo "::error::modules started applying on macOS"; exit 1
+          fi

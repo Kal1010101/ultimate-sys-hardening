@@ -44,7 +44,7 @@ runs as root on my own servers to be built.
 - **Portability, tested rather than claimed.** 22 modules across 8 Linux families
   (plus the BSDs, detected and adapted, and read-only checks on macOS); every
   push runs the integration suite in a fresh container on each of 10 distro
-  images, plus ShellCheck. The tests apply real hardening and assert the system actually
+  images, the checks and dry run on a real macOS machine, plus ShellCheck. The tests apply real hardening and assert the system actually
   changed. Before a release it also runs in real KVM virtual machines
   (Debian 12, Rocky 9, Alpine, Arch): apply, revert, then check that every
   recorded item is back as it was.
