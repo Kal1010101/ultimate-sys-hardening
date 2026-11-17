@@ -34,6 +34,7 @@ and the project follows [Semantic Versioning](https://semver.org).
   real menu and see what each choice printed in `--dry-run` on a fresh
   Debian 12 VM. `docs/capture-demo.sh` records it and `docs/build-demo.sh`
   builds the page.
+- The README demo GIF was re-recorded on a Debian 12 VM with 2.6.1.
 
 ## [2.6.1] — 2026-11-15
 

@@ -21,9 +21,9 @@
 
 <p align="center">
   <img src="docs/images/readme/demo.gif" width="900"
-       alt="Terminal demo: a dry-run previews the changes, the apply run backs up first and raises the CIS score from 36% to 60%, and --revert restores the original files">
+       alt="Terminal demo: a dry-run previews the changes, the apply run backs up first and raises the CIS score from 40% to 81%, and --revert restores the original files">
   <br>
-  <sub>Preview, apply, revert. Recorded in a throwaway Debian 12 container with v2.6.0; lines are excerpts of the real output.</sub>
+  <sub>Preview, apply, revert. Recorded on a throwaway Debian 12 VM with v2.6.1; lines are excerpts of the real output.</sub>
 </p>
 
 ---
