@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- script-src pins the one inline script by hash; ./docs/build-demo.sh
+     recomputes it, so edit the script and re-run that rather than hand-editing
+     the hash. The recordings sit in a type="application/json" block, which the
+     browser never executes, so CSP does not need to allow it. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Nn6GlX6Ho8hQ9AdK/im718IB0EGnHyXGY6NohqfLS3A='; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Try Ultimate Hardening — interactive replay</title>
+<meta name="description" content="Click through the real Ultimate Hardening menu in your browser. Every screen is a recording of the tool running in --dry-run mode on a throwaway Debian 12 VM.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>">
+<style>
+  :root{
+    --bg:#0d1117; --bg-card:#161b22; --line:#232c38;
+    --fg:#e6edf3; --fg-dim:#9aa7b4; --fg-faint:#6e7d8d;
+    --green:#3fb950; --green-dim:#1f6f36; --cyan:#39c5cf; --amber:#d29922; --red:#f85149; --blue:#58a6ff;
+    --radius:10px; --maxw:1120px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);
+    font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 16px}
+  a{color:var(--cyan);text-decoration:none}
+  a:hover{text-decoration:underline}
+  header{border-bottom:1px solid var(--line)}
+  .nav{display:flex;align-items:center;gap:24px;height:58px}
+  .brand{font-family:var(--mono);font-weight:600;color:var(--fg);white-space:nowrap}
+  .nav a.back{margin-left:auto;font-size:.9rem;color:var(--fg-dim)}
+  h1{font-size:clamp(1.6rem,4vw,2.3rem);letter-spacing:-.02em;margin:40px 0 8px;line-height:1.25}
+  .sub{color:var(--fg-dim);max-width:70ch;margin:0 0 20px}
+  .how{display:flex;flex-wrap:wrap;gap:8px 18px;margin:0 0 20px;padding:0;list-style:none;
+    font-size:.88rem;color:var(--fg-dim)}
+  .how li::before{content:"▸ ";color:var(--green)}
+  kbd{font-family:var(--mono);font-size:.8em;border:1px solid var(--line);border-bottom-width:2px;
+    border-radius:4px;padding:0 5px;background:var(--bg-card);color:var(--fg)}
+
+  .term{background:#0b0f14;border:1px solid var(--line);border-radius:var(--radius);
+    overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+  .term-bar{display:flex;align-items:center;gap:7px;padding:10px 14px;
+    background:var(--bg-card);border-bottom:1px solid var(--line)}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .term-title{margin-left:8px;font-family:var(--mono);font-size:.75rem;color:var(--fg-faint);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .restart{margin-left:auto;font:inherit;font-family:var(--mono);font-size:.72rem;cursor:pointer;
+    color:var(--fg-dim);background:none;border:1px solid var(--line);border-radius:6px;padding:2px 9px}
+  .restart:hover{color:var(--fg);border-color:var(--fg-faint)}
+  /* Line-height 1.5 for the same reason as the homepage: the box-drawing
+     characters tile vertically and a taller line box gaps the borders. */
+  .screen{height:min(72vh,780px);overflow:auto;padding:18px;font-family:var(--mono);
+    font-size:.82rem;line-height:1.5;white-space:pre;color:var(--fg-dim)}
+  .screen .c-g{color:var(--green)} .screen .c-c{color:var(--cyan)}
+  .screen .c-a{color:var(--amber)} .screen .c-w{color:var(--fg)}
+  .screen .c-f{color:var(--fg-faint)} .screen .c-r{color:var(--red)}
+  .screen .c-b{color:var(--blue)}
+  .screen .typed{color:var(--fg)}
+  /* The replay's own voice, as distinct from anything the tool printed. */
+  .screen .note{display:block;white-space:normal;margin:8px 0;padding:8px 12px;
+    border-left:3px solid var(--cyan);background:rgba(57,197,207,.07);
+    font-family:var(--sans);font-size:.85rem;color:var(--fg-dim)}
+  .pick{cursor:pointer;border-radius:3px}
+  .pick:hover,.pick:focus-visible{background:rgba(63,185,80,.13);outline:none}
+  .prompt-row{display:inline}
+  .screen input{font:inherit;color:var(--fg);background:transparent;border:0;outline:0;
+    width:8ch;caret-color:var(--green);padding:0}
+  .cursor{display:inline-block;width:.6em;background:var(--green);animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  @media (prefers-reduced-motion:reduce){.cursor{animation:none}}
+
+  .quick{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}
+  .quick button{font:inherit;font-family:var(--mono);font-size:.78rem;cursor:pointer;
+    padding:6px 12px;border-radius:999px;border:1px solid var(--line);
+    background:var(--bg-card);color:var(--fg-dim)}
+  .quick button:hover{border-color:var(--green-dim);color:var(--fg)}
+  .provenance{font-size:.85rem;color:var(--fg-faint);margin:18px 0 0;max-width:80ch}
+  .cta{display:flex;flex-wrap:wrap;gap:12px;margin:28px 0 56px}
+  .btn{display:inline-block;padding:11px 20px;border-radius:8px;font-weight:600;font-size:.94rem;
+    border:1px solid transparent}
+  .btn-primary{background:var(--green);color:#06210d}
+  .btn-primary:hover{background:#4ac75c;text-decoration:none}
+  .btn-ghost{border-color:var(--line);color:var(--fg);background:var(--bg-card)}
+  .btn-ghost:hover{border-color:var(--fg-faint);text-decoration:none}
+  @media (max-width:640px){.screen{font-size:.7rem;padding:12px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="index.html">🔒 ultimate-sys-hardening</a>
+    <a class="back" href="index.html">← Back to the site</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <h1>Try it in your browser</h1>
+  <p class="sub">
+    This is the real menu. Pick a module and you see exactly what the tool printed
+    when that choice was made on a fresh Debian 12 server in <code>--dry-run</code> mode,
+    which shows every change and makes none. Nothing runs here: each screen is a
+    recording, played back.
+  </p>
+  <ul class="how">
+    <li>Click a menu line, or type a choice and press <kbd>Enter</kbd></li>
+    <li>Confirmation prompts were answered <kbd>yes</kbd> in the recording</li>
+    <li><kbd>Q</kbd> quits, <span class="c-w">Restart</span> starts over</li>
+  </ul>
+
+  <div class="term">
+    <div class="term-bar">
+      <span class="dot" style="background:#f85149"></span>
+      <span class="dot" style="background:#d29922"></span>
+      <span class="dot" style="background:#3fb950"></span>
+      <span class="term-title" id="term-title">root@uh-debian12 — ultimate_hardening.sh --dry-run</span>
+      <button class="restart" type="button" id="restart">Restart</button>
+    </div>
+    <div class="screen" id="screen" role="log" aria-live="polite" tabindex="0"></div>
+  </div>
+
+  <div class="quick" id="quick" aria-label="Suggested choices"></div>
+
+  <p class="provenance" id="provenance"></p>
+
+  <div class="cta">
+    <a class="btn btn-primary" href="https://github.com/Kal1010101/ultimate-sys-hardening#quick-start">Run it on your own server</a>
+    <a class="btn btn-ghost" href="index.html">Back to the site</a>
+  </div>
+</main>
+
+<!-- BEGIN generated demo-data: ./docs/build-demo.sh -->
+<script type="application/json" id="demo-data">{"launch":"<span class=\"c-f\">#<\/span> <span class=\"c-w\">./src/free/ultimate_hardening.sh --dry-run<\/span>","distro":"<span class=\"c-c\">╔══════════════════════════════════════════════════════════════════╗<\/span>\n<span class=\"c-c\">║<\/span><span class=\"c-c\">              SELECT YOUR OPERATING SYSTEM / DISTRO<\/span>               <span class=\"c-c\">║<\/span>\n<span class=\"c-c\">╚══════════════════════════════════════════════════════════════════╝<\/span>\n\n  <span class=\"c-w\">Linux<\/span>\n  <span class=\"c-g\"> 1)<\/span> Debian / Ubuntu / Mint / Kali / Raspbian\n  <span class=\"c-g\"> 2)<\/span> RHEL / CentOS / Fedora / Rocky / Alma / Amazon\n  <span class=\"c-g\"> 3)<\/span> Arch / Manjaro / EndeavourOS / Artix\n  <span class=\"c-g\"> 4)<\/span> openSUSE / SLES\n  <span class=\"c-g\"> 5)<\/span> Alpine\n  <span class=\"c-g\"> 6)<\/span> Void\n  <span class=\"c-g\"> 7)<\/span> Gentoo\n  <span class=\"c-g\"> 8)<\/span> NixOS\n\n  <span class=\"c-w\">Unix / BSD<\/span>  <span class=\"c-a\">(partial coverage)<\/span>\n  <span class=\"c-g\"> 9)<\/span> macOS      <span class=\"c-g\">10)<\/span> FreeBSD    <span class=\"c-g\">11)<\/span> OpenBSD\n  <span class=\"c-g\">12)<\/span> NetBSD     <span class=\"c-g\">13)<\/span> Solaris\n\n  <span class=\"c-g\"> 0)<\/span> Auto-detect <span class=\"c-c\">(recommended)<\/span>\n","distroPrompt":"Enter choice (0-13): ","detected":"<span class=\"c-g\">✅<\/span> Platform: debian","menu":"<span class=\"c-c\">╔══════════════════════════════════════════════════════════════════╗<\/span>\n<span class=\"c-c\">║<\/span><span class=\"c-c\">       ULTIMATE HARDENING 2.6.1 — FREE TIER<\/span>                       <span class=\"c-c\">║<\/span>\n<span class=\"c-c\">║<\/span><span class=\"c-c\">       Platform: <\/span><span class=\"c-w\">debian<\/span>                                           <span class=\"c-c\">║<\/span>\n<span class=\"c-c\">╚══════════════════════════════════════════════════════════════════╝<\/span>\n\n  <span class=\"c-a\">⚠️ DRY RUN — nothing will be modified<\/span>\n\n  <span class=\"c-w\">[enable ]<\/span> already in place   <span class=\"c-w\">[disable]<\/span> not applied yet   <span class=\"c-w\">[  N/A  ]<\/span> not applicable here\n\n   1) System updates                   <span class=\"c-g\">(Safe)  <\/span>  <span class=\"c-g\">[enable ]<\/span>\n   2) SSH hardening                    <span class=\"c-a\">(Medium)<\/span>  <span class=\"c-a\">[disable]<\/span>\n   3) Firewall                         <span class=\"c-a\">(Medium)<\/span>  <span class=\"c-a\">[disable]<\/span>\n   4) Fail2Ban                         <span class=\"c-g\">(Safe)  <\/span>  <span class=\"c-a\">[disable]<\/span>\n   5) File permissions                 <span class=\"c-g\">(Safe)  <\/span>  <span class=\"c-g\">[enable ]<\/span>\n   6) Kernel &amp; network                 <span class=\"c-g\">(Safe)  <\/span>  <span class=\"c-a\">[disable]<\/span>\n   7) Audit daemon                     <span class=\"c-g\">(Safe)  <\/span>  <span class=\"c-a\">[disable]<\/span>\n   8) Password policy                  <span class=\"c-g\">(Safe)  <\/span>  <span class=\"c-a\">[disable]<\/span>\n   9) SUID/SGID hardening              <span class=\"c-r\">(High)  <\/span>  <span class=\"c-a\">[disable]<\/span>\n  10) AIDE file integrity              <span class=\"c-g\">(Safe)  <\/span>  <span class=\"c-a\">[disable]<\/span>\n  11) Rootkit scanner                  <span class=\"c-g\">(Safe)  <\/span>  <span class=\"c-a\">[disable]<\/span>\n  12) Disable unused services          <span class=\"c-g\">(Safe)  <\/span>  <span class=\"c-g\">[enable ]<\/span>\n  13) AppArmor / SELinux               <span class=\"c-a\">(Medium)<\/span>  <span class=\"c-g\">[enable ]<\/span>\n  14) /etc version control             <span class=\"c-g\">(Safe)  <\/span>  <span class=\"c-a\">[disable]<\/span>\n  15) Boot security                    <span class=\"c-g\">(Safe)  <\/span>  <span class=\"c-a\">[disable]<\/span>\n  16) GRUB password                    <span class=\"c-r\">(High)  <\/span>  <span class=\"c-a\">[disable]<\/span>\n  17) Docker security                  <span class=\"c-a\">(Medium)<\/span>  <span class=\"c-c\">[  N/A  ]<\/span>\n  18) ModSecurity WAF                  <span class=\"c-a\">(Medium)<\/span>  <span class=\"c-c\">[  N/A  ]<\/span>\n  19) Disable unused kernel modules    <span class=\"c-g\">(Safe)  <\/span>  <span class=\"c-a\">[disable]<\/span>\n  20) Compiler access restriction      <span class=\"c-a\">(Medium)<\/span>  <span class=\"c-c\">[  N/A  ]<\/span>\n  21) Remote syslog                    <span class=\"c-g\">(Safe)  <\/span>  <span class=\"c-c\">[  N/A  ]<\/span>\n  22) UMASK hardening                  <span class=\"c-g\">(Safe)  <\/span>  <span class=\"c-a\">[disable]<\/span>\n\n  <span class=\"c-w\">23)<\/span> Apply all Safe/Medium modules (skip High risk)\n  <span class=\"c-w\">24)<\/span> Apply all 22 modules (includes High risk)\n  <span class=\"c-w\"> C)<\/span> Run compliance checks (read-only)\n  <span class=\"c-w\"> U)<\/span> Check for updates\n  <span class=\"c-w\"> R)<\/span> Revert everything from backup\n  <span class=\"c-w\"> S)<\/span> Revert SUID/SGID only\n  <span class=\"c-w\"> Q)<\/span> Quit\n","choicePrompt":"  <span class=\"c-w\">Choice:<\/span> ","choices":{"1":{"html":"<span class=\"c-a\">⚠️<\/span> System updates: no automated per-module revert — installed packages aren&#x27;t meaningfully revertible — there&#x27;s nothing to restore them to\n","exits":false},"2":{"html":"<span class=\"c-b\">[08:31:07]<\/span> 🔒 [2/22] SSH Hardening\n<span class=\"c-a\">[DRY-RUN]<\/span> Would apply 13 hardened settings to /etc/ssh/sshd_config\n","exits":false},"3":{"html":"<span class=\"c-b\">[08:32:01]<\/span> 🔥 [3/22] Firewall\n<span class=\"c-a\">[DRY-RUN]<\/span> Would configure firewall: default-deny inbound, allow SSH only\n","exits":false},"4":{"html":"<span class=\"c-b\">[08:32:55]<\/span> 🛡️ [4/22] Fail2Ban\n<span class=\"c-a\">[DRY-RUN]<\/span> Would install fail2ban with an SSH jail (3 tries, 2h ban)\n","exits":false},"5":{"html":"<span class=\"c-a\">Revert File permissions — restore original permissions on the files this module changed? (y/N): <\/span>yes\n<span class=\"c-b\">[08:34:19]<\/span> ↩️ Restoring file permissions\n<span class=\"c-c\">ℹ️<\/span> No permission changes were recorded — every file this module touches was already at or stricter than its target, so there&#x27;s nothing to revert.\n<span class=\"c-a\">[DRY-RUN]<\/span> Would remove from /etc/security/limits.conf: * hard core 0\n","exits":false},"6":{"html":"<span class=\"c-b\">[08:34:43]<\/span> ⚙️ [6/22] Kernel &amp; Network Hardening\n<span class=\"c-a\">[DRY-RUN]<\/span> Would write 27 sysctl parameters to /etc/sysctl.d/99-hardening.conf\n","exits":false},"7":{"html":"<span class=\"c-b\">[08:35:37]<\/span> 🛡️ [7/22] Audit Daemon\n<span class=\"c-a\">[DRY-RUN]<\/span> Would install auditd and write comprehensive audit rules\n","exits":false},"8":{"html":"<span class=\"c-b\">[08:36:31]<\/span> 🔒 [8/22] Password Policy\n<span class=\"c-a\">[DRY-RUN]<\/span> Would set password aging in /etc/login.defs (PAM untouched)\n","exits":false},"9":{"html":"<span class=\"c-b\">[08:37:26]<\/span> 🔥 [9/22] SUID/SGID Hardening <span class=\"c-r\">(HIGH RISK)<\/span>\n<span class=\"c-r\">Remove SUID from non-essential binaries? (type &#x27;yes&#x27;): <\/span>yes\n<span class=\"c-a\">[DRY-RUN]<\/span> Would record a SUID inventory then strip SUID outside the safe list\n","exits":false},"10":{"html":"<span class=\"c-b\">[08:38:20]<\/span> 🛡️ [10/22] AIDE File Integrity\n<span class=\"c-a\">[DRY-RUN]<\/span> Would install AIDE and initialise its baseline database\n","exits":false},"11":{"html":"<span class=\"c-b\">[08:39:14]<\/span> 🛡️ [11/22] Rootkit Scanner\n<span class=\"c-a\">[DRY-RUN]<\/span> Would install rkhunter and enable daily scans\n","exits":false},"12":{"html":"<span class=\"c-r\">Revert Disable unused services — re-enable and start whatever this tool disabled? This overrides SECURITY.md&#x27;s own documented manual-only stance. (type &#x27;yes&#x27;): <\/span>yes\n<span class=\"c-b\">[09:08:14]<\/span> ↩️ Re-enabling services this tool disabled\n<span class=\"c-r\">❌<\/span> No disabled-services inventory found — cannot revert. Re-enable manually: systemctl enable --now &lt;service&gt;\n","exits":false},"13":{"html":"<span class=\"c-a\">Revert AppArmor / SELinux — put the AppArmor profiles that were in complain mode back into it? (y/N): <\/span>yes\n<span class=\"c-c\">ℹ️<\/span> AppArmor: no record of profiles in complain mode — either none were, or they were changed by a release that kept no record. Nothing changed.\n<span class=\"c-c\">ℹ️<\/span> apparmor: no record of its state before hardening — left as it is\n","exits":false},"14":{"html":"<span class=\"c-b\">[08:41:56]<\/span> ⚙️ [14/22] /etc Version Control\n<span class=\"c-a\">[DRY-RUN]<\/span> Would initialise etckeeper git tracking for /etc\n","exits":false},"15":{"html":"<span class=\"c-b\">[08:42:50]<\/span> 🔒 [15/22] Boot Security\n<span class=\"c-a\">[DRY-RUN]<\/span> Would restrict GRUB config permissions and blacklist USB storage\n","exits":false},"16":{"html":"<span class=\"c-b\">[08:43:44]<\/span> 🔒 [16/22] GRUB Password <span class=\"c-r\">(HIGH RISK)<\/span>\n<span class=\"c-a\">[DRY-RUN]<\/span> Would generate a GRUB PBKDF2 hash and add a superuser to /etc/grub.d/40_custom\n","exits":false},"17":{"html":"<span class=\"c-b\">[08:44:38]<\/span> ⚙️ [17/22] Docker Security\n<span class=\"c-a\">⚠️<\/span> Docker is not installed — skipping Docker hardening\n","exits":false},"18":{"html":"<span class=\"c-b\">[08:45:32]<\/span> 🛡️ [18/22] ModSecurity WAF\n<span class=\"c-a\">⚠️<\/span> No Apache/httpd found — skipping ModSecurity (it hardens a web server, not the host)\n","exits":false},"19":{"html":"<span class=\"c-b\">[08:46:26]<\/span> ⚙️ [19/22] Disable Unused Kernel Modules\n<span class=\"c-a\">[DRY-RUN]<\/span> Would blacklist 4 unused protocols (dccp sctp rds tipc)\n<span class=\"c-a\">[DRY-RUN]<\/span> Would blacklist 7 uncommon filesystems (cramfs freevxfs hfs hfsplus jffs2 squashfs udf)\n","exits":false},"20":{"html":"<span class=\"c-b\">[08:47:20]<\/span> ⚙️ [20/22] Compiler Access Restriction\n<span class=\"c-a\">[DRY-RUN]<\/span> Would restrict gcc/g++/clang/clang++/cc/c++ to root only (chmod 700)\n","exits":false},"21":{"html":"<span class=\"c-b\">[08:48:14]<\/span> 🌐 [21/22] Remote Syslog\n<span class=\"c-a\">[DRY-RUN]<\/span> Would forward all syslog facilities to &lt;server&gt;:514 over udp\n","exits":false},"22":{"html":"<span class=\"c-b\">[08:49:08]<\/span> 🔒 [22/22] UMASK Hardening\n<span class=\"c-a\">[DRY-RUN]<\/span> Would set a restrictive default umask of 027 in login.defs, profile.d and bash.bashrc\n","exits":false},"23":{"html":"<span class=\"c-a\">Apply all Safe/Medium modules (skip High risk)? (y/N): <\/span>yes\n<span class=\"c-b\">[08:50:32]<\/span> 🚀 Applying Safe/Medium modules (skipping the High-risk SUID/SGID and GRUB password modules)\n<span class=\"c-a\">[DRY-RUN]<\/span> Would create backup directory at /root/hardening_backup_20261116_084954_free\n<span class=\"c-b\">[08:50:32]<\/span> ⚙️ Preflight: resolving package dependencies\n<span class=\"c-a\">⚠️<\/span>   missing  firewall: ufw is not available from the configured repositories\n<span class=\"c-a\">⚠️<\/span>   missing  fail2ban: fail2ban is not available from the configured repositories\n<span class=\"c-a\">⚠️<\/span>   missing  audit: auditd is not available from the configured repositories\n<span class=\"c-a\">⚠️<\/span>   missing  aide: aide is not available from the configured repositories\n<span class=\"c-a\">⚠️<\/span>   missing  rkhunter: rkhunter is not available from the configured repositories\n<span class=\"c-a\">⚠️<\/span>   missing  etckeeper: etckeeper is not available from the configured repositories\n<span class=\"c-a\">⚠️<\/span> Preflight: 6 package(s) cannot be obtained — these modules will skip: firewall:ufw fail2ban:fail2ban audit:auditd aide:aide rkhunter:rkhunter etckeeper:etckeeper\n<span class=\"c-b\">[08:50:32]<\/span> ⚙️ [1/22] System Updates\n<span class=\"c-c\">ℹ️<\/span> DRY RUN: Would upgrade all system packages\n<span class=\"c-b\">[08:50:32]<\/span> 🔒 [2/22] SSH Hardening\n<span class=\"c-a\">[DRY-RUN]<\/span> Would apply 13 hardened settings to /etc/ssh/sshd_config\n<span class=\"c-b\">[08:50:32]<\/span> 🔥 [3/22] Firewall\n<span class=\"c-a\">[DRY-RUN]<\/span> Would configure firewall: default-deny inbound, allow SSH only\n<span class=\"c-b\">[08:50:32]<\/span> 🛡️ [4/22] Fail2Ban\n<span class=\"c-a\">[DRY-RUN]<\/span> Would install fail2ban with an SSH jail (3 tries, 2h ban)\n<span class=\"c-b\">[08:50:32]<\/span> 🔒 [5/22] File Permissions\n<span class=\"c-a\">[DRY-RUN]<\/span> Would restrict permissions on 7 sensitive files and /tmp\n<span class=\"c-b\">[08:50:32]<\/span> ⚙️ [6/22] Kernel &amp; Network Hardening\n<span class=\"c-a\">[DRY-RUN]<\/span> Would write 27 sysctl parameters to /etc/sysctl.d/99-hardening.conf\n<span class=\"c-b\">[08:50:32]<\/span> 🛡️ [7/22] Audit Daemon\n<span class=\"c-a\">[DRY-RUN]<\/span> Would install auditd and write comprehensive audit rules\n<span class=\"c-b\">[08:50:32]<\/span> 🔒 [8/22] Password Policy\n<span class=\"c-a\">[DRY-RUN]<\/span> Would set password aging in /etc/login.defs (PAM untouched)\n<span class=\"c-b\">[08:50:32]<\/span> 🛡️ [10/22] AIDE File Integrity\n<span class=\"c-a\">[DRY-RUN]<\/span> Would install AIDE and initialise its baseline database\n<span class=\"c-b\">[08:50:32]<\/span> 🛡️ [11/22] Rootkit Scanner\n<span class=\"c-a\">[DRY-RUN]<\/span> Would install rkhunter and enable daily scans\n<span class=\"c-b\">[08:50:32]<\/span> ⚙️ [12/22] Disable Unnecessary Services\n<span class=\"c-a\">[DRY-RUN]<\/span> Would disable up to 20 unnecessary network services\n<span class=\"c-b\">[08:50:32]<\/span> 🛡️ [13/22] Mandatory Access Control\n<span class=\"c-a\">[DRY-RUN]<\/span> Would set AppArmor profiles in complain mode to enforce (recorded for revert), or SELinux to enforcing\n<span class=\"c-b\">[08:50:32]<\/span> ⚙️ [14/22] /etc Version Control\n<span class=\"c-a\">[DRY-RUN]<\/span> Would initialise etckeeper git tracking for /etc\n<span class=\"c-b\">[08:50:32]<\/span> 🔒 [15/22] Boot Security\n<span class=\"c-a\">[DRY-RUN]<\/span> Would restrict GRUB config permissions and blacklist USB storage\n<span class=\"c-b\">[08:50:32]<\/span> ⚙️ [17/22] Docker Security\n<span class=\"c-a\">⚠️<\/span> Docker is not installed — skipping Docker hardening\n<span class=\"c-b\">[08:50:32]<\/span> 🛡️ [18/22] ModSecurity WAF\n<span class=\"c-a\">⚠️<\/span> No Apache/httpd found — skipping ModSecurity (it hardens a web server, not the host)\n<span class=\"c-b\">[08:50:32]<\/span> ⚙️ [19/22] Disable Unused Kernel Modules\n<span class=\"c-a\">[DRY-RUN]<\/span> Would blacklist 4 unused protocols (dccp sctp rds tipc)\n<span class=\"c-a\">[DRY-RUN]<\/span> Would blacklist 7 uncommon filesystems (cramfs freevxfs hfs hfsplus jffs2 squashfs udf)\n<span class=\"c-b\">[08:50:32]<\/span> ⚙️ [20/22] Compiler Access Restriction\n<span class=\"c-a\">[DRY-RUN]<\/span> Would restrict gcc/g++/clang/clang++/cc/c++ to root only (chmod 700)\n<span class=\"c-b\">[08:50:32]<\/span> 🌐 [21/22] Remote Syslog\n<span class=\"c-a\">[DRY-RUN]<\/span> Would forward all syslog facilities to &lt;server&gt;:514 over udp\n<span class=\"c-b\">[08:50:32]<\/span> 🔒 [22/22] UMASK Hardening\n<span class=\"c-a\">[DRY-RUN]<\/span> Would set a restrictive default umask of 027 in login.defs, profile.d and bash.bashrc\n<span class=\"c-g\">✅<\/span> Safe/Medium modules processed (High-risk 9 and 16 skipped, run them separately) - 0 fixes applied, all modules completed\n","exits":false},"24":{"html":"<span class=\"c-a\">Apply all 22 modules, including the High-risk ones? (y/N): <\/span>yes\n<span class=\"c-b\">[08:51:26]<\/span> 🚀 Applying all 22 hardening modules (including High risk)\n<span class=\"c-a\">[DRY-RUN]<\/span> Would create backup directory at /root/hardening_backup_20261116_085048_free\n<span class=\"c-b\">[08:51:26]<\/span> ⚙️ Preflight: resolving package dependencies\n<span class=\"c-a\">⚠️<\/span>   missing  firewall: ufw is not available from the configured repositories\n<span class=\"c-a\">⚠️<\/span>   missing  fail2ban: fail2ban is not available from the configured repositories\n<span class=\"c-a\">⚠️<\/span>   missing  audit: auditd is not available from the configured repositories\n<span class=\"c-a\">⚠️<\/span>   missing  aide: aide is not available from the configured repositories\n<span class=\"c-a\">⚠️<\/span>   missing  rkhunter: rkhunter is not available from the configured repositories\n<span class=\"c-a\">⚠️<\/span>   missing  etckeeper: etckeeper is not available from the configured repositories\n<span class=\"c-a\">⚠️<\/span> Preflight: 6 package(s) cannot be obtained — these modules will skip: firewall:ufw fail2ban:fail2ban audit:auditd aide:aide rkhunter:rkhunter etckeeper:etckeeper\n<span class=\"c-b\">[08:51:26]<\/span> ⚙️ [1/22] System Updates\n<span class=\"c-c\">ℹ️<\/span> DRY RUN: Would upgrade all system packages\n<span class=\"c-b\">[08:51:26]<\/span> 🔒 [2/22] SSH Hardening\n<span class=\"c-a\">[DRY-RUN]<\/span> Would apply 13 hardened settings to /etc/ssh/sshd_config\n<span class=\"c-b\">[08:51:26]<\/span> 🔥 [3/22] Firewall\n<span class=\"c-a\">[DRY-RUN]<\/span> Would configure firewall: default-deny inbound, allow SSH only\n<span class=\"c-b\">[08:51:26]<\/span> 🛡️ [4/22] Fail2Ban\n<span class=\"c-a\">[DRY-RUN]<\/span> Would install fail2ban with an SSH jail (3 tries, 2h ban)\n<span class=\"c-b\">[08:51:26]<\/span> 🔒 [5/22] File Permissions\n<span class=\"c-a\">[DRY-RUN]<\/span> Would restrict permissions on 7 sensitive files and /tmp\n<span class=\"c-b\">[08:51:26]<\/span> ⚙️ [6/22] Kernel &amp; Network Hardening\n<span class=\"c-a\">[DRY-RUN]<\/span> Would write 27 sysctl parameters to /etc/sysctl.d/99-hardening.conf\n<span class=\"c-b\">[08:51:26]<\/span> 🛡️ [7/22] Audit Daemon\n<span class=\"c-a\">[DRY-RUN]<\/span> Would install auditd and write comprehensive audit rules\n<span class=\"c-b\">[08:51:26]<\/span> 🔒 [8/22] Password Policy\n<span class=\"c-a\">[DRY-RUN]<\/span> Would set password aging in /etc/login.defs (PAM untouched)\n<span class=\"c-b\">[08:51:26]<\/span> 🔥 [9/22] SUID/SGID Hardening <span class=\"c-r\">(HIGH RISK)<\/span>\n<span class=\"c-r\">Remove SUID from non-essential binaries? (type &#x27;yes&#x27;): <\/span>\n<span class=\"c-c\">ℹ️<\/span> Skipped SUID hardening\n<span class=\"c-b\">[08:51:30]<\/span> 🛡️ [10/22] AIDE File Integrity\n<span class=\"c-a\">[DRY-RUN]<\/span> Would install AIDE and initialise its baseline database\n<span class=\"c-b\">[08:51:30]<\/span> 🛡️ [11/22] Rootkit Scanner\n<span class=\"c-a\">[DRY-RUN]<\/span> Would install rkhunter and enable daily scans\n<span class=\"c-b\">[08:51:30]<\/span> ⚙️ [12/22] Disable Unnecessary Services\n<span class=\"c-a\">[DRY-RUN]<\/span> Would disable up to 20 unnecessary network services\n<span class=\"c-b\">[08:51:30]<\/span> 🛡️ [13/22] Mandatory Access Control\n<span class=\"c-a\">[DRY-RUN]<\/span> Would set AppArmor profiles in complain mode to enforce (recorded for revert), or SELinux to enforcing\n<span class=\"c-b\">[08:51:30]<\/span> ⚙️ [14/22] /etc Version Control\n<span class=\"c-a\">[DRY-RUN]<\/span> Would initialise etckeeper git tracking for /etc\n<span class=\"c-b\">[08:51:30]<\/span> 🔒 [15/22] Boot Security\n<span class=\"c-a\">[DRY-RUN]<\/span> Would restrict GRUB config permissions and blacklist USB storage\n<span class=\"c-b\">[08:51:30]<\/span> 🔒 [16/22] GRUB Password <span class=\"c-r\">(HIGH RISK)<\/span>\n<span class=\"c-a\">[DRY-RUN]<\/span> Would generate a GRUB PBKDF2 hash and add a superuser to /etc/grub.d/40_custom\n<span class=\"c-b\">[08:51:30]<\/span> ⚙️ [17/22] Docker Security\n<span class=\"c-a\">⚠️<\/span> Docker is not installed — skipping Docker hardening\n<span class=\"c-b\">[08:51:30]<\/span> 🛡️ [18/22] ModSecurity WAF\n<span class=\"c-a\">⚠️<\/span> No Apache/httpd found — skipping ModSecurity (it hardens a web server, not the host)\n<span class=\"c-b\">[08:51:30]<\/span> ⚙️ [19/22] Disable Unused Kernel Modules\n<span class=\"c-a\">[DRY-RUN]<\/span> Would blacklist 4 unused protocols (dccp sctp rds tipc)\n<span class=\"c-a\">[DRY-RUN]<\/span> Would blacklist 7 uncommon filesystems (cramfs freevxfs hfs hfsplus jffs2 squashfs udf)\n<span class=\"c-b\">[08:51:30]<\/span> ⚙️ [20/22] Compiler Access Restriction\n<span class=\"c-a\">[DRY-RUN]<\/span> Would restrict gcc/g++/clang/clang++/cc/c++ to root only (chmod 700)\n<span class=\"c-b\">[08:51:30]<\/span> 🌐 [21/22] Remote Syslog\n<span class=\"c-a\">[DRY-RUN]<\/span> Would forward all syslog facilities to &lt;server&gt;:514 over udp\n<span class=\"c-b\">[08:51:30]<\/span> 🔒 [22/22] UMASK Hardening\n<span class=\"c-a\">[DRY-RUN]<\/span> Would set a restrictive default umask of 027 in login.defs, profile.d and bash.bashrc\n<span class=\"c-g\">✅<\/span> All 22 modules processed - 0 fixes applied, all modules completed\n","exits":false},"C":{"html":"<span class=\"c-c\">📊<\/span> Running CIS-aligned compliance checks (read-only)\n<span class=\"c-a\">⚠️<\/span>   /home is a separate partition — Not a separate mount point — Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition\n<span class=\"c-a\">⚠️<\/span>   /tmp is a separate partition — Not a separate mount point — Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition\n<span class=\"c-a\">⚠️<\/span>   /var is a separate partition — Not a separate mount point — Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition\n<span class=\"c-a\">⚠️<\/span>   /var/log is a separate partition — Not a separate mount point — Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition\n<span class=\"c-a\">⚠️<\/span>   /var/tmp is a separate partition — Not a separate mount point — Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition\n<span class=\"c-a\">⚠️<\/span>   SSH root login disabled — PermitRootLogin is &#x27;unset&#x27;, expected &#x27;no&#x27; — Suggested fix: run module 2 (SSH hardening)\n<span class=\"c-g\">✅<\/span>   SSH password authentication disabled\n<span class=\"c-a\">⚠️<\/span>   SSH X11 forwarding disabled — X11Forwarding is &#x27;yes&#x27;, expected &#x27;no&#x27; — Suggested fix: run module 2 (SSH hardening)\n<span class=\"c-a\">⚠️<\/span>   SSH empty passwords rejected — PermitEmptyPasswords is &#x27;unset&#x27;, expected &#x27;no&#x27; — Suggested fix: run module 2 (SSH hardening)\n<span class=\"c-a\">⚠️<\/span>   SSH MaxAuthTries is 3 or fewer — MaxAuthTries is &#x27;unset&#x27;, expected &#x27;3&#x27; — Suggested fix: run module 2 (SSH hardening)\n<span class=\"c-a\">⚠️<\/span>   auditd is running — Service not active — Suggested fix: run module 7 (Audit daemon)\n<span class=\"c-a\">⚠️<\/span>   fail2ban is running — Service not active — Suggested fix: run module 4 (Fail2Ban)\n<span class=\"c-a\">⚠️<\/span>   Firewall is active — No active firewall service detected — Suggested fix: run module 3 (Firewall)\n<span class=\"c-g\">✅<\/span>   ASLR fully enabled\n<span class=\"c-g\">✅<\/span>   IP forwarding disabled\n<span class=\"c-g\">✅<\/span>   TCP SYN cookies enabled\n<span class=\"c-g\">✅<\/span>   Kernel log restricted to root\n<span class=\"c-a\">⚠️<\/span>   Kernel pointers hidden — kernel.kptr_restrict=0, expected 2 — Suggested fix: run module 6 (Kernel &amp; network)\n<span class=\"c-g\">✅<\/span>   SUID core dumps disabled\n<span class=\"c-a\">⚠️<\/span>   Password max age is 90 days or fewer — Currently 99999 — Suggested fix: run module 8 (Password policy)\n<span class=\"c-g\">✅<\/span>   /etc/passwd permissions are 644 or stricter\n<span class=\"c-g\">✅<\/span>   /etc/shadow permissions are 640 or stricter\n<span class=\"c-g\">✅<\/span>   /etc/group permissions are 644 or stricter\n<span class=\"c-g\">✅<\/span>   /etc/gshadow permissions are 640 or stricter\n<span class=\"c-g\">✅<\/span>   AppArmor is enforcing\n<span class=\"c-a\">⚠️<\/span>   Uncommon protocols blacklisted — Loadable: dccp sctp rds tipc — Suggested fix: run module 19 (Unused kernel modules)\n<span class=\"c-a\">⚠️<\/span>   Uncommon filesystems blacklisted — Loadable: cramfs freevxfs hfs hfsplus jffs2 squashfs udf — Suggested fix: run module 19 (Unused kernel modules)\n\n<span class=\"c-c\">══════════════════════════════════════════════════════════════════<\/span>\n<span class=\"c-w\">  CIS Score: 40%  (11/27 checks passed)<\/span>\n<span class=\"c-a\">  ⚠️ 16 check(s) need attention<\/span>\n<span class=\"c-c\">══════════════════════════════════════════════════════════════════<\/span>\n","exits":false},"U":{"html":"<span class=\"c-c\">ℹ️<\/span> Up to date (v2.6.1)\n","exits":false},"R":{"html":"<span class=\"c-r\">Revert ALL hardening changes? (type &#x27;yes&#x27;): <\/span>yes\n<span class=\"c-b\">[09:09:08]<\/span> ↩️ Full system revert\n<span class=\"c-r\">❌<\/span> No backup matches &#x27;genesis&#x27;.\n<span class=\"c-c\">ℹ️<\/span> Available restore points (newest first):\n<span class=\"c-a\">⚠️<\/span> No backups found under /root and no genesis directory.\n","exits":false},"S":{"html":"<span class=\"c-b\">[09:09:32]<\/span> ↩️ Restoring SUID/SGID permissions\n<span class=\"c-r\">❌<\/span> No SUID inventory found — cannot revert\n","exits":false}},"pressEnter":"  Press Enter to return to the menu...","quit":"<span class=\"c-c\">ℹ️<\/span> Log file: /var/log/ultimate_hardening_20261116_083005.log","quick":[{"key":"2","label":"SSH hardening"},{"key":"3","label":"Firewall"},{"key":"6","label":"Kernel & network"},{"key":"23","label":"Apply all safe"},{"key":"C","label":"Compliance check"},{"key":"R","label":"Revert"}],"provenance":"Recorded with Ultimate Hardening 2.6.1 on Debian GNU/Linux 12 (bookworm), a fresh lab VM, on 2026-11-16, by docs/capture-demo.sh. Every line is the tool's own output; only the colours were converted to HTML."}</script>
+<!-- END generated demo-data -->
+
+<script>
+(function () {
+  'use strict';
+  var data = JSON.parse(document.getElementById('demo-data').textContent);
+  var screen = document.getElementById('screen');
+  var quick = document.getElementById('quick');
+  var LINE_DELAY_MS = 12;          // playback speed: fast enough not to bore,
+  var MAX_ANIMATED_LINES = 120;    // and long outputs skip straight to the end
+  var reduceMotion = window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var busy = false;
+  // Which prompt is open: 'distro', 'menu', 'enter' (Press Enter) or 'done'.
+  // The quick buttons need it to get from wherever the visitor is to the menu.
+  var state = 'distro';
+  var pendingChoice = null;
+
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function scrollToEnd() { screen.scrollTop = screen.scrollHeight; }
+
+  // Recorded output is HTML produced by build-demo.sh from the terminal's own
+  // bytes: text is escaped there and only <span class="c-*"> is added. Anything
+  // a visitor types goes in through textContent, never innerHTML.
+  function play(html, done) {
+    var lines = html.split('\n');
+    var animate = !reduceMotion && lines.length <= MAX_ANIMATED_LINES;
+    var i = 0;
+    busy = true;
+    function step() {
+      var chunk = document.createElement('span');
+      chunk.innerHTML = lines[i] + '\n';
+      screen.appendChild(chunk);
+      i += 1;
+      if (i < lines.length) {
+        if (animate) { scrollToEnd(); setTimeout(step, LINE_DELAY_MS); } else { step(); }
+        return;
+      }
+      busy = false;
+      scrollToEnd();
+      if (done) done();
+    }
+    if (lines.length) step(); else { busy = false; if (done) done(); }
+  }
+
+  function note(text) {
+    screen.appendChild(el('span', 'note', text));
+    scrollToEnd();
+  }
+
+  // An inline input after a prompt, as the terminal shows it. onAnswer gets
+  // the trimmed text; returning false keeps the prompt open for another try.
+  function ask(promptHtml, onAnswer) {
+    var row = el('span', 'prompt-row');
+    var label = document.createElement('span');
+    label.innerHTML = promptHtml;
+    var input = el('input');
+    input.type = 'text';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('aria-label', label.textContent.trim() || 'Answer');
+    row.appendChild(label);
+    row.appendChild(input);
+    screen.appendChild(row);
+    scrollToEnd();
+    input.focus({ preventScroll: true });
+    function submit(value) {
+      if (busy) return;
+      var answer = value.trim();
+      row.removeChild(input);
+      row.appendChild(el('span', 'typed', answer));
+      screen.appendChild(document.createTextNode('\n'));
+      if (onAnswer(answer) === false) ask(promptHtml, onAnswer);
+    }
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); submit(input.value); }
+    });
+    activePrompt = submit;
+  }
+  var activePrompt = null;
+
+  function clearScreen() { screen.textContent = ''; }
+
+  // Menu lines become clickable: a click answers the open prompt as if the
+  // choice had been typed. Matching is on the "  N)" label the tool prints.
+  function makePickable(choiceKeys) {
+    var spans = screen.querySelectorAll('span');
+    var pattern = /^\s*([0-9]{1,2}|[A-Z])\)\s/;
+    Array.prototype.forEach.call(spans, function (span) {
+      if (span.parentNode !== screen) return;
+      var text = span.textContent.replace(/\n$/, '');
+      var m = pattern.exec(text);
+      if (!m || choiceKeys.indexOf(m[1]) < 0) return;
+      span.classList.add('pick');
+      span.tabIndex = 0;
+      span.setAttribute('role', 'button');
+      span.addEventListener('click', function () { if (activePrompt) activePrompt(m[1]); });
+      span.addEventListener('keydown', function (e) {
+        if ((e.key === 'Enter' || e.key === ' ') && activePrompt) { e.preventDefault(); activePrompt(m[1]); }
+      });
+    });
+  }
+
+  function choiceKeys() { return Object.keys(data.choices).concat(['Q']); }
+
+  function showMenu() {
+    clearScreen();
+    play(data.menu, function () {
+      makePickable(choiceKeys());
+      state = 'menu';
+      ask(data.choicePrompt, onMenuChoice);
+      if (pendingChoice) {
+        var key = pendingChoice;
+        pendingChoice = null;
+        activePrompt(key);
+      }
+    });
+  }
+
+  function onMenuChoice(answer) {
+    var key = answer.toUpperCase();
+    if (key === 'Q') {
+      play(data.quit, function () {
+        endSession('That is the whole tour. Restart to go again, or run it on a server of your own.');
+      });
+      return true;
+    }
+    var rec = data.choices[key];
+    if (!rec) {
+      note('This replay has recordings for ' + choiceKeys().join(', ') +
+           '. On a real server, any other input prints "Invalid choice" and redraws the menu.');
+      return false;
+    }
+    play(rec.html, function () {
+      if (rec.exits) {
+        endSession('In the recording the tool exited here instead of returning to the menu. ' +
+                   'Restart to pick something else.');
+        return;
+      }
+      state = 'enter';
+      ask(data.pressEnter, function () { showMenu(); return true; });
+    });
+    return true;
+  }
+
+  // The tool has exited: a shell prompt, and the replay's own note on what next.
+  function endSession(message) {
+    note(message);
+    screen.appendChild(el('span', 'c-f', '# '));
+    screen.appendChild(el('span', 'cursor', ' '));
+    activePrompt = null;
+    state = 'done';
+  }
+
+  function start() {
+    clearScreen();
+    state = 'distro';
+    pendingChoice = null;
+    play(data.launch + '\n' + data.distro, function () {
+      makePickable(['0']);
+      ask(data.distroPrompt, function (answer) {
+        if (answer !== '0' && answer !== '') {
+          note('The recording used 0 (auto-detect), which found Debian. ' +
+               'The other platforms are real menu options, but this replay only has the Debian run.');
+          return false;
+        }
+        play(data.detected, function () { setTimeout(showMenu, reduceMotion ? 0 : 500); });
+        return true;
+      });
+      if (pendingChoice) activePrompt('0');
+    });
+  }
+
+  function addQuickButtons() {
+    data.quick.forEach(function (q) {
+      var b = el('button', null, q.label);
+      b.type = 'button';
+      b.addEventListener('click', function () {
+        if (busy) return;
+        if (state === 'done') { pendingChoice = q.key; start(); return; }
+        if (state === 'menu') { activePrompt(q.key); return; }
+        // Distro prompt or "Press Enter": answer it, and take the choice as
+        // soon as the menu is back.
+        pendingChoice = q.key;
+        activePrompt(state === 'distro' ? '0' : '');
+      });
+      quick.appendChild(b);
+    });
+  }
+
+  document.getElementById('restart').addEventListener('click', function () {
+    if (!busy) start();
+  });
+  // Clicking anywhere in the terminal puts the caret back in the prompt.
+  screen.addEventListener('click', function (e) {
+    var input = screen.querySelector('input');
+    if (input && e.target.tagName !== 'INPUT' && !window.getSelection().toString()) {
+      input.focus({ preventScroll: true });
+    }
+  });
+
+  document.getElementById('provenance').textContent = data.provenance;
+  addQuickButtons();
+  start();
+}());
+</script>
+
+</body>
+</html>

@@ -30,6 +30,10 @@ and the project follows [Semantic Versioning](https://semver.org).
 ### Documentation
 - The project earned the OpenSSF Best Practices "passing" badge; the README
   and the site show it.
+- The site has an interactive replay (`docs/demo.html`): click through the
+  real menu and see what each choice printed in `--dry-run` on a fresh
+  Debian 12 VM. `docs/capture-demo.sh` records it and `docs/build-demo.sh`
+  builds the page.
 
 ## [2.6.1] — 2026-11-15
 
