@@ -2,6 +2,8 @@
 
 We love your input! We want to make contributing to this project as easy and transparent as possible.
 
+This project is actively maintained. Expect a reply to issues and pull requests in a timely manner.
+
 ## Development Process
 
 1. Fork the repo and create your branch from `main`.
