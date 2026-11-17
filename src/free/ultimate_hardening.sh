@@ -32,6 +32,8 @@ if (( BASH_VERSINFO[0] < MIN_BASH_MAJOR )); then
         for newer_bash in /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash 2>/dev/null || true)"; do
             [[ -x "$newer_bash" ]] || continue
             "$newer_bash" -c "(( BASH_VERSINFO[0] >= $MIN_BASH_MAJOR ))" 2>/dev/null || continue
+            # exec only returns if that bash could not start; then try the next one.
+            # shellcheck disable=SC2093
             UH_BASH_REEXEC=1 exec "$newer_bash" "$0" ${1+"$@"}
         done
     fi
