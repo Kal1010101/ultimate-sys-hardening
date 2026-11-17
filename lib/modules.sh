@@ -2568,10 +2568,18 @@ apply_compiler_restriction() {
 
     create_backup_dir
     local inventory="$BACKUP_DIR/compiler_original_perms.txt"
-    local restricted=0 path
+    local restricted=0 path seen=" "
     for compiler in gcc g++ clang clang++ cc c++; do
         path=$(command -v "$compiler" 2>/dev/null) || continue
         [[ -n "$path" ]] || continue
+        # cc, c++ and on Debian gcc itself are symlinks. A symlink's own mode
+        # is always 777, and recording that let the revert chmod 777 the real
+        # compiler, so record and restrict the binary the link points at.
+        path=$(readlink -f "$path" 2>/dev/null) || continue
+        [[ "$seen" == *" $path "* ]] && continue
+        seen+="$path "
+        suid_path_is_root_controlled "$path" || {
+            log_warning "  not restricted, path is not under root's sole control: $path"; continue; }
         if [[ "$SKIP_BACKUP" == false ]]; then
             printf '%s %s\n' "$path" "$(stat -c '%a' "$path" 2>/dev/null)" >> "$inventory"
         fi

@@ -7,6 +7,12 @@ and the project follows [Semantic Versioning](https://semver.org).
 ## [Unreleased]
 
 ### Fixed
+- Security: reverting module 20 (compiler restriction) could leave the real
+  compiler binaries world-writable (mode 777), letting any local user replace
+  gcc before root's next build. The module recorded symlinks such as
+  `/usr/bin/cc` with the link's own mode. It now records the real binary, and
+  the revert never restores group or other write, including from inventories
+  written by earlier versions.
 - On macOS the tool crashed at once ("unbound variable" in `lib/menu.sh`):
   macOS ships bash 3.2 as `/bin/bash` and the library needs bash 4. The script
   now restarts itself under a newer bash when one is installed (Homebrew's),

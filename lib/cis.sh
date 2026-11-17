@@ -507,6 +507,18 @@ undo_suid_hardening() {
     log_success "Restored SUID/SGID on $restored binaries"
 }
 
+# Puts back one line of module 20's inventory. Older inventories recorded
+# symlinks such as /usr/bin/cc with the link's own mode, 777, so the path is
+# resolved and group/other write is never restored: module 20 only took away
+# read and execute, and a compiler anyone can overwrite runs as root later.
+restore_compiler_mode() {
+    local cpath="$1" cmode="$2" target
+    [[ "$cmode" =~ ^[0-7]{3,4}$ ]] || return 1
+    target=$(readlink -f "$cpath" 2>/dev/null) || return 1
+    [[ -f "$target" ]] && suid_path_is_root_controlled "$target" || return 1
+    chmod "$(printf '%o' $(( 8#$cmode & 8#0755 )))" "$target"
+}
+
 # Same shape as undo_suid_hardening() just above — a mode inventory, not a
 # file backup, so it needs its own revert rather than revert_backed_up_file()
 # (lib/core.sh). Used by full_system_revert() (inline, historically) and now
@@ -521,7 +533,7 @@ undo_compiler_restriction() {
     local restored=0
     while read -r cpath cmode; do
         [[ -f "$cpath" ]] || continue
-        chmod "$cmode" "$cpath" 2>/dev/null && { log_info "  restored compiler mode: $cpath ($cmode)"; bump restored; } || \
+        restore_compiler_mode "$cpath" "$cmode" 2>/dev/null && { log_info "  restored compiler mode: $cpath"; bump restored; } || \
             log_warning "  could not restore $cpath"
     done < "$inv"
 
@@ -762,7 +774,7 @@ full_system_revert() {
     if [[ -f "$cinv" ]]; then
         while read -r cpath cmode; do
             [[ -f "$cpath" ]] || continue
-            chmod "$cmode" "$cpath" 2>/dev/null && log_info "  restored compiler mode: $cpath ($cmode)" || true
+            restore_compiler_mode "$cpath" "$cmode" 2>/dev/null && log_info "  restored compiler mode: $cpath" || true
         done < "$cinv"
     fi
 
