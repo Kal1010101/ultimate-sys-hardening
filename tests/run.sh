@@ -14,6 +14,10 @@
 #    ./tests/run.sh --local              Run on THIS machine (destructive!)
 #
 #  Exit code is the number of failed cases, so CI can gate on it.
+#
+#  A failed case's full output is saved to tests/results/<case>@<image>.log
+#  (set UH_TEST_LOG_DIR to put it elsewhere). VERBOSE=1 also prints the last
+#  30 lines of every failure.
 # =============================================================================
 
 set -uo pipefail
@@ -33,6 +37,8 @@ CYAN='\033[0;36m'; WHITE='\033[1;37m'; NC='\033[0m'
 [[ -t 1 ]] || { RED=''; GREEN=''; YELLOW=''; CYAN=''; WHITE=''; NC=''; }
 
 PASSED=0; FAILED=0; SKIPPED=0
+LOG_DIR="${UH_TEST_LOG_DIR:-$REPO_ROOT/tests/results}"
+FAILURE_TAIL_LINES=15
 declare -a FAILED_CASES=()
 
 while [[ $# -gt 0 ]]; do
@@ -103,6 +109,30 @@ prepare_image() {
     docker rm -f "$name" >/dev/null 2>&1 || true
 }
 
+# Show why a case failed and keep its whole output. A case that dies before
+# its own assertions (a mirror timeout, a crash, a killed container) prints no
+# ASSERT line, so without the tail and the saved log there is nothing to go on.
+report_failure() {
+    local case_name="$1" where="$2" rc="$3" output="$4"
+    local reasons; reasons=$(grep -E '^(ASSERT|FAIL|ERROR):' <<<"$output" | head -8)
+    if [[ -n "$reasons" ]]; then
+        sed 's/^/      /' <<<"$reasons"
+    else
+        echo "      no assertion output; last ${FAILURE_TAIL_LINES} lines:"
+        tail -n "$FAILURE_TAIL_LINES" <<<"$output" | sed 's/^/      | /'
+    fi
+    [[ "$rc" -ne 1 ]] && echo "      exit code ${rc}"
+    [[ -n "${VERBOSE:-}" ]] && tail -30 <<<"$output" | sed 's/^/      | /'
+
+    local log_file="$LOG_DIR/${case_name}@${where//[:\/]/_}.log"
+    if mkdir -p "$LOG_DIR" 2>/dev/null \
+       && { echo "exit code: $rc"; echo; echo "$output"; } > "$log_file" 2>/dev/null; then
+        echo "      full output: ${log_file#"$REPO_ROOT"/}"
+    else
+        echo "      (could not save the full output to $LOG_DIR)"
+    fi
+}
+
 run_case_in_docker() {
     local case_file="$1" image="$2"
     local case_name; case_name=$(basename "$case_file" .sh | sed 's/^test_//')
@@ -124,8 +154,7 @@ run_case_in_docker() {
             echo "$output" | grep -E '^SKIP:' | sed 's/^/      /' ;;
         *)  echo -e "${RED}FAIL${NC}"; FAILED=$((FAILED+1))
             FAILED_CASES+=("$case_name @ $image")
-            echo "$output" | grep -E '^(ASSERT|FAIL|ERROR):' | sed 's/^/      /' | head -8
-            [[ -n "${VERBOSE:-}" ]] && echo "$output" | tail -30 | sed 's/^/      | /'
+            report_failure "$case_name" "$image" "$rc" "$output"
             ;;
     esac
 }
@@ -142,7 +171,7 @@ run_case_local() {
         77) echo -e "${YELLOW}SKIP${NC}"; SKIPPED=$((SKIPPED+1)) ;;
         *)  echo -e "${RED}FAIL${NC}"; FAILED=$((FAILED+1))
             FAILED_CASES+=("$case_name @ local")
-            echo "$output" | grep -E '^(ASSERT|FAIL|ERROR):' | sed 's/^/      /' | head -8 ;;
+            report_failure "$case_name" local "$rc" "$output" ;;
     esac
 }
 

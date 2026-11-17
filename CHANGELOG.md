@@ -26,6 +26,9 @@ and the project follows [Semantic Versioning](https://semver.org).
 - CodeQL now analyses the GitHub Actions workflows on every push, pull
   request and weekly. CodeQL cannot read Bash; ShellCheck still covers the
   scripts.
+- `tests/run.sh` now saves each failed case's full output to
+  `tests/results/`, and prints its exit code and last lines when the case
+  died before any assertion, so a crash or timeout is no longer a bare FAIL.
 
 ### Documentation
 - The project earned the OpenSSF Best Practices "passing" badge; the README

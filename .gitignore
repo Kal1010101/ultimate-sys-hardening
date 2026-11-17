@@ -13,6 +13,7 @@
 !*.env.template
 !*.env.dist
 dist/
+tests/results/
 __pycache__/
 *.pyc
 
