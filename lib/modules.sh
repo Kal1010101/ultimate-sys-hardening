@@ -625,7 +625,7 @@ _fw_nftables() {
     # saving it would bring the lockout back at every boot. Take the table out.
     if ! grep -qE '^[[:space:]]*tcp dport 22 accept$' <<<"$loaded_chain"; then
         nft delete table inet uh_filter 2>/dev/null || true
-        log_warning "nftables: the SSH accept rule did not load, so the firewall rules were removed again and nothing was saved — SSH stays reachable. Check $LOG_FILE and run module 3 again"
+        log_warning "nftables: the SSH accept rule did not load, so the firewall rules were removed again and nothing was saved — SSH stays reachable. Check $UH_LOG_PATH and run module 3 again"
         return 0
     fi
 
@@ -1483,7 +1483,7 @@ apply_aide() {
         aide --init >>"$LOG_FILE" 2>&1 || init_status=$?
     fi
     if (( init_status != 0 )); then
-        log_warning "AIDE baseline failed (exit $init_status), any existing database left in place — see $LOG_FILE"
+        log_warning "AIDE baseline failed (exit $init_status), any existing database left in place — see $UH_LOG_PATH"
         return 0
     fi
     # aideinit (Debian) writes the uncompressed .new; RHEL-family hosts have
@@ -1498,7 +1498,7 @@ apply_aide() {
     fi
     if [[ -n "$new_db" ]]; then
         if ! aide_database_is_valid "$new_db"; then
-            log_warning "AIDE baseline $new_db is empty or corrupt, any existing database left in place — see $LOG_FILE"
+            log_warning "AIDE baseline $new_db is empty or corrupt, any existing database left in place — see $UH_LOG_PATH"
             return 0
         fi
         if ! mv "$new_db" "$live_db" 2>/dev/null; then
@@ -1507,7 +1507,7 @@ apply_aide() {
         fi
     # aideinit may already have put the database in place itself
     elif ! aide_database_is_valid /var/lib/aide/aide.db && ! aide_database_is_valid /var/lib/aide/aide.db.gz; then
-        log_warning "AIDE init wrote no usable database in /var/lib/aide — see $LOG_FILE"
+        log_warning "AIDE init wrote no usable database in /var/lib/aide — see $UH_LOG_PATH"
         return 0
     fi
 

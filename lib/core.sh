@@ -57,22 +57,61 @@ ROCKET="🚀";    UNDO="↩️";      CIS_ICON="📊"; DB_ICON="🗄️"; NET_IC
 # which breaks every program on the host that redirects to it. Found by the VM
 # lab, in a test run that then could not copy its own report back.
 #
-# The symlink guard is the cheaper half of the same lesson: LOG_FILE is a
-# predictable path under /var/log, and `: >` through a symlink would truncate
-# whatever it points at.
+# LOG_FILE is also a predictable path under /var/log, which on Ubuntu the
+# syslog group can write. Whoever can write there can plant a symlink at the
+# name before the run, or swap one in during it, and every `>>"$LOG_FILE"`
+# would then append root's output, partly attacker-chosen (module 9 logs
+# setuid file names), to a file of their choosing. So the log is created
+# exclusively, or a fresh random name is used, and opened once. LOG_FILE then
+# names that open descriptor through /proc, so later writes reach the file this
+# run created whatever happens to its name. UH_LOG_PATH keeps the name to show.
+UH_LOG_PATH="$LOG_FILE"
+
+# Can this existing path be appended to? Only a regular file, not a symlink,
+# owned by us, with no other names (a hard link would be someone else's file).
+_uh_log_is_own_file() {
+    [[ -f "$1" && ! -L "$1" ]] || return 1
+    [[ "$(stat -c '%u %h' "$1" 2>/dev/null)" == "$(id -u) 1" ]]
+}
+
+# Creates the log so that nothing already at its path is ever followed.
+_uh_create_log() {
+    if [[ ! -e "$LOG_FILE" && ! -L "$LOG_FILE" ]]; then
+        # noclobber opens with O_EXCL, which also refuses a symlink planted
+        # after the test above.
+        ( umask 077; set -C; : > "$LOG_FILE" ) 2>/dev/null && return 0
+    fi
+    _uh_log_is_own_file "$LOG_FILE" && return 0
+    local fresh
+    fresh=$(umask 077; mktemp "$LOG_FILE.XXXXXX" 2>/dev/null) || return 1
+    echo "Warning: $LOG_FILE already existed and is not this run's log; logging to $fresh" >&2
+    LOG_FILE="$fresh"
+}
+
 _uh_init_log() {
     case "$LOG_FILE" in
-        /dev/*) return 0 ;;
+        /dev/*|/proc/*/fd/*) return 0 ;;
     esac
-    if [[ -L "$LOG_FILE" ]]; then
+    if ! _uh_create_log; then
+        echo "Warning: cannot create a safe run log at $LOG_FILE; this run is not logged" >&2
+        LOG_FILE=/dev/null; UH_LOG_PATH=/dev/null
         return 0
     fi
-    if [[ ! -e "$LOG_FILE" ]]; then
-        ( umask 077; : > "$LOG_FILE" ) 2>/dev/null || return 0
+    UH_LOG_PATH="$LOG_FILE"
+    exec {UH_LOG_FD}>>"$LOG_FILE" || { LOG_FILE=/dev/null; return 0; }
+    # Without /proc (macOS) LOG_FILE stays a path; /var/log is root-only there.
+    if [[ -d "/proc/$BASHPID/fd" ]]; then
+        local expected opened
+        expected="$(cd "$(dirname "$LOG_FILE")" && pwd -P)/${LOG_FILE##*/}"
+        opened=$(readlink "/proc/$BASHPID/fd/$UH_LOG_FD")
+        if [[ "$opened" != "$expected" ]]; then
+            echo "Refusing to run: the run log $LOG_FILE was replaced while it was being opened (it now leads to $opened)." >&2
+            echo "Someone other than root can write to $(dirname "$LOG_FILE"). Set LOG_FILE to a path only root can write." >&2
+            exit 1
+        fi
+        LOG_FILE="/proc/$BASHPID/fd/$UH_LOG_FD"
     fi
-    if [[ -f "$LOG_FILE" ]]; then
-        chmod 600 "$LOG_FILE" 2>/dev/null || true
-    fi
+    chmod 600 "$LOG_FILE" 2>/dev/null || true
     return 0
 }
 _uh_init_log

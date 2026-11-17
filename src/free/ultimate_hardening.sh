@@ -246,7 +246,7 @@ show_menu() {
         R|r) confirm_risky "Revert ALL hardening changes?" && { full_system_revert || true; } ;;
         S|s) undo_suid_hardening || true ;;
         Q|q)
-            log_info "Log file: $LOG_FILE"
+            log_info "Log file: $UH_LOG_PATH"
             [[ -d "$BACKUP_DIR" ]] && echo -e "  ${CYAN}Backup: $BACKUP_DIR${NC}"
             exit 0
             ;;

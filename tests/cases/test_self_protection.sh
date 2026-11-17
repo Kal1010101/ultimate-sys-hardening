@@ -82,7 +82,7 @@ fi
 # already skipped for an existing target.
 printf 'keep me' > "$TMP/target"; chmod 644 "$TMP/target"
 ln -sf "$TMP/target" "$TMP/link.log"
-bash -c "LOG_FILE='$TMP/link.log'; $_lib; true" 2>/dev/null
+bash -c "LOG_FILE='$TMP/link.log'; $_lib; log_info 'through the link' >/dev/null" 2>/dev/null
 tmode=$(stat -c '%a' "$TMP/target" 2>/dev/null)
 if [[ "$tmode" == "644" ]]; then
     pass_msg "a symlinked LOG_FILE leaves its target's mode alone"
@@ -92,19 +92,49 @@ fi
 if [[ "$(cat "$TMP/target" 2>/dev/null)" == "keep me" ]]; then
     pass_msg "and its target's contents are intact"
 else
-    fail "a symlinked LOG_FILE was truncated through"
+    fail "a symlinked LOG_FILE was truncated or appended through"
+fi
+fresh=$(compgen -G "$TMP/link.log.*" | head -1)
+if [[ -n "$fresh" ]] && grep -q 'through the link' "$fresh"; then
+    pass_msg "the run logged to a fresh file next to the planted link instead"
+else
+    fail "with a planted link, the run's log line went nowhere visible"
 fi
 
 # A DANGLING symlink is the case where the creation step does fire: `-e` is
 # false, so `: >` would create the file the link points at.
 rm -f "$TMP/dangling-target" "$TMP/dangling.log"
 ln -s "$TMP/dangling-target" "$TMP/dangling.log"
-bash -c "LOG_FILE='$TMP/dangling.log'; $_lib; true" 2>/dev/null
+bash -c "LOG_FILE='$TMP/dangling.log'; $_lib; log_info 'dangling' >/dev/null" 2>/dev/null
 if [[ ! -e "$TMP/dangling-target" ]]; then
     pass_msg "a dangling symlinked LOG_FILE does not create its target"
 else
     fail "a dangling symlinked LOG_FILE created $TMP/dangling-target"
 fi
+
+# The swap: LOG_FILE's directory may be writable by others (Ubuntu's /var/log
+# is root:syslog 0775), so the log can be renamed away and a symlink put in its
+# place mid-run. Later writes must still reach the file this run created.
+printf 'keep me' > "$TMP/swap-target"
+rm -f "$TMP/swap.log" "$TMP/swap-moved.log"
+bash -c "LOG_FILE='$TMP/swap.log'; $_lib
+         log_info 'before the swap' >/dev/null
+         mv '$TMP/swap.log' '$TMP/swap-moved.log'; ln -s '$TMP/swap-target' '$TMP/swap.log'
+         log_info 'after the swap' >/dev/null
+         echo 'command output' >>\"\$LOG_FILE\"" 2>/dev/null
+if [[ "$(cat "$TMP/swap-target" 2>/dev/null)" == "keep me" ]]; then
+    pass_msg "a symlink swapped in mid-run is not written through"
+else
+    fail "a symlink swapped in mid-run was written through: $(cat "$TMP/swap-target")"
+fi
+if grep -q 'after the swap' "$TMP/swap-moved.log" && grep -q 'command output' "$TMP/swap-moved.log"; then
+    pass_msg "log lines and command output still reach the run's own log file"
+else
+    fail "after the swap, writes did not reach the run's own log file"
+fi
+out=$(bash -c "LOG_FILE='$TMP/shown.log'; $_lib; printf '%s' \"\$UH_LOG_PATH\"" 2>/dev/null)
+[[ "$out" == "$TMP/shown.log" ]] && pass_msg "UH_LOG_PATH shows the log's real name" \
+    || fail "UH_LOG_PATH is '$out', expected $TMP/shown.log"
 
 # --- remote syslog destination is validated ----------------------------------
 # It is appended to rsyslog.conf verbatim, and rsyslog's config can run

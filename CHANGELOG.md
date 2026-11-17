@@ -6,6 +6,14 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Security
+- The run log can no longer be redirected through a symlink. Where someone
+  other than root can write to `/var/log` (Ubuntu's syslog group), a link
+  planted at the log's predictable name, or swapped in during a run, made root
+  append its output to a file of their choosing. The log is now created
+  exclusively, or under a fresh random name next to it with a warning, and
+  every write goes to the file the run opened, whatever happens to its name.
+
 ## [2.6.2] — 2026-11-17
 
 ### Security
