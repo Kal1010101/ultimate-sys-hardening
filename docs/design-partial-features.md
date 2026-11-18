@@ -25,8 +25,8 @@ shared `lib/` symlink; no PAM edits; no offensive tools; kernel lockdown is out.
 - Read `ssh -Q cipher|kex|mac|key` (the installed client and server come from
   the same OpenSSH build) and intersect with the allowlist, so an old OpenSSH is
   never handed a name it rejects. Allowlist, best first:
-  - Ciphers: chacha20-poly1305@openssh.com, aes256-gcm@openssh.com,
-    aes128-gcm@openssh.com, aes256-ctr, aes192-ctr, aes128-ctr
+  - Ciphers: chacha20-poly1305, aes256-gcm, aes128-gcm (each @openssh.com),
+    aes256-ctr, aes192-ctr, aes128-ctr
   - KexAlgorithms: mlkem768x25519-sha256, sntrup761x25519-sha512(@openssh.com),
     curve25519-sha256(@libssh.org), diffie-hellman-group16/18-sha512
   - MACs: hmac-sha2-512-etm, hmac-sha2-256-etm, umac-128-etm (@openssh.com)
