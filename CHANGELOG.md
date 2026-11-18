@@ -6,6 +6,8 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [2.6.4] — 2026-11-17
+
 ### Added
 - The update check (menu `U`, `--check-update`) now also reads this
   project's published GitHub security advisories and warns when the running
@@ -662,7 +664,8 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
-[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.6.3...HEAD
+[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.6.4...HEAD
+[2.6.4]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.4
 [2.6.3]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.3
 [2.6.2]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.2
 [2.6.1]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.1
