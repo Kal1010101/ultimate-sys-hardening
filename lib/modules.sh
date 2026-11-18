@@ -2594,12 +2594,23 @@ apply_grub_password() {
         log_warning "GRUB is Linux-specific — skipping on ${DISTRO_TYPE}"
         return 0
     fi
-    if ! command -v grub-mkpasswd-pbkdf2 >/dev/null 2>&1; then
-        log_warning "grub-mkpasswd-pbkdf2 not found — no GRUB on this system, skipping"
+    # Debian/Ubuntu/Arch ship grub-mkpasswd-pbkdf2; Fedora, RHEL and openSUSE
+    # ship the same tool as grub2-mkpasswd-pbkdf2. Only the first was looked
+    # for, so this module skipped every RHEL-family host as "no GRUB".
+    local mkpasswd="" candidate
+    for candidate in grub-mkpasswd-pbkdf2 grub2-mkpasswd-pbkdf2; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            mkpasswd="$candidate"
+            break
+        fi
+    done
+    if [[ -z "$mkpasswd" ]]; then
+        log_warning "Neither grub-mkpasswd-pbkdf2 nor grub2-mkpasswd-pbkdf2 found — no GRUB on this system, skipping"
         return 0
     fi
+    local custom="${UH_GRUB_CUSTOM:-/etc/grub.d/40_custom}"   # UH_GRUB_CUSTOM: test hook
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would generate a GRUB PBKDF2 hash and add a superuser to /etc/grub.d/40_custom"
+        log_dry "Would generate a GRUB PBKDF2 hash with $mkpasswd and add a superuser to $custom"
         return 0
     fi
     if [[ "$AUTO_MODE" == true ]]; then
@@ -2621,7 +2632,7 @@ apply_grub_password() {
     fi
 
     local hash
-    hash=$(printf '%s\n%s\n' "$pass1" "$pass2" | grub-mkpasswd-pbkdf2 2>/dev/null \
+    hash=$(printf '%s\n%s\n' "$pass1" "$pass2" | "$mkpasswd" 2>/dev/null \
            | grep -oE 'grub\.pbkdf2\.sha512\.[^[:space:]]+' || true)
     if [[ -z "$hash" ]]; then
         log_error "Could not generate a GRUB password hash"
@@ -2629,11 +2640,11 @@ apply_grub_password() {
     fi
 
     create_backup_dir
-    backup_file /etc/grub.d/40_custom
+    backup_file "$custom"
     {
         echo 'set superusers="root"'
         echo "password_pbkdf2 root $hash"
-    } >> /etc/grub.d/40_custom
+    } >> "$custom"
 
     update-grub >>"$LOG_FILE" 2>&1 \
         || grub2-mkconfig -o /boot/grub2/grub.cfg >>"$LOG_FILE" 2>&1 \
