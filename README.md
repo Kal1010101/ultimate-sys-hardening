@@ -231,7 +231,7 @@ sudo ./src/free/ultimate_hardening.sh [OPTIONS]
   --auto-mode      Run without interactive prompts
   --safe-only      With --auto-mode, skip the two High-risk modules (9, 16)
   --dry-run        Show what would change, apply nothing
-  --cis-only       Run read-only CIS checks, print score, exit
+  --cis-only       Run read-only CIS checks, print score, exit (no root needed)
   --json           Like --cis-only, but print the results as JSON on stdout
   --sarif          Like --cis-only, but print them as SARIF 2.1.0 (code scanning)
   --skip-backup    Skip creating the backup directory (disables revert)
@@ -282,14 +282,32 @@ naming each problem, when something broke.
 
 `--json` and `--sarif` run the same read-only checks as `--cis-only` and print
 only the document on stdout; everything else goes to stderr. JSON carries the
-score and, per check, an id, title, pass/fail, detail, owning module and
-suggested fix. SARIF lists every check as a rule and each failed check as a
-result, for GitHub code scanning or any SARIF viewer:
+score and, per check, an id, title, status (`pass`, `fail` or `not_checked`),
+detail, owning module and suggested fix. SARIF lists every check as a rule and
+each failed check as a result, for GitHub code scanning or any SARIF viewer:
 
 ```bash
-sudo ./src/free/ultimate_hardening.sh --json | jq '.checks[] | select(.passed == false) | .title'
+sudo ./src/free/ultimate_hardening.sh --json | jq '.checks[] | select(.status == "fail") | .title'
 sudo ./src/free/ultimate_hardening.sh --sarif > hardening.sarif
 ```
+
+### Checking without root
+
+`--cis-only`, `--json` and `--sarif` only read, so they also run as a normal
+user, if you would rather score a system before giving the tool root:
+
+```bash
+./src/free/ultimate_hardening.sh --cis-only
+```
+
+A few checks need root to see their answer: the SSH settings where
+`sshd_config` is readable only by root (Fedora, RHEL), a firewall loaded
+without a running service (ufw, nftables), and AppArmor's enforcing profiles.
+Without root those are reported as **not checked**, never as failed, and are
+left out of the score; SARIF lists them as notes. The run log goes to
+`~/.local/state/ultimate-hardening/` instead of `/var/log`. Everything else,
+`--dry-run` included, needs root: a preview that cannot read the SSH, firewall
+and sudoers state would describe the wrong changes.
 
 Both exit 0 whatever the score, as `--cis-only` does; read the score from the
 document to gate a pipeline.

@@ -103,6 +103,10 @@ Ultimate Hardening ${UH_VERSION} — Free tier
 
 Usage: sudo $0 [OPTIONS]
 
+Everything needs root except --cis-only, --json, --sarif, --check-update,
+--version and --help. Without root, the few checks that need it are reported
+as "not checked" rather than failed.
+
   --auto-mode     Run without prompts (accepts every module)
   --safe-only     With --auto-mode, skip the High-risk modules (9, 16)
   --dry-run       Print every intended change, modify nothing
@@ -132,7 +136,8 @@ Examples:
   sudo $0 --auto-mode --dry-run    Preview a full run, change nothing
   sudo $0 --auto-mode              Apply all 23 modules
   sudo $0 --auto-mode --safe-only  Apply everything except the High-risk modules
-  sudo $0 --cis-only               Score the system, change nothing
+  $0 --cis-only                    Score the system without root, change nothing
+  sudo $0 --cis-only               The same, with the checks that need root
   sudo $0 --json > cis.json        The same checks, as JSON for scripts and CI
   sudo $0 --revert                 Undo the most recent run
   sudo $0 --auto-mode --verify     Apply, then check sshd, units and firewall
@@ -276,8 +281,20 @@ show_menu() {
     show_menu
 }
 
+# --cis-only, --json and --sarif only read, so they run without root: a check
+# that needs root reports "not checked" rather than failing. Anything else,
+# including those combined with --revert or an --aide-* action, needs root.
+needs_root() {
+    [[ "$CIS_ONLY" == true ]] || return 0
+    [[ "$REVERT_MODE" == true || "$REVERT_SUID_ONLY" == true || "$AIDE_REFRESH" == true \
+       || "$AIDE_FINGERPRINT" == true || -n "$AIDE_VERIFY" ]] && return 0
+    return 1
+}
+
 main() {
-    check_root
+    if needs_root; then
+        check_root
+    fi
     check_base_tools
 
     if [[ "$REVERT_MODE" == true ]];      then full_system_revert;  exit 0; fi

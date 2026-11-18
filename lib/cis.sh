@@ -2,11 +2,17 @@
 # =============================================================================
 #  lib/cis.sh — CIS-aligned compliance checks and revert logic
 #
-#  run_cis_checks populates three globals that reporting consumes:
-#    CHECKS_PASSED   integer
-#    CHECKS_FAILED   integer
-#    CHECK_RESULTS   array of "label|true|false|detail"
-#    CIS_SCORE       integer percentage
+#  run_cis_checks populates the globals that reporting consumes:
+#    CHECKS_PASSED     integer
+#    CHECKS_FAILED     integer
+#    CHECKS_UNCHECKED  integer
+#    CHECK_RESULTS     array of "label|state|detail", state true, false or
+#                      unchecked (a paid tier's waiver register adds waived)
+#    CIS_SCORE         integer percentage
+#
+#  "unchecked" only happens without root: a check whose answer is in a file
+#  or command only root can read says so instead of failing. It counts in
+#  neither CHECKS_PASSED nor CHECKS_FAILED, so it cannot move the score.
 #
 #  Checks are strictly read-only. Nothing here modifies the system.
 #
@@ -19,8 +25,11 @@
 
 CHECKS_PASSED=0
 CHECKS_FAILED=0
+CHECKS_UNCHECKED=0
 CIS_SCORE=0
 declare -a CHECK_RESULTS=()
+
+_cis_running_as_root() { [[ "$(_uh_euid)" -eq 0 ]]; }
 
 # Maps a check's label back to the hardening module that governs it.
 # Echoes a module key (matching MOD_KEYS in lib/menu.sh) or "" when no
@@ -93,6 +102,12 @@ _cis_remediation_hint() {
 # file on every redraw.
 record_check() {
     local label="$1" passed="$2" detail="${3:-}"
+    if [[ "$passed" == "unchecked" ]]; then
+        CHECK_RESULTS+=("${label}|unchecked|${detail}")
+        bump CHECKS_UNCHECKED
+        [[ "${UH_QUIET_CHECKS:-false}" == true ]] || log_info "  $label — not checked: $detail"
+        return 0
+    fi
     if [[ "$passed" != "true" ]]; then
         local hint; hint=$(_cis_remediation_hint "$label")
         [[ -n "$hint" ]] && detail="${detail} — ${hint}"
@@ -111,6 +126,7 @@ run_cis_checks() {
     [[ "${UH_QUIET_CHECKS:-false}" == true ]] || log_cis "Running CIS-aligned compliance checks (read-only)"
     CHECKS_PASSED=0
     CHECKS_FAILED=0
+    CHECKS_UNCHECKED=0
     CHECK_RESULTS=()
 
     # -- Filesystem separation -------------------------------------------------
@@ -142,6 +158,12 @@ run_cis_checks() {
         for spec in "${ssh_expect[@]}"; do
             local key="${spec%%:*}"; local rest="${spec#*:}"
             local want="${rest%%:*}"; local label="${rest#*:}"
+            # Mode 600 on Fedora and RHEL: unreadable without root, and every
+            # setting would otherwise read as unset and fail.
+            if [[ ! -r "$cfg" ]]; then
+                record_check "$label" "unchecked" "$cfg can only be read as root"
+                continue
+            fi
             local actual
             actual=$(grep -iE "^[[:space:]]*${key}[[:space:]]" "$cfg" 2>/dev/null | tail -1 | awk '{print $2}' || true)
             if [[ "${actual,,}" == "${want,,}" ]]; then
@@ -180,6 +202,10 @@ run_cis_checks() {
        || { command -v nft >/dev/null 2>&1 && nft list chain inet uh_filter input >/dev/null 2>&1; } \
        || is_service_active firewalld || is_service_active pf; then
         record_check "Firewall is active" "true"
+    elif ! _cis_running_as_root && { command -v ufw >/dev/null 2>&1 || command -v nft >/dev/null 2>&1; }; then
+        # ufw status and nft list need root, so a firewall loaded without a
+        # running service (ufw, module 3's nftables table) is invisible here.
+        record_check "Firewall is active" "unchecked" "no firewall service is running, and the ufw and nftables rules can only be read as root"
     else
         record_check "Firewall is active" "false" "No active firewall service detected"
     fi
@@ -235,6 +261,8 @@ run_cis_checks() {
         record_check "AppArmor is enforcing" "true"
     elif command -v getenforce >/dev/null 2>&1 && [[ "$(getenforce 2>/dev/null)" == "Enforcing" ]]; then
         record_check "SELinux is enforcing" "true"
+    elif ! _cis_running_as_root && command -v aa-status >/dev/null 2>&1; then
+        record_check "Mandatory access control is enforcing" "unchecked" "AppArmor's enforcing profiles can only be listed as root"
     else
         record_check "Mandatory access control is enforcing" "false" "Neither AppArmor nor SELinux in enforce mode"
     fi
@@ -280,10 +308,13 @@ print_cis_score() {
     echo ""
     echo -e "${CYAN}══════════════════════════════════════════════════════════════════${NC}"
     echo -e "${WHITE}  CIS Score: ${CIS_SCORE}%  (${CHECKS_PASSED}/${total} checks passed)${NC}"
-    if [[ $CHECKS_FAILED -eq 0 ]]; then
+    if [[ $CHECKS_FAILED -eq 0 && ${CHECKS_UNCHECKED:-0} -eq 0 ]]; then
         echo -e "${GREEN}  ${CHECK_MARK} All checks passed${NC}"
-    else
+    elif [[ $CHECKS_FAILED -gt 0 ]]; then
         echo -e "${YELLOW}  ${WARNING} ${CHECKS_FAILED} check(s) need attention${NC}"
+    fi
+    if [[ ${CHECKS_UNCHECKED:-0} -gt 0 ]]; then
+        echo -e "${CYAN}  ${INFO} ${CHECKS_UNCHECKED} check(s) not checked: they need root (sudo $0 --cis-only)${NC}"
     fi
     echo -e "${CYAN}══════════════════════════════════════════════════════════════════${NC}"
     return 0
@@ -295,8 +326,9 @@ print_cis_score() {
 # Both read CHECK_RESULTS after a run, so they report exactly what the terminal
 # summary would. The stored detail carries the suggested fix appended by
 # record_check; it is split back out here into its own field. A result's state
-# is true, false, or "waived" where a paid tier's waiver register rewrote it
-# (the detail then holds the waiver's justification); waived checks are in
+# is true, false, "unchecked" when it needed root and the run had none, or
+# "waived" where a paid tier's waiver register rewrote it (the detail then
+# holds the waiver's justification). Unchecked and waived checks are in
 # neither CHECKS_PASSED nor CHECKS_FAILED.
 
 UH_SARIF_SCHEMA="https://json.schemastore.org/sarif-2.1.0.json"
@@ -369,15 +401,17 @@ cis_report_json() {
     printf '  "host": %s,\n' "$(_json_string "$(hostname 2>/dev/null || echo unknown)")"
     printf '  "platform": %s,\n' "$(_json_string "${DISTRO_TYPE:-unknown}")"
     printf '  "generated": %s,\n' "$(_json_string "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
-    local waived=$(( ${#CHECK_RESULTS[@]} - total )) status
-    printf '  "score": %d,\n  "passed": %d,\n  "failed": %d,\n  "waived": %d,\n  "total": %d,\n' \
-        "$CIS_SCORE" "$CHECKS_PASSED" "$CHECKS_FAILED" "$waived" "$total"
+    local unchecked=${CHECKS_UNCHECKED:-0}
+    local waived=$(( ${#CHECK_RESULTS[@]} - total - unchecked )) status
+    printf '  "score": %d,\n  "passed": %d,\n  "failed": %d,\n  "not_checked": %d,\n  "waived": %d,\n  "total": %d,\n' \
+        "$CIS_SCORE" "$CHECKS_PASSED" "$CHECKS_FAILED" "$unchecked" "$waived" "$total"
     printf '  "checks": ['
     for entry in "${CHECK_RESULTS[@]}"; do
         _cis_split_result "$entry"
         case "$CIS_R_PASSED" in
             true)   status=pass ;;
             waived) status=waived ;;
+            unchecked) status=not_checked ;;
             *)      status=fail ;;
         esac
         printf '%s\n    {"id": %s, "title": %s, "status": "%s", "passed": %s, "detail": %s, "module": %s, "remediation": %s}' \
@@ -405,15 +439,21 @@ cis_report_sarif() {
         rule_sep=","
         [[ "$CIS_R_PASSED" == true ]] && continue
         location=$(_cis_check_location "$CIS_R_LABEL" "$CIS_R_DETAIL")
-        local message="$CIS_R_LABEL: ${CIS_R_DETAIL}" suppression=""
+        local message="$CIS_R_LABEL: ${CIS_R_DETAIL}" suppression="" level=warning
         [[ -n "$CIS_R_HINT" ]] && message+=". ${CIS_R_HINT}"
+        # Not a finding either way: a note, so code scanning shows the gap
+        # without counting it as a failure.
+        if [[ "$CIS_R_PASSED" == unchecked ]]; then
+            message="$CIS_R_LABEL: not checked, $CIS_R_DETAIL"
+            level=note
+        fi
         # A waived check stays a finding, marked as accepted, with the
         # waiver's justification: what SARIF calls an external suppression.
         if [[ "$CIS_R_PASSED" == waived ]]; then
             message="$CIS_R_LABEL: waived"
             suppression=", \"suppressions\": [{\"kind\": \"external\", \"justification\": $(_json_string "$CIS_R_DETAIL")}]"
         fi
-        results+="${result_sep}"$'\n'"        {\"ruleId\": $(_json_string "$id"), \"level\": \"warning\", \"message\": {\"text\": $(_json_string "$message")}, \"locations\": [{\"physicalLocation\": {\"artifactLocation\": {\"uri\": $(_json_string "file://${location}")}}}]${suppression}}"
+        results+="${result_sep}"$'\n'"        {\"ruleId\": $(_json_string "$id"), \"level\": \"$level\", \"message\": {\"text\": $(_json_string "$message")}, \"locations\": [{\"physicalLocation\": {\"artifactLocation\": {\"uri\": $(_json_string "file://${location}")}}}]${suppression}}"
         result_sep=","
     done
     printf '{\n'

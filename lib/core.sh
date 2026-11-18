@@ -44,6 +44,15 @@ ROCKET="🚀";    UNDO="↩️";      CIS_ICON="📊"; DB_ICON="🗄️"; NET_IC
 # backup it is restoring from.
 : "${UH_TIER:=free}"
 
+# /var/log is root-only, and the read-only checks run without root, so a
+# normal user's run logs under their own state directory instead.
+if [[ -z "${LOG_FILE:-}" && "${EUID:-$(id -u)}" -ne 0 && -n "${HOME:-}" ]]; then
+    _uh_user_log_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ultimate-hardening"
+    if mkdir -p "$_uh_user_log_dir" 2>/dev/null && chmod 700 "$_uh_user_log_dir" 2>/dev/null; then
+        LOG_FILE="$_uh_user_log_dir/ultimate_hardening_$(date +%Y%m%d_%H%M%S).log"
+    fi
+    unset _uh_user_log_dir
+fi
 : "${LOG_FILE:=/var/log/ultimate_hardening_$(date +%Y%m%d_%H%M%S).log}"
 
 # The run log records every file touched, every service stopped and the full

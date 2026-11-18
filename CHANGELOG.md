@@ -48,6 +48,14 @@ and the project follows [Semantic Versioning](https://semver.org).
 - CI now audits the workflow files with zizmor. Its findings are fixed: no
   checkout leaves the git token on disk (`persist-credentials: false`), and
   the release build no longer uses the Go cache.
+- `--cis-only`, `--json` and `--sarif` run without root. A check that needs
+  root to see its answer (SSH settings where `sshd_config` is root-only, as
+  on Fedora and RHEL; a firewall loaded without a running service; AppArmor's
+  enforcing profiles) is reported as not checked instead of failed, and is
+  left out of the score. JSON gives each check a `not_checked` status and a
+  `not_checked` count; SARIF lists those checks as notes. A normal user's run
+  log goes to `~/.local/state/ultimate-hardening/`. Every other mode,
+  `--dry-run` included, still needs root.
 
 ### Fixed
 - Module 16 (GRUB password) skipped every Fedora, RHEL and openSUSE host
