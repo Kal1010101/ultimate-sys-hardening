@@ -27,9 +27,10 @@ UH="$REPO/src/free/ultimate_hardening.sh"
 OUT="${1:?usage: sudo $0 <output-dir> [choice...]}"
 shift
 
-# Every choice the main menu offers, unless the caller named some. 23/24 are
-# included because in --dry-run they only print what they would do.
-CHOICES=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 C U R S)
+# Every choice the main menu offers, unless the caller named some. The two
+# apply-all entries (24/25) are included because in --dry-run they only print
+# what they would do.
+CHOICES=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 C U R S)
 (( $# )) && CHOICES=("$@")
 
 # Seconds to wait for the menu to draw, and for one choice to finish. A choice

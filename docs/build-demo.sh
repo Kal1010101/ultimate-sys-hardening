@@ -34,9 +34,9 @@ rec_dir, page = pathlib.Path(sys.argv[1]), sys.argv[2]
 
 # Choices in menu order, and the short labels for the buttons under the
 # terminal: the paths a first-time visitor most wants to see.
-ORDER = [str(n) for n in range(1, 25)] + ["C", "U", "R", "S"]
+ORDER = [str(n) for n in range(1, 26)] + ["C", "U", "R", "S"]
 QUICK = [("2", "SSH hardening"), ("3", "Firewall"), ("6", "Kernel & network"),
-         ("23", "Apply all safe"), ("C", "Compliance check"), ("R", "Revert")]
+         ("24", "Apply all safe"), ("C", "Compliance check"), ("R", "Revert")]
 
 CLEAR = "\x1b[H\x1b[2J\x1b[3J"
 SGR = re.compile(r"\x1b\[([0-9;]*)m")
