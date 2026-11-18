@@ -1,0 +1,42 @@
+name: zizmor
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ '.github/**' ]
+  pull_request:
+    paths: [ '.github/**' ]
+  schedule:
+    - cron: '41 5 * * 1'
+  workflow_dispatch:
+
+# zizmor audits the workflow files themselves for known GitHub Actions
+# security mistakes: template injection, credentials left on disk after
+# checkout, cache poisoning in release jobs, over-broad tokens, unpinned
+# actions and more. Any finding fails the job. The weekly run is a backstop
+# for a workflow change that reached main without passing through this job.
+#
+# Offline mode: only the files are audited, so no token is needed. pipx is
+# preinstalled on the runner and keeps zizmor out of the system Python. It is
+# pinned to an exact version; bump it by hand, as with the go install tools in
+# secrets.yml (Dependabot does not cover it).
+
+# Read-only token: this job only reads the repository.
+permissions:
+  contents: read
+
+jobs:
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install zizmor
+        run: pipx install 'zizmor==1.32.0'
+
+      - name: Audit the workflows
+        run: ~/.local/bin/zizmor --offline --format github .github/workflows/

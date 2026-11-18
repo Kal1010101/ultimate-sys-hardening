@@ -27,6 +27,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install ShellCheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
@@ -45,3 +47,7 @@ jobs:
       # in test-matrix.yml.
       - name: Publication guard
         run: REPO_ROOT="$PWD" bash tests/cases/test_publication_guard.sh
+
+      # Needs git, which the matrix containers lack, like the guard above.
+      - name: PR risk check script
+        run: REPO_ROOT="$PWD" bash tests/cases/test_pr_risk_check.sh

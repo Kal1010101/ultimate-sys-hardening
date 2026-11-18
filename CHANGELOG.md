@@ -6,6 +6,17 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Changed
+- CI now runs a PR risk check on every pull request
+  (`scripts/pr-risk-check.sh`). It marks the parts a reviewer must read
+  closely, such as changes to CI, packaging, install and update code, binary
+  files, symlinks, new executables, encoded blobs, network calls and
+  eval/exec, and it fails on hidden or bidirectional Unicode. The script is
+  taken from `main`, so a PR cannot change the check that checks it.
+- CI now audits the workflow files with zizmor. Its findings are fixed: no
+  checkout leaves the git token on disk (`persist-credentials: false`), and
+  the release build no longer uses the Go cache.
+
 ## [2.6.4] — 2026-11-17
 
 ### Added

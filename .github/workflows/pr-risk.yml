@@ -1,0 +1,45 @@
+name: PR risk check
+
+on:
+  pull_request:
+    branches: [ main ]
+
+# Flags the parts of a pull request a reviewer must read closely: changes to
+# CI, packaging, install and update code, binary files, symlinks, new
+# executables, encoded blobs, new network calls and eval/exec. Hidden or
+# bidirectional Unicode fails the check outright. It flags; it does not
+# decide, and a person still reads every code change before merging.
+#
+# Trust: the PR's files are only read, never run. The check script itself is
+# taken from the base commit (main), not from the PR, so a PR cannot edit the
+# check that checks it. pull_request (not pull_request_target) keeps fork PRs
+# on a read-only token with no secrets.
+#
+# Runner policy, as in shellcheck.yml: pin the runner image and actions to a
+# full commit SHA, never ubuntu-latest.
+
+# Read-only token: this job only reads the repository.
+permissions:
+  contents: read
+
+jobs:
+  pr-risk:
+    name: PR risk check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Flag risky changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          checker="$RUNNER_TEMP/pr-risk-check.sh"
+          git show "$BASE_SHA:scripts/pr-risk-check.sh" > "$checker" \
+            || { echo "::error::scripts/pr-risk-check.sh is missing on the base branch"; exit 1; }
+          bash "$checker" "$BASE_SHA" "$HEAD_SHA"
