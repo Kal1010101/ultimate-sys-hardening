@@ -31,7 +31,10 @@ and the project follows [Semantic Versioning](https://semver.org).
   IPv6 address from them.
 - Module 7: the CIS 6.3.3 audit rule groups, for 32- and 64-bit syscalls,
   each syscall checked against the kernel's table so `auditctl` loads the
-  whole file. `UH_AUDIT_IMMUTABLE=true` locks the rules until reboot.
+  whole file. Privileged-program rules cover root-owned setuid and setgid
+  files with plain names only, so a file a user names to look like rule
+  options cannot stop the rest loading. `UH_AUDIT_IMMUTABLE=true` locks the
+  rules until reboot.
 - Module 19: ATM, CAN and FireWire are blacklisted (STIG), Bluetooth too with
   `UH_BLACKLIST_BLUETOOTH=true`.
 
