@@ -1608,8 +1608,18 @@ _audit_syscall_known() {
 
 # Setuid and setgid programs on the local root and /usr filesystems, one
 # exec rule each (CIS: privileged commands).
+#
+# Root-owned only, and only names of plain printable characters. Any user can
+# set the setuid bit on a file of their own, and auditctl splits a rule on
+# whitespace: a file named "x -F bogus=1" in a home directory broke its rule,
+# auditctl -R stopped there, and every rule after it (sudo, su, passwd, and
+# the -e 2 lock) never loaded, at every boot. A setuid file a user owns
+# grants nothing, so it needs no rule.
 _audit_privileged_programs() {
-    find / /usr -xdev -type f \( -perm -4000 -o -perm -2000 \) 2>/dev/null | sort -u
+    local path
+    while IFS= read -r -d '' path; do
+        [[ "$path" =~ ^/[[:graph:]]+$ ]] && printf '%s\n' "$path"
+    done < <(find / /usr -xdev -type f -uid 0 \( -perm -4000 -o -perm -2000 \) -print0 2>/dev/null) | sort -u
 }
 
 _audit_uid_min() {

@@ -45,6 +45,20 @@ else
     pass_msg "aarch64 b64 rules leave out the legacy syscalls"
 fi
 
+# A setuid file named to inject auditctl options must not reach the rules:
+# auditctl -R stops at the first bad line, so one planted name used to stop
+# every privileged-program rule (and -e 2) from loading. Only root-owned files
+# with plain names are kept; find is a stub that also checks -uid 0 is asked.
+priv=$(gen 'find() {
+    [[ " $* " == *" -uid 0 "* ]] || { printf "%s\0" "/home/u/notroot"; return 0; }
+    printf "%s\0" "/usr/bin/sudo" "/home/u/x -F bogus=1" "/tmp/a
+-e 0" "/usr/bin/passwd"
+}')
+grep -q -- '-F path=/usr/bin/sudo ' <<< "$priv" && grep -q -- '-F path=/usr/bin/passwd ' <<< "$priv" \
+    && pass_msg "root-owned privileged programs get rules" || fail "privileged programs missing"
+grep -qE 'bogus|notroot|^-e 0|path=/tmp/a' <<< "$priv" && fail "a planted name reached the audit rules: $(grep -E 'bogus|notroot|-e 0|/tmp/a' <<< "$priv" | head -2)" \
+    || pass_msg "names with spaces or newlines, and files not owned by root, are left out"
+
 # auditctl itself, where the container may load rules (needs CAP_AUDIT_CONTROL).
 if command -v auditctl >/dev/null 2>&1 && auditctl -s >/dev/null 2>&1; then
     f=$(mktemp); printf '%s\n' "$rules" > "$f"
