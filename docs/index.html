@@ -466,7 +466,7 @@
       <div class="card"><h3><span class="ico">🧬</span> PAM-safe by design</h3>
         <p>Password policy is set in <code class="inline">/etc/login.defs</code> only. Nothing under <code class="inline">/etc/pam.d</code> is ever modified.</p></div>
       <div class="card"><h3><span class="ico">📡</span> No telemetry, no phone-home</h3>
-        <p>Nothing is ever sent anywhere about your hosts. In the free tier the only outbound request is the optional, explicitly-invoked update check against the GitHub API. The paid tiers can additionally <em>download</em> public vulnerability data — your distro's security feed, and the CISA KEV and EPSS lists — but only when you pass <code class="inline">--cve-feeds</code> or <code class="inline">--cve-enrich</code>, which are off by default. Those are inbound fetches of public files; no query carries anything identifying. Enterprise GitOps fetches policy only from the git repository you name.</p></div>
+        <p>Nothing is ever sent anywhere about your hosts. In the free tier the only outbound traffic is the optional, explicitly-invoked update check against the GitHub API, which asks for the latest release and this project's published security advisories. The paid tiers can additionally <em>download</em> public vulnerability data — your distro's security feed, and the CISA KEV and EPSS lists — but only when you pass <code class="inline">--cve-feeds</code> or <code class="inline">--cve-enrich</code>, which are off by default. Those are inbound fetches of public files; no query carries anything identifying. Enterprise GitOps fetches policy only from the git repository you name.</p></div>
       <div class="card"><h3><span class="ico">🔍</span> Readable and reviewed</h3>
         <p>Plain Bash, MIT licensed, ShellCheck-clean in CI on every push, tested in fresh containers on 10 distros across the Debian, RHEL, Fedora, Arch and Alpine families.</p></div>
     </div>
@@ -712,7 +712,8 @@
     <details><summary>Does it send any data anywhere?</summary>
       <p>No. There is no telemetry, analytics or licence phone-home, in any tier — nothing about your
       hosts leaves them. In the free tier the only outbound request is the optional update check you
-      invoke yourself from the menu, which queries the public GitHub API. Everything else is local.</p>
+      invoke yourself from the menu, which asks the public GitHub API for the latest release and for
+      this project's published security advisories. Everything else is local.</p>
       <p>The Pro and Enterprise CVE features default to your own package manager's repository
       metadata, so they need no new network access at all. Two optional flags will download public
       files if you ask for them — <code class="inline">--cve-feeds</code> for your distro's security

@@ -117,7 +117,8 @@ Usage: sudo $0 [OPTIONS]
                   Record the fingerprint of the current AIDE baseline
   --aide-verify <hash|file>
                   Check the AIDE baseline against a fingerprint kept elsewhere
-  --check-update  Check GitHub for a newer release, then exit
+  --check-update  Check GitHub for a newer release and for security advisories
+                  that affect this version, then exit
   --version       Print version and exit
   --help          Show this help
 
@@ -294,7 +295,7 @@ main() {
     # The update check is explicitly-invoked only (menu option U, or
     # --check-update) — never automatic. That's a documented trust claim
     # on the project site ("no telemetry, no network calls... the only
-    # outbound request is the optional, explicitly-invoked update check"),
+    # outbound traffic is the optional, explicitly-invoked update check"),
     # so it must never fire silently at startup.
     trap 'echo -e "\n${RED}Interrupted.${NC}"; exit 130' INT TERM
     show_menu

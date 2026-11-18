@@ -6,6 +6,13 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+- The update check (menu `U`, `--check-update`) now also reads this
+  project's published GitHub security advisories and warns when the running
+  version is affected, with the advisory, its severity, the fixed version and
+  a link. It still runs only when you ask for it; it now makes two requests
+  to the public GitHub API instead of one.
+
 ### Fixed
 - The run log is now opened after the library resets `PATH`. A caller whose
   `PATH` lacked `dirname` or `readlink` (a stripped cron or test environment)

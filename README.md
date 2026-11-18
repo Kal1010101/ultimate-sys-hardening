@@ -170,7 +170,8 @@ Here's what it does and doesn't do:
 
 - **No telemetry.** No analytics, no phone-home. The only outbound traffic
   is your own package manager, plus the update check if you run it from the
-  menu or with `--check-update` (one request to the public GitHub API).
+  menu or with `--check-update` (two requests to the public GitHub API: the
+  latest release, and this project's published security advisories).
 - **Backup before write.** Everything modified is copied to
   `/root/hardening_backup_<timestamp>_<tier>/` before the first change, with a
   manifest recording which tier and version wrote it.
@@ -240,7 +241,8 @@ sudo ./src/free/ultimate_hardening.sh [OPTIONS]
                    Record the fingerprint of the current AIDE baseline
   --aide-verify <hash|file>
                    Check the AIDE baseline against a fingerprint kept elsewhere
-  --check-update   Check GitHub for a newer release, then exit
+  --check-update   Check GitHub for a newer release and for published security
+                   advisories that affect this version, then exit
   --version        Print version and exit
   --help           Show this help
 ```
