@@ -49,6 +49,12 @@ and the project follows [Semantic Versioning](https://semver.org).
   checkout leaves the git token on disk (`persist-credentials: false`), and
   the release build no longer uses the Go cache.
 
+### Fixed
+- Module 16 (GRUB password) skipped every Fedora, RHEL and openSUSE host
+  with "no GRUB on this system". It looked only for `grub-mkpasswd-pbkdf2`,
+  and those distributions name the tool `grub2-mkpasswd-pbkdf2`. Both names
+  are now found.
+
 ## [2.6.4] — 2026-11-17
 
 ### Added
