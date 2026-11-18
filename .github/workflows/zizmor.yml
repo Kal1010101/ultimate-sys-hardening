@@ -17,7 +17,8 @@ on:
 # for a workflow change that reached main without passing through this job.
 #
 # Offline mode: only the files are audited, so no token is needed. pipx is
-# preinstalled on the runner and keeps zizmor out of the system Python. It is
+# preinstalled on the runner, keeps zizmor out of the system Python and puts
+# it on the PATH (the runner sets its own pipx bin directory). It is
 # pinned to an exact version; bump it by hand, as with the go install tools in
 # secrets.yml (Dependabot does not cover it).
 
@@ -39,4 +40,4 @@ jobs:
         run: pipx install 'zizmor==1.32.0'
 
       - name: Audit the workflows
-        run: ~/.local/bin/zizmor --offline --format github .github/workflows/
+        run: zizmor --offline --format github .github/workflows/
