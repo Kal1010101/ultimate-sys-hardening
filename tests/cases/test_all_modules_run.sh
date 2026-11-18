@@ -1,13 +1,13 @@
 #!/bin/bash
-# The full run must reach every one of the 22 modules.
+# The full run must reach every one of the 23 modules.
 # This is the regression test for the set -e early-exit class of bug.
 source "${REPO_ROOT:-/repo}/tests/lib/assert.sh"
 require_root
 
 out=$(run_hardening --auto-mode --dry-run)
 
-for n in $(seq 1 22); do
-    assert_output_contains "$out" "\[$n/22\]" "module $n/22 executed"
+for n in $(seq 1 23); do
+    assert_output_contains "$out" "\[$n/23\]" "module $n/23 executed"
 done
 
 # Modules 16-22 were dropped by the lib/ refactor and restored in v2.3.0.
@@ -22,5 +22,6 @@ assert_output_contains "$out" "cramfs"      "module 19 previews filesystem black
 assert_output_contains "$out" "compiler|gcc" "module 20 previews compiler restriction"
 assert_output_contains "$out" "syslog"      "module 21 previews remote syslog"
 assert_output_contains "$out" "umask"       "module 22 previews umask hardening"
+assert_output_contains "$out" "/dev/shm|Base System" "module 23 previews the base system work"
 
 finish

@@ -504,6 +504,11 @@ module_dependencies() {
         echo "apparmor:apparmor-utils"
     fi
     echo "etckeeper:etckeeper"
+    # Module 23 installs chrony only where no time daemon runs and systemd has
+    # no timesyncd to turn on.
+    if declare -F _time_sync_running >/dev/null && ! _time_sync_running >/dev/null && ! _has_timesyncd; then
+        echo "basesys:chrony"
+    fi
     if command -v apache2 >/dev/null 2>&1 || command -v httpd >/dev/null 2>&1; then
         case "$distro" in
             debian) echo "modsec:libapache2-mod-security2" ;;

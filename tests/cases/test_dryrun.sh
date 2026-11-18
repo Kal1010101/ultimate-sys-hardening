@@ -51,7 +51,7 @@ suid_before=$(find / -xdev -perm -4000 -type f 2>/dev/null | sort | sha256sum | 
 out=$(run_hardening --auto-mode --dry-run)
 
 # ---- The run must reach the end, not die partway through --------------------
-assert_output_contains "$out" "\[22/22\]"      "dry-run reaches the final module"
+assert_output_contains "$out" "\[23/23\]"      "dry-run reaches the final module"
 assert_output_contains "$out" "DRY.RUN"        "dry-run mode is announced"
 
 # ---- And it must not claim anything was done ---------------------------------

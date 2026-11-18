@@ -6,6 +6,35 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+- Module 23, Base system: `/dev/shm` mounted nodev,nosuid,noexec (CIS
+  1.1.2.2.x; the fstab line is checked with `findmnt --verify` first), time
+  sync turned on where nothing syncs time (systemd-timesyncd, else chrony),
+  and sudo `use_pty` and `logfile` (CIS 5.2.2, 5.2.3) in a drop-in that
+  `visudo` must accept, only where sudoers reads `/etc/sudoers.d`. Its own
+  revert and the full revert put fstab and the mount options back, return
+  the time daemon to its earlier state and remove the drop-in. The menu's
+  "apply all" entries move to 24 and 25.
+- `--verify`: a health check after hardening (sshd running and listening,
+  no newly failed systemd unit, firewall loaded where expected). Exit
+  status 20 when it finds a problem.
+- Module 2 writes an allowlist of ciphers, key exchange, MACs and host key
+  algorithms (CIS 5.1.x), limited to what the installed OpenSSH supports, so
+  post-quantum key exchange is used where OpenSSH has it. Hosts with
+  crypto-policies (RHEL, Fedora) keep the system policy.
+- Module 4: repeat bans grow longer (fail2ban 0.11 and later, up to a week),
+  a recidive jail, and nginx, Apache and Postfix jails where those are
+  installed with a log to read. `fail2ban-client -t` must accept the jails,
+  or the module keeps the SSH jail alone.
+- Module 6: 9 more sysctl parameters (36 in all), each with its CIS or STIG
+  source in the file. IPv6 router adverts are left on where the host gets its
+  IPv6 address from them.
+- Module 7: the CIS 6.3.3 audit rule groups, for 32- and 64-bit syscalls,
+  each syscall checked against the kernel's table so `auditctl` loads the
+  whole file. `UH_AUDIT_IMMUTABLE=true` locks the rules until reboot.
+- Module 19: ATM, CAN and FireWire are blacklisted (STIG), Bluetooth too with
+  `UH_BLACKLIST_BLUETOOTH=true`.
+
 ### Changed
 - CI now runs a PR risk check on every pull request
   (`scripts/pr-risk-check.sh`). It marks the parts a reviewer must read

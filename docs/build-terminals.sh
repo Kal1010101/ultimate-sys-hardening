@@ -92,8 +92,8 @@ block_modules() {
         echo ""
         render_module_list
         echo ""
-        printf "  ${WHITE}%2s)${NC} %s\n" 23 "Apply all Safe/Medium modules (skip High risk)"
-        printf "  ${WHITE}%2s)${NC} %s\n" 24 "Apply all ${#MOD_KEYS[@]} modules (includes High risk)"
+        printf "  ${WHITE}%2s)${NC} %s\n" $(( ${#MOD_KEYS[@]} + 1 )) "Apply all Safe/Medium modules (skip High risk)"
+        printf "  ${WHITE}%2s)${NC} %s\n" $(( ${#MOD_KEYS[@]} + 2 )) "Apply all ${#MOD_KEYS[@]} modules (includes High risk)"
         printf "  ${WHITE}%2s)${NC} %s\n"  C "Run compliance checks (read-only)"
         printf "  ${WHITE}%2s)${NC} %s\n"  R "Revert everything from backup"
         printf "  ${WHITE}%2s)${NC} %s\n"  Q "Quit"

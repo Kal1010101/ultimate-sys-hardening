@@ -63,9 +63,20 @@ for fs in "${CIS_FS[@]}"; do
     assert_file_contains "$fs_conf" "^blacklist ${fs}$"          "$fs is blacklisted by name"
 done
 assert_file_contains "$fs_conf" "^blacklist squashfs$" "squashfs is blacklisted when nothing needs it"
-for p in dccp sctp rds tipc; do
+for p in dccp sctp rds tipc atm can; do
     assert_file_contains "$proto_conf" "^blacklist ${p}$" "$p is blacklisted by name"
 done
+hw_conf="$W/modprobe.d/disable-unused-hardware.conf"
+assert_file_contains "$hw_conf" "^install firewire-core /bin/false$" "firewire-core autoload is disabled"
+assert_file_contains "$hw_conf" "^blacklist firewire-core$" "firewire-core is blacklisted by name"
+assert_file_not_contains "$hw_conf" "bluetooth" "bluetooth stays loadable unless asked for"
+
+# --- bluetooth is an opt-in ---------------------------------------------------
+out=$(run_mod "_squashfs_required() { return 1; }; UH_BLACKLIST_BLUETOOTH=true")
+assert_file_contains "$hw_conf" "^blacklist bluetooth$" "UH_BLACKLIST_BLUETOOTH=true blacklists bluetooth"
+out=$(run_mod "_squashfs_required() { return 1; }; UH_BLACKLIST_BLUETOOTH=maybe")
+assert_file_not_contains "$hw_conf" "bluetooth" "an invalid UH_BLACKLIST_BLUETOOTH leaves bluetooth alone"
+assert_output_contains "$out" "UH_BLACKLIST_BLUETOOTH='maybe' is not true/false" "and says why"
 # `install X /bin/false` alone still allows an explicit `modprobe X`; CIS asks
 # for both lines, and the original file had only the first.
 assert_file_contains "$proto_conf" "^install dccp /bin/false$" "protocols keep their install directive too"
@@ -113,7 +124,7 @@ cis=$(bash -c "set -uo pipefail
     DISTRO_TYPE=debian; _squashfs_required() { return 1; }
     modprobe() {
         [[ \"\$1\" == --showconfig ]] || return 0
-        for m in dccp sctp rds tipc cramfs freevxfs hfs hfsplus jffs2 squashfs udf; do echo \"blacklist \$m\"; done
+        for m in dccp sctp rds tipc atm can cramfs freevxfs hfs hfsplus jffs2 squashfs udf; do echo \"blacklist \$m\"; done
         local i; for ((i = 0; i < 40000; i++)); do echo \"alias pci:v\${i}d* some_driver\"; done
     }
     run_cis_checks" 2>&1)

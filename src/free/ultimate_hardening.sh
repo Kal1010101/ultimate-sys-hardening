@@ -5,7 +5,7 @@
 #  CIS-aligned Linux hardening with backup, dry-run, and full revert.
 #
 #  This is the open tier: MIT licensed, with no expiry and no feature clock —
-#  all 22 modules, the CIS checks, dry-run and full revert. It's also an
+#  all 23 modules, the CIS checks, dry-run and full revert. It's also an
 #  early-stage project: the module set will keep growing, and the
 #  Pro/Enterprise tiers build reporting, fleet tooling and extra modules on
 #  top of this same engine. Issues and PRs welcome.
@@ -93,6 +93,7 @@ REVERT_SUID_ONLY=false
 AIDE_REFRESH=false
 AIDE_FINGERPRINT=false
 AIDE_VERIFY=""
+VERIFY=false
 SAFE_ONLY=false
 REPORT_FORMAT=""
 
@@ -117,6 +118,10 @@ Usage: sudo $0 [OPTIONS]
                   Record the fingerprint of the current AIDE baseline
   --aide-verify <hash|file>
                   Check the AIDE baseline against a fingerprint kept elsewhere
+  --verify        Check the host is still healthy: sshd running and listening,
+                  no systemd unit failed since the last run, a firewall loaded
+                  where one was before or module 3 ran. After --auto-mode it
+                  runs once the modules finish. Changes nothing.
   --check-update  Check GitHub for a newer release and for security advisories
                   that affect this version, then exit
   --version       Print version and exit
@@ -125,14 +130,16 @@ Usage: sudo $0 [OPTIONS]
 Examples:
   sudo $0                          Interactive menu
   sudo $0 --auto-mode --dry-run    Preview a full run, change nothing
-  sudo $0 --auto-mode              Apply all 22 modules
+  sudo $0 --auto-mode              Apply all 23 modules
   sudo $0 --auto-mode --safe-only  Apply everything except the High-risk modules
   sudo $0 --cis-only               Score the system, change nothing
   sudo $0 --json > cis.json        The same checks, as JSON for scripts and CI
   sudo $0 --revert                 Undo the most recent run
+  sudo $0 --auto-mode --verify     Apply, then check sshd, units and firewall
 
 Exit status: 0 done; 10 done, but the kernel was upgraded and a reboot is
-required (unattended runs never reboot).
+required (unattended runs never reboot); 20 the --verify health check found a
+problem (it prints which).
 
 This tier is the hardening engine. Pro adds compliance reports, scheduled
 runs, and email alerts; Enterprise adds a multi-host dashboard, remote deploy,
@@ -159,6 +166,7 @@ while [[ $# -gt 0 ]]; do
             [[ -n "${2:-}" ]] || \
                 { echo -e "${RED}--aide-verify requires a fingerprint or a fingerprint file${NC}" >&2; exit 1; }
             AIDE_VERIFY="$2"; shift ;;
+        --verify)      VERIFY=true ;;
         --check-update) check_for_updates; exit 0 ;;
         --version)     echo "Ultimate Hardening ${UH_VERSION} (Free)"; exit 0 ;;
         --help|-h)     usage; exit 0 ;;
@@ -170,6 +178,14 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
+
+# --verify without --auto-mode only checks. It still needs the platform
+# detected without the interactive distro menu.
+VERIFY_ONLY=false
+if [[ "$VERIFY" == true && "$AUTO_MODE" != true ]]; then
+    VERIFY_ONLY=true
+    UH_AUTODETECT_PLATFORM=true
+fi
 
 # A report goes to stdout alone: everything else the run prints (platform
 # detection, warnings) moves to stderr, and the report is written to fd 3.
@@ -203,8 +219,8 @@ show_menu() {
     echo ""
     render_module_list
     echo ""
-    printf "  ${WHITE}%2s)${NC} %s\n"  23 "Apply all Safe/Medium modules (skip High risk)"
-    printf "  ${WHITE}%2s)${NC} %s\n"  24 "Apply all 22 modules (includes High risk)"
+    printf "  ${WHITE}%2s)${NC} %s\n"  24 "Apply all Safe/Medium modules (skip High risk)"
+    printf "  ${WHITE}%2s)${NC} %s\n"  25 "Apply all 23 modules (includes High risk)"
     printf "  ${WHITE}%2s)${NC} %s\n"  C "Run compliance checks (read-only)"
     printf "  ${WHITE}%2s)${NC} %s\n"  U "Check for updates"
     printf "  ${WHITE}%2s)${NC} %s\n"  R "Revert everything from backup"
@@ -238,8 +254,9 @@ show_menu() {
         20) dispatch_module_choice compiler  apply_compiler_restriction ;;
         21) dispatch_module_choice syslog    apply_remote_syslog ;;
         22) dispatch_module_choice umask     apply_umask_hardening ;;
-        23) confirm "Apply all Safe/Medium modules (skip High risk)?" && apply_safe_modules ;;
-        24) confirm "Apply all 22 modules, including the High-risk ones?" && apply_all_modules ;;
+        23) dispatch_module_choice basesys   apply_base_system ;;
+        24) confirm "Apply all Safe/Medium modules (skip High risk)?" && apply_safe_modules ;;
+        25) confirm "Apply all 23 modules, including the High-risk ones?" && apply_all_modules ;;
         C|c) run_cis_checks ;;
         U|u) check_for_updates ;;
         # Both return 1 when there is nothing to revert (they log why); under
@@ -280,6 +297,12 @@ main() {
         exit 0
     fi
 
+    # --verify on its own checks and exits; it applies nothing.
+    if [[ "$VERIFY" == true && "$VERIFY_ONLY" == true ]]; then
+        verify_health && exit 0
+        exit "$UH_EXIT_VERIFY_FAILED"
+    fi
+
     refuse_changes_on_macos
 
     if [[ "$AUTO_MODE" == true ]]; then
@@ -289,6 +312,9 @@ main() {
             apply_all_modules
         fi
         run_cis_checks
+        if [[ "$VERIFY" == true ]] && ! verify_health; then
+            exit "$UH_EXIT_VERIFY_FAILED"
+        fi
         exit "$(uh_exit_status)"
     fi
 

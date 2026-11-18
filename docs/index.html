@@ -6,7 +6,7 @@
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ultimate Hardening — CIS-aligned Linux security automation</title>
-<meta name="description" content="Open-source Linux hardening automation for Debian, Ubuntu, RHEL, Arch, SUSE, Alpine and more, plus macOS and the BSDs. 22 security modules, dry-run preview, full revert, PAM-safe. Pro and Enterprise tiers, coming soon, add reporting, scheduling, OpenSCAP CIS/STIG scanning and multi-host compliance.">
+<meta name="description" content="Open-source Linux hardening automation for Debian, Ubuntu, RHEL, Arch, SUSE, Alpine and more, plus macOS and the BSDs. 23 security modules, dry-run preview, full revert, PAM-safe. Pro and Enterprise tiers, coming soon, add reporting, scheduling, OpenSCAP CIS/STIG scanning and multi-host compliance.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>">
 <style>
   :root{
@@ -168,7 +168,7 @@
   /* ---------- hero screenshot ---------- */
   /* This was a hand-written HTML replica of the menu. It drifted: it offered
      "16) Apply all Safe/Medium", the numbering from back when the tool had 15
-     modules, directly under a badge reading "22 modules". A real screenshot
+     modules, directly under a badge with the current count. A real screenshot
      cannot drift. */
   .term-shot{
     display:block;width:100%;padding:14px 16px 18px;border:0;
@@ -280,14 +280,14 @@
   <p class="sub">
     CIS-aligned security automation for Debian, RHEL, Arch, SUSE, Alpine, Void, Gentoo
     and NixOS, plus macOS and the BSDs.
-    22 hardening modules, a preview mode that shows every change before it happens,
+    23 hardening modules, a preview mode that shows every change before it happens,
     and a full revert path for when something goes wrong.
   </p>
 
   <div class="badges">
     <span class="badge ok">v2.6.4</span>
     <span class="badge ok">ShellCheck clean</span>
-    <span class="badge">22 modules</span>
+    <span class="badge">23 modules</span>
     <span class="badge">26 platforms</span>
     <span class="badge">MIT licensed</span>
     <!-- A text link, not the official badge image: the CSP's img-src allows
@@ -345,9 +345,10 @@
   20) Compiler access restriction      <span class="c-a">(Medium)</span>  <span class="c-a">[disable]</span>
   21) Remote syslog                    <span class="c-g">(Safe)  </span>  <span class="c-a">[disable]</span>
   22) UMASK hardening                  <span class="c-g">(Safe)  </span>  <span class="c-g">[enable ]</span>
+  23) Base system (shm, time, sudo)    <span class="c-a">(Medium)</span>  <span class="c-g">[enable ]</span>
 
-  <span class="c-w">23)</span> Apply all Safe/Medium modules (skip High risk)
-  <span class="c-w">24)</span> Apply all 22 modules (includes High risk)
+  <span class="c-w">24)</span> Apply all Safe/Medium modules (skip High risk)
+  <span class="c-w">25)</span> Apply all 23 modules (includes High risk)
   <span class="c-w"> C)</span> Run compliance checks (read-only)
   <span class="c-w"> R)</span> Revert everything from backup
   <span class="c-w"> Q)</span> Quit
@@ -514,14 +515,14 @@
     <p class="lede" style="margin-bottom:34px">
       What costs money is everything around the hardening: proving the work happened, repeating it on a schedule, and doing it across
       more machines than you can log into by hand. One server and an evening? The
-      free tier's 22 modules are the same engine the paid tiers run on.
+      free tier's 23 modules are the same engine the paid tiers run on.
     </p>
 
     <figure class="shot shot-wide">
       <button type="button" data-full="images/menu-pro.png" aria-label="Enlarge: the Pro tier menu">
-        <img src="images/menu-pro.png" alt="The Pro tier menu: the same 22 free core hardening modules in one panel, and a second panel of Pro-only features including CIS auto-fix, HTML compliance reports, AI directory locking, scheduling and email notifications." loading="lazy" width="729" height="1276">
+        <img src="images/menu-pro.png" alt="The Pro tier menu: the same 23 free core hardening modules in one panel, and a second panel of Pro-only features including CIS auto-fix, HTML compliance reports, AI directory locking, scheduling and email notifications." loading="lazy" width="729" height="1296">
       </button>
-      <figcaption><b>What the paid tiers add</b> The Pro menu keeps all 22 free modules and adds a second panel. Nothing is taken out of the free tier.</figcaption>
+      <figcaption><b>What the paid tiers add</b> The Pro menu keeps all 23 free modules and adds a second panel. Nothing is taken out of the free tier.</figcaption>
     </figure>
 
     <div class="tiers">
@@ -534,7 +535,7 @@
         <div class="tier-for">Built for a single machine</div>
           <div class="price-note">MIT licensed. No account, no signup.</div>
         <ul>
-          <li>All 22 hardening modules</li>
+          <li>All 23 hardening modules</li>
           <li>Interactive menu with live status</li>
           <li>Built-in CIS benchmark checks</li>
           <li>Dry-run preview mode</li>
@@ -605,12 +606,12 @@
           <tr><th>Capability</th><th>Free</th><th>Pro (coming soon)</th><th>Enterprise (coming soon)</th></tr>
         </thead>
         <tbody>
-          <tr><td class="feat">Hardening modules</td><td class="y">22</td><td class="y">22</td><td class="y">22</td></tr>
+          <tr><td class="feat">Hardening modules</td><td class="y">23</td><td class="y">23</td><td class="y">23</td></tr>
           <tr><td class="feat">Dry-run &amp; full revert</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">Built-in CIS checks</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">CIS results as JSON / SARIF (<code>--json</code>, <code>--sarif</code>)</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">Skip single settings (<code>UH_SKIP_SETTINGS</code>)</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
-          <tr><td class="feat">One-step fix for each failed CIS check (Free applies all 22 modules)</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="feat">One-step fix for each failed CIS check (Free applies all 23 modules)</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">HTML compliance report</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">Posture: ports, logins, services</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
           <tr><td class="feat">Extra hardening modules (SSH rate limiting, sshd resource caps, USB device control)</td><td class="n">—</td><td class="y">3</td><td class="y">3</td></tr>
@@ -639,9 +640,9 @@
     <div class="grid g2" style="margin-top:40px">
       <div class="card">
         <h3><span class="ico">🔓</span> What you are actually paying for</h3>
-        <p>The 22 modules in Pro and Enterprise are the same code the free tier runs.
+        <p>The 23 modules in Pro and Enterprise are the same code the free tier runs.
         Nothing is removed or crippled to make the paid tiers look better — open the
-        Pro menu above and all 22 free modules are sitting there above the paid panel.
+        Pro menu above and all 23 free modules are sitting there above the paid panel.
         What you buy is the operational layer: evidence, repetition and scale, plus a
         few extra hardening modules. It also
         means the free tier cannot be quietly degraded to drive upgrades, because the

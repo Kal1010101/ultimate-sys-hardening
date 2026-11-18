@@ -72,6 +72,7 @@ if [[ $EUID -eq 0 && -f /etc/ssh/sshd_config ]] && command -v ssh-keygen >/dev/n
             DRY_RUN=false SKIP_BACKUP=false FIXES_APPLIED=0
             BACKUP_GENESIS_DIR='$W/genesis' BACKUP_DIR='$W/run' UH_BACKUP_ROOT='$W'
             restorecon() { :; }; sshd_config_valid() { return 0; }
+            _ssh_crypto_settings() { :; }  # build-dependent; see test_ssh_crypto
             restart_sshd() { return 0; }; is_service_active() { return 0; }
             $1
             apply_ssh_hardening" 2>&1

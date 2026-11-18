@@ -2,7 +2,7 @@
 
 ## Modules
 
-The menu lists these 22 modules in order. Each one can be selected separately.
+The menu lists these 23 modules in order. Each one can be selected separately.
 
 1. **System updates** installs package updates through the system package manager.
 2. **SSH hardening** applies and validates the SSH server settings before restarting the service.
@@ -26,6 +26,7 @@ The menu lists these 22 modules in order. Each one can be selected separately.
 20. **Compiler access restriction** restricts compiler access and records the original permissions.
 21. **Remote syslog** configures log forwarding to a collector.
 22. **UMASK hardening** sets the default umask to 027.
+23. **Base system** mounts `/dev/shm` without devices, setuid or executables, turns on time sync, and sets sudo to use a pty and a log file.
 
 ## What full revert does
 

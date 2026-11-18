@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-#  lib/modules.sh — the 22 core hardening modules
+#  lib/modules.sh — the 23 core hardening modules
 #
 #  Every tier sources this. There is exactly one implementation of each module;
 #  a fix here reaches Free, Pro, and Enterprise simultaneously.
@@ -16,7 +16,7 @@
 
 # --- 1. System updates -------------------------------------------------------
 apply_system_updates() {
-    log_message "${GEAR} [1/22] System Updates"
+    log_message "${GEAR} [1/23] System Updates"
 
     local kernels_before="" had_modules=false
     if kernel_update_pending; then
@@ -143,13 +143,70 @@ ssh_login_lockdown_safe() {
     ssh_key_login_possible
 }
 
+# Crypto allowlists, best first. Only names this host's OpenSSH build knows
+# are written (see _ssh_supported_list), so an old release is never handed a
+# name sshd -t would reject: the post-quantum kex (mlkem768x25519 from 9.9,
+# sntrup761x25519 from 8.5) appears only where the build has it.
+# Ciphers: CIS Ubuntu 22.04 5.1.6, CIS RHEL 9 5.1.4, STIG RHEL-09-255064/65.
+# KexAlgorithms: CIS Ubuntu 22.04 5.1.12, CIS RHEL 9 5.1.5.
+# MACs: CIS Ubuntu 22.04 5.1.15, CIS RHEL 9 5.1.6, STIG RHEL-09-255070/75.
+# HostKeyAlgorithms has no CIS or STIG control; it is here because weak host
+# key signatures (ssh-rsa SHA-1, DSA) are the same class of risk.
+UH_SSH_CIPHERS=(chacha20-poly1305@openssh.com aes256-gcm@openssh.com aes128-gcm@openssh.com
+                aes256-ctr aes192-ctr aes128-ctr)
+UH_SSH_KEX=(mlkem768x25519-sha256 sntrup761x25519-sha512 sntrup761x25519-sha512@openssh.com
+            curve25519-sha256 curve25519-sha256@libssh.org
+            diffie-hellman-group16-sha512 diffie-hellman-group18-sha512)
+UH_SSH_MACS=(hmac-sha2-512-etm@openssh.com hmac-sha2-256-etm@openssh.com umac-128-etm@openssh.com)
+UH_SSH_HOSTKEY_ALGS=(ssh-ed25519 ssh-ed25519-cert-v01@openssh.com
+                     rsa-sha2-512 rsa-sha2-512-cert-v01@openssh.com
+                     rsa-sha2-256 rsa-sha2-256-cert-v01@openssh.com
+                     ecdsa-sha2-nistp256 ecdsa-sha2-nistp256-cert-v01@openssh.com
+                     ecdsa-sha2-nistp384 ecdsa-sha2-nistp384-cert-v01@openssh.com
+                     ecdsa-sha2-nistp521 ecdsa-sha2-nistp521-cert-v01@openssh.com)
+# RHEL, Fedora and their rebuilds set sshd's algorithms system-wide through
+# crypto-policies; Red Hat asks admins to change the policy, not override it
+# per daemon, so the allowlist is left out there.
+UH_SSH_CRYPTO_POLICY_FILE=/etc/crypto-policies/back-ends/opensshserver.config
+
+# $1 = ssh -Q query (cipher, kex, mac, key), then the allowlist. Prints the
+# entries this OpenSSH build supports, comma-separated, in allowlist order.
+_ssh_supported_list() {
+    local query="$1" supported alg out=""
+    shift
+    supported=$(ssh -Q "$query" 2>/dev/null) || return 0
+    for alg in "$@"; do
+        grep -qxF -- "$alg" <<< "$supported" && out+="${out:+,}$alg"
+    done
+    printf '%s' "$out"
+}
+
+# "Keyword value" lines for the crypto allowlist, one per keyword this build
+# supports at least one allowlisted algorithm for. Empty where the client
+# that answers ssh -Q is missing or crypto-policies owns the setting.
+_ssh_crypto_settings() {
+    command -v ssh >/dev/null 2>&1 || return 0
+    [[ -f "$UH_SSH_CRYPTO_POLICY_FILE" ]] && return 0
+    local list
+    list=$(_ssh_supported_list cipher "${UH_SSH_CIPHERS[@]}");        [[ -n "$list" ]] && echo "Ciphers $list"
+    list=$(_ssh_supported_list kex "${UH_SSH_KEX[@]}");               [[ -n "$list" ]] && echo "KexAlgorithms $list"
+    list=$(_ssh_supported_list mac "${UH_SSH_MACS[@]}");              [[ -n "$list" ]] && echo "MACs $list"
+    list=$(_ssh_supported_list key "${UH_SSH_HOSTKEY_ALGS[@]}");      [[ -n "$list" ]] && echo "HostKeyAlgorithms $list"
+    return 0
+}
+
+_ssh_crypto_policy_note() {
+    [[ -f "$UH_SSH_CRYPTO_POLICY_FILE" ]] || return 0
+    log_info "  SSH ciphers, kex, MACs and host key algorithms are left to the system crypto policy ($(update-crypto-policies --show 2>/dev/null || echo 'see update-crypto-policies')); change it there with update-crypto-policies"
+}
+
 _ssh_no_key_warning() {
     log_warning "SSH: no account other than root has a key sshd accepts — password login and root login are left as they are, so this run cannot lock you out"
     log_warning "  Add a key for a sudo user (ssh-copy-id user@host), check you can log in with it, then run module 2 again. If your keys come from an AuthorizedKeysCommand (LDAP, SSSD), UH_SSH_LOCKOUT_CHECK=false skips this check."
 }
 
 apply_ssh_hardening() {
-    log_message "${LOCK} [2/22] SSH Hardening"
+    log_message "${LOCK} [2/23] SSH Hardening"
     local cfg="/etc/ssh/sshd_config"
     local dropin="/etc/ssh/sshd_config.d/00-ultimate-hardening.conf"
 
@@ -163,17 +220,25 @@ apply_ssh_hardening() {
         lockdown=false
         setting_count=11
     fi
+    local crypto_settings crypto_keywords
+    crypto_settings=$(_ssh_crypto_settings)
+    crypto_keywords=$(awk '{print $1}' <<< "$crypto_settings")
+    setting_count=$((setting_count + $(grep -c . <<< "$crypto_settings" || true)))
 
     if [[ "$DRY_RUN" == true ]]; then
         # The keywords set below, for the preview's count only.
         local keyword skipped=""
+        # shellcheck disable=SC2086  # crypto_keywords is a word list on purpose
         for keyword in PermitRootLogin PasswordAuthentication ChallengeResponseAuthentication \
                        X11Forwarding AllowTcpForwarding PermitEmptyPasswords MaxAuthTries \
-                       LoginGraceTime ClientAliveInterval ClientAliveCountMax UsePAM PrintLastLog Banner; do
+                       LoginGraceTime ClientAliveInterval ClientAliveCountMax UsePAM PrintLastLog Banner \
+                       $crypto_keywords; do
             [[ "$lockdown" == false && ( "$keyword" == PermitRootLogin || "$keyword" == PasswordAuthentication ) ]] && continue
             setting_skipped "$keyword" && { skipped+="$keyword "; setting_count=$((setting_count - 1)); }
         done
         log_dry "Would apply $setting_count hardened settings to $cfg"
+        [[ -n "$crypto_keywords" ]] && log_dry "  including an allowlist for: $(tr '\n' ' ' <<< "$crypto_keywords")"
+        _ssh_crypto_policy_note
         [[ -n "$skipped" ]] && log_info "  Left as they are (UH_SKIP_SETTINGS): ${skipped% }"
         [[ "$lockdown" == true ]] || _ssh_no_key_warning
         return 0
@@ -202,6 +267,11 @@ apply_ssh_hardening() {
     set_config "UsePAM"                          "yes"             "$cfg"
     set_config "PrintLastLog"                    "yes"             "$cfg"
     set_config "Banner"                          "/etc/issue.net"  "$cfg"
+    local crypto_keyword crypto_value
+    while read -r crypto_keyword crypto_value; do
+        [[ -n "$crypto_keyword" ]] && set_config "$crypto_keyword" "$crypto_value" "$cfg"
+    done <<< "$crypto_settings"
+    _ssh_crypto_policy_note
     setting_count=$((setting_count - UH_SETTINGS_SKIPPED_COUNT))
 
     backup_file_for_rewrite /etc/issue.net
@@ -245,6 +315,7 @@ MaxAuthTries 3
 X11Forwarding no
 AllowTcpForwarding no
 EOF
+        if [[ -n "$crypto_settings" ]]; then printf '%s\n' "$crypto_settings"; fi
         } | drop_skipped_settings > "$dropin"
         chmod 600 "$dropin" 2>/dev/null || true
         relabel_path "$dropin"
@@ -293,7 +364,7 @@ EOF
 # host, desktops included, with no record of why; a hardening tool should not
 # open ports nobody asked for, so a host that serves the web opens them itself.
 apply_firewall() {
-    log_message "${FIRE} [3/22] Firewall"
+    log_message "${FIRE} [3/23] Firewall"
     if [[ "$DRY_RUN" == true ]]; then
         log_dry "Would configure firewall: default-deny inbound, allow SSH only"
         return 0
@@ -1027,12 +1098,109 @@ maxretry = 3
 bantime  = 7200
 backend  = ${backend}
 EOF
+    _fail2ban_increment_lines
+}
+
+# Fail2Ban 0.11 added bantime.increment: each repeat ban of the same address
+# lasts longer (2h, 4h, 8h ... capped at a week here). Older releases reject
+# the keys, so they are written only where the installed version has them.
+# No CIS or STIG control covers Fail2Ban; this follows its own documentation.
+UH_FAIL2BAN_MAXTIME=1w
+
+# $1 = version string like "1.0.2" or "0.11.2". True for 0.11 and later.
+_fail2ban_version_has_increment() {
+    local major minor
+    IFS=. read -r major minor _ <<< "$1"
+    [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]] || return 1
+    (( major > 0 || minor >= 11 ))
+}
+
+_fail2ban_installed_version() {
+    local out; out=$(fail2ban-client --version 2>/dev/null || true)
+    grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' <<< "$out" | head -1 || true
+}
+
+_fail2ban_increment_lines() {
+    _fail2ban_version_has_increment "$(_fail2ban_installed_version)" || return 0
+    printf 'bantime.increment = true\nbantime.maxtime   = %s\n' "$UH_FAIL2BAN_MAXTIME"
+}
+
+# Where fail2ban logs, as fail2ban.conf and its .local/.d overrides say (the
+# last setting read wins, as in fail2ban). Empty when nothing sets it.
+_fail2ban_logtarget() {
+    local dir="${UH_FAIL2BAN_DIR:-/etc/fail2ban}" f target=""
+    for f in "$dir/fail2ban.conf" "$dir"/fail2ban.d/*.conf "$dir/fail2ban.local" "$dir"/fail2ban.d/*.local; do
+        [[ -f "$f" ]] || continue
+        local v
+        v=$(sed -nE 's/^[[:space:]]*logtarget[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$f" | tail -1)
+        [[ -n "$v" ]] && target="$v"
+    done
+    printf '%s' "$target"
+}
+
+# The recidive jail bans for a week any address banned five times in a day,
+# reading fail2ban's own log. Printed only where that log is a file or the
+# journal; logging to syslog or stdout leaves it nothing to read.
+_fail2ban_recidive_jail() {
+    local target; target=$(_fail2ban_logtarget)
+    case "$target" in
+        /*)
+            printf '\n[recidive]\nenabled  = true\nlogpath  = %s\nbackend  = auto\n' "$target" ;;
+        SYSTEMD-JOURNAL)
+            printf '\n[recidive]\nenabled  = true\nbackend  = systemd\njournalmatch = _SYSTEMD_UNIT=fail2ban.service\n' ;;
+        *) return 0 ;;
+    esac
+    printf 'findtime = 1d\nmaxretry = 5\nbantime  = 1w\n'
+}
+
+# Jails for services this host runs, each only where the service is installed
+# and its log is there to read: a jail whose log is missing stops the whole
+# daemon from starting, not just that jail.
+_fail2ban_service_jails() {
+    local log
+    if command -v nginx >/dev/null 2>&1 && [[ -f /var/log/nginx/error.log ]]; then
+        printf '\n[nginx-http-auth]\nenabled  = true\n'
+        _fail2ban_increment_lines
+    fi
+    if command -v apache2 >/dev/null 2>&1 || command -v httpd >/dev/null 2>&1; then
+        for log in /var/log/apache2/error.log /var/log/httpd/error_log; do
+            [[ -f "$log" ]] || continue
+            printf '\n[apache-auth]\nenabled  = true\nlogpath  = %s\n' "$log"
+            _fail2ban_increment_lines
+            break
+        done
+    fi
+    if command -v postfix >/dev/null 2>&1; then
+        if _has_systemd; then
+            printf '\n[postfix]\nenabled  = true\nbackend  = systemd\n'
+            _fail2ban_increment_lines
+        else
+            for log in /var/log/mail.log /var/log/maillog; do
+                [[ -f "$log" ]] || continue
+                printf '\n[postfix]\nenabled  = true\nlogpath  = %s\n' "$log"
+                _fail2ban_increment_lines
+                break
+            done
+        fi
+    fi
+    return 0
+}
+
+# Names of the jails in the file module 4 writes, for the log.
+_fail2ban_jail_names() {
+    sed -nE 's/^\[([a-z0-9-]+)\]$/\1/p' "$UH_FAIL2BAN_JAIL" 2>/dev/null | paste -sd' ' -
+}
+
+# True when fail2ban accepts its whole configuration. Releases without -t
+# fail this too, which drops back to the SSH jail alone: the safe side.
+_fail2ban_config_valid() {
+    fail2ban-client -t >>"$LOG_FILE" 2>&1
 }
 
 apply_fail2ban() {
-    log_message "${SHIELD} [4/22] Fail2Ban"
+    log_message "${SHIELD} [4/23] Fail2Ban"
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would install fail2ban with an SSH jail (3 tries, 2h ban)"
+        log_dry "Would install fail2ban with an SSH jail (3 tries, 2h ban, longer on each repeat where fail2ban 0.11+ allows), a recidive jail, and jails for the web and mail servers installed here"
         return 0
     fi
 
@@ -1041,7 +1209,16 @@ apply_fail2ban() {
     install_package fail2ban || { log_warning "fail2ban unavailable — skipping"; return 0; }
 
     mkdir -p "$(dirname "$UH_FAIL2BAN_JAIL")" 2>/dev/null || true
-    _fail2ban_sshd_jail > "$UH_FAIL2BAN_JAIL"
+    { _fail2ban_sshd_jail; _fail2ban_recidive_jail; _fail2ban_service_jails; } > "$UH_FAIL2BAN_JAIL"
+    if ! _fail2ban_config_valid; then
+        local rejected; rejected=$(_fail2ban_jail_names)
+        _fail2ban_sshd_jail > "$UH_FAIL2BAN_JAIL"
+        if _fail2ban_config_valid; then
+            log_warning "fail2ban rejected the extra jails (${rejected}) — keeping the SSH jail alone; details in $LOG_FILE"
+        else
+            log_warning "fail2ban rejects its configuration even with the SSH jail alone (often: no log for sshd to read) — keeping only the SSH jail; details in $LOG_FILE"
+        fi
+    fi
 
     if [[ -f /etc/fail2ban/filter.d/alpine-sshd.conf ]]; then
         cat > /etc/fail2ban/filter.d/alpine-sshd.local << 'EOF'
@@ -1053,9 +1230,17 @@ failregex = Failed [-/\w]+ for .* from <HOST> port \d* ssh2
 EOF
     fi
 
+    local was_active=false
+    is_service_active fail2ban && was_active=true
     enable_service fail2ban
+    # A daemon already running reads the new jail file only on reload.
+    if [[ "$was_active" == true ]]; then
+        fail2ban-client reload >>"$LOG_FILE" 2>&1 || log_warning "fail2ban did not reload; the new jails apply at its next restart"
+    fi
     if is_service_active fail2ban; then
-        log_success "Fail2Ban active: SSH jail bans for 2h after 3 failures"
+        log_success "Fail2Ban active: SSH jail bans for 2h after 3 failures; jails: $(_fail2ban_jail_names)"
+        grep -q '^bantime.increment' "$UH_FAIL2BAN_JAIL" 2>/dev/null \
+            && log_info "  Repeat offenders are banned for longer each time, up to $UH_FAIL2BAN_MAXTIME"
         count_fix
     else
         log_warning "fail2ban was configured but is not running — check: $(service_status_hint fail2ban)"
@@ -1064,7 +1249,7 @@ EOF
 
 # --- 5. File permissions -----------------------------------------------------
 apply_permission_hardening() {
-    log_message "${LOCK} [5/22] File Permissions"
+    log_message "${LOCK} [5/23] File Permissions"
     if [[ "$DRY_RUN" == true ]]; then
         log_dry "Would restrict permissions on 7 sensitive files and /tmp"
         return 0
@@ -1098,37 +1283,90 @@ apply_permission_hardening() {
 }
 
 # --- 6. Kernel / network -----------------------------------------------------
+# Each parameter carries its source. CIS = CIS Ubuntu 22.04 v2 / RHEL 9
+# (same numbers for these), STIG = DISA RHEL 9 STIG. Where this sets a value
+# stricter than the source asks, the comment says so. The two with neither
+# source (sysrq, tcp_syn*_retries) date from earlier releases and stay.
 _kernel_sysctl_conf() {
     cat << 'EOF'
 # Ultimate Hardening — kernel and network parameters
+# CIS 1.5.1, STIG RHEL-09-213070
 kernel.randomize_va_space = 2
+# STIG RHEL-09-213010
 kernel.dmesg_restrict = 1
+# STIG RHEL-09-213025 (asks for 1; 2 also hides pointers from root)
 kernel.kptr_restrict = 2
+# No CIS/STIG control; kept from earlier releases
 kernel.sysrq = 0
+# STIG RHEL-09-213075
 kernel.unprivileged_bpf_disabled = 1
+# STIG (sysctl_net_core_bpf_jit_harden)
+net.core.bpf_jit_harden = 2
+# STIG RHEL-09-213015 (asks for 2; 3 is stricter where the kernel has it)
 kernel.perf_event_paranoid = 3
+# CIS 1.5.2, STIG RHEL-09-213080
 kernel.yama.ptrace_scope = 1
+# CIS 1.5.3
 fs.suid_dumpable = 0
+# STIG RHEL-09-213030, RHEL-09-213035
 fs.protected_hardlinks = 1
 fs.protected_symlinks = 1
+# CIS 3.3.1, STIG RHEL-09-254025 (IPv6)
 net.ipv4.ip_forward = 0
+net.ipv6.conf.all.forwarding = 0
+# CIS 3.3.10
 net.ipv4.tcp_syncookies = 1
+# No CIS/STIG control; kept from earlier releases
 net.ipv4.tcp_syn_retries = 2
 net.ipv4.tcp_synack_retries = 2
+# CIS 3.3.4
 net.ipv4.icmp_echo_ignore_broadcasts = 1
+# CIS 3.3.3
 net.ipv4.icmp_ignore_bogus_error_responses = 1
+# CIS 3.3.7
 net.ipv4.conf.all.rp_filter = 1
 net.ipv4.conf.default.rp_filter = 1
+# CIS 3.3.9
 net.ipv4.conf.all.log_martians = 1
 net.ipv4.conf.default.log_martians = 1
+# CIS 3.3.8, STIG RHEL-09-254040 (IPv6 default)
 net.ipv4.conf.all.accept_source_route = 0
 net.ipv4.conf.default.accept_source_route = 0
+net.ipv6.conf.all.accept_source_route = 0
+net.ipv6.conf.default.accept_source_route = 0
+# CIS 3.3.5, STIG RHEL-09-254035 (IPv6 default)
 net.ipv4.conf.all.accept_redirects = 0
 net.ipv4.conf.default.accept_redirects = 0
-net.ipv4.conf.all.send_redirects = 0
 net.ipv6.conf.all.accept_redirects = 0
-net.ipv6.conf.all.accept_source_route = 0
+net.ipv6.conf.default.accept_redirects = 0
+# CIS 3.3.6
+net.ipv4.conf.all.secure_redirects = 0
+net.ipv4.conf.default.secure_redirects = 0
+# CIS 3.3.2, STIG RHEL-09-253070
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+# CIS 3.3.11, STIG RHEL-09-254010, RHEL-09-254030
+net.ipv6.conf.all.accept_ra = 0
+net.ipv6.conf.default.accept_ra = 0
 EOF
+}
+
+# Router adverts give a host its IPv6 address and route under SLAAC, as on
+# most cloud networks; accept_ra = 0 there takes IPv6 away at the next
+# renewal. True when an interface holds a global IPv6 address the kernel
+# learned dynamically.
+_ipv6_uses_router_adverts() {
+    command -v ip >/dev/null 2>&1 || return 1
+    [[ -n "$(ip -6 -o addr show scope global dynamic 2>/dev/null)" ]]
+}
+
+# Filters sysctl lines on stdin: drops accept_ra where the host needs it.
+_drop_accept_ra_if_needed() {
+    if _ipv6_uses_router_adverts; then
+        grep -v '^net\.ipv6\.conf\.[a-z]*\.accept_ra ' || true
+    else
+        cat
+    fi
 }
 
 # The live value of every setting this module changes, recorded once before
@@ -1138,7 +1376,7 @@ UH_SYSCTL_RECORD_NAME=sysctl_before.txt
 
 # The sysctl settings this run writes: the module's set minus UH_SKIP_SETTINGS.
 _kernel_sysctl_settings() {
-    _kernel_sysctl_conf | drop_skipped_settings
+    _kernel_sysctl_conf | drop_skipped_settings | _drop_accept_ra_if_needed
 }
 
 # $1 = this module's drop-in. Hosts hardened by a release that kept no record
@@ -1169,7 +1407,7 @@ restore_sysctl_before() {
 }
 
 apply_kernel_hardening() {
-    log_message "${GEAR} [6/22] Kernel & Network Hardening"
+    log_message "${GEAR} [6/23] Kernel & Network Hardening"
 
     if ! is_linux; then
         log_warning "sysctl hardening is Linux-specific — skipping on ${DISTRO_TYPE}"
@@ -1177,6 +1415,9 @@ apply_kernel_hardening() {
     fi
     local skipped; skipped=$(_kernel_sysctl_conf | skipped_settings_in)
     [[ -n "$skipped" ]] && log_info "  Left as they are (UH_SKIP_SETTINGS): $skipped"
+    if _ipv6_uses_router_adverts; then
+        log_info "  IPv6 router adverts left on (accept_ra): this host has an address from them, and turning them off would drop its IPv6"
+    fi
     if [[ "$DRY_RUN" == true ]]; then
         log_dry "Would write $(_kernel_sysctl_settings | grep -c '^[a-z]') sysctl parameters to /etc/sysctl.d/99-hardening.conf"
         return 0
@@ -1249,6 +1490,10 @@ restore_audit_rules() {
         revert_backed_up_file "$f" >/dev/null 2>&1 || true
     fi
     command -v auditctl >/dev/null 2>&1 && is_service_active auditd || return 0
+    if audit_rules_locked; then
+        log_warning "The loaded audit rules are locked (-e 2, UH_AUDIT_IMMUTABLE): the files are reverted, and the kernel drops the hardened rules at the next reboot"
+        return 0
+    fi
     if [[ -f "$f" ]]; then
         auditctl -R "$f" >>"$LOG_FILE" 2>&1 || true
     else
@@ -1256,15 +1501,183 @@ restore_audit_rules() {
     fi
 }
 
+# Syscall rules by group: "<key>|<filters>|<syscalls>". Each line becomes one
+# rule per audited arch, holding only the syscalls that arch has. Keys are the
+# CIS ones, except the three this module has used since before (modules,
+# mounts, privesc), kept so searches written against them still work.
+# CIS Ubuntu 22.04 v2 6.3.3.1-6.3.3.21 (RHEL 9: 6.3.3.x, same groups); -e 2 is
+# CIS 6.3.3.20 and STIG RHEL-09-654275, opt-in here because it blocks revert
+# until reboot.
+_audit_syscall_groups() {
+    local user="-F auid>=$1 -F auid!=unset"
+    cat << EOF
+time-change||adjtimex settimeofday stime
+time-change|-F a0=0x0|clock_settime
+system-locale||sethostname setdomainname
+user_emulation|-C euid!=uid -F auid!=unset|execve
+access|-F exit=-EACCES $user|creat open openat truncate ftruncate
+access|-F exit=-EPERM $user|creat open openat truncate ftruncate
+perm_mod|$user|chmod fchmod fchmodat
+perm_mod|$user|chown fchown lchown fchownat
+perm_mod|$user|setxattr lsetxattr fsetxattr removexattr lremovexattr fremovexattr
+mounts||mount
+delete|$user|unlink unlinkat rename renameat
+modules||init_module finit_module delete_module create_module query_module
+privesc|-F exit=0|setuid setgid
+EOF
+}
+
+# Watched paths: "<key>|<perms>|<path>". A path is watched only where it or
+# its parent directory exists, since auditctl rejects a watch under a missing
+# directory and stops loading the rest of the file there.
+_audit_watch_list() {
+    cat << EOF
+identity|wa|/etc/passwd
+identity|wa|/etc/group
+identity|wa|/etc/shadow
+identity|wa|/etc/gshadow
+identity|wa|/etc/security/opasswd
+identity|wa|/etc/nsswitch.conf
+sudoers|wa|/etc/sudoers
+sudoers|wa|/etc/sudoers.d
+sudo_log_file|wa|$(_audit_sudo_logfile)
+sshd|wa|/etc/ssh/sshd_config
+cron|wa|/etc/crontab
+cron|wa|/etc/cron.d
+cron|wa|/var/spool/cron
+logins|wa|/var/log/lastlog
+logins|wa|/var/run/faillock
+session|wa|/var/run/utmp
+session|wa|/var/log/wtmp
+session|wa|/var/log/btmp
+time-change|wa|/etc/localtime
+system-locale|wa|/etc/issue
+system-locale|wa|/etc/issue.net
+system-locale|wa|/etc/hosts
+system-locale|wa|/etc/hostname
+system-locale|wa|/etc/networks
+system-locale|wa|/etc/network
+system-locale|wa|/etc/sysconfig/network
+system-locale|wa|/etc/netplan
+system-locale|wa|/etc/NetworkManager
+MAC-policy|wa|/etc/apparmor
+MAC-policy|wa|/etc/apparmor.d
+MAC-policy|wa|/etc/selinux
+MAC-policy|wa|/usr/share/selinux
+modules|x|/sbin/insmod
+modules|x|/sbin/rmmod
+modules|x|/sbin/modprobe
+modules|x|/usr/bin/kmod
+EOF
+}
+
+# The file sudo logs to, from a Defaults logfile= line; module 23's default
+# otherwise, which the rule then covers once that module runs.
+_audit_sudo_logfile() {
+    local f
+    f=$(grep -hsE '^[[:space:]]*Defaults.*logfile[[:space:]]*=' /etc/sudoers /etc/sudoers.d/* 2>/dev/null \
+        | sed -nE 's/.*logfile[[:space:]]*=[[:space:]]*"?([^",[:space:]]+).*/\1/p' | tail -1)
+    printf '%s' "${f:-/var/log/sudo.log}"
+}
+
+# The arches whose syscalls are audited: b64 on 64-bit kernels, plus b32 for
+# the 32-bit ABI they can also run (CIS writes both).
+_audit_arches() {
+    case "$(uname -m)" in
+        x86_64|aarch64|ppc64*|s390x|riscv64|loongarch64) echo "b64 b32" ;;
+        *) echo "b32" ;;
+    esac
+}
+
+# Syscalls the newer 64-bit ABIs (aarch64, riscv64, loongarch64) never had;
+# used only where ausyscall is not installed to ask.
+UH_AUDIT_LEGACY_SYSCALLS="open creat chmod chown lchown rename unlink stime create_module query_module"
+
+# $1 = arch, $2 = syscall. True when this kernel's arch has it.
+_audit_syscall_known() {
+    if command -v ausyscall >/dev/null 2>&1; then
+        ausyscall "$1" "$2" --exact >/dev/null 2>&1
+        return
+    fi
+    case "$1:$(uname -m)" in
+        b64:aarch64|b64:riscv64|b64:loongarch64)
+            [[ " $UH_AUDIT_LEGACY_SYSCALLS " != *" $2 "* ]] ;;
+        *) return 0 ;;
+    esac
+}
+
+# Setuid and setgid programs on the local root and /usr filesystems, one
+# exec rule each (CIS: privileged commands).
+_audit_privileged_programs() {
+    find / /usr -xdev -type f \( -perm -4000 -o -perm -2000 \) 2>/dev/null | sort -u
+}
+
+_audit_uid_min() {
+    local v; v=$(awk '/^UID_MIN/ {print $2}' /etc/login.defs 2>/dev/null)
+    [[ "$v" =~ ^[0-9]+$ ]] && printf '%s' "$v" || printf '1000'
+}
+
+# The rules file module 7 writes.
+_audit_rules_content() {
+    local uid_min arch key filters syscalls perms path s kept
+    uid_min=$(_audit_uid_min)
+    echo "-D"
+    echo "-b 8192"
+    echo "-f 1"
+    while IFS='|' read -r key perms path; do
+        [[ -n "$path" ]] || continue
+        [[ -e "$path" || -d "$(dirname "$path")" ]] || continue
+        echo "-w $path -p $perms -k $key"
+    done < <(_audit_watch_list)
+    for arch in $(_audit_arches); do
+        while IFS='|' read -r key filters syscalls; do
+            kept=""
+            for s in $syscalls; do
+                _audit_syscall_known "$arch" "$s" && kept+=" -S $s"
+            done
+            [[ -n "$kept" ]] && echo "-a always,exit -F arch=$arch${kept}${filters:+ $filters} -k $key"
+        done < <(_audit_syscall_groups "$uid_min")
+    done
+    for path in /usr/bin/chcon /usr/bin/setfacl /usr/bin/chacl; do
+        [[ -x "$path" ]] && echo "-a always,exit -F path=$path -F perm=x -F auid>=$uid_min -F auid!=unset -k perm_chng"
+    done
+    for path in /usr/sbin/usermod /usr/bin/usermod; do
+        [[ -x "$path" && ! -L "$path" ]] && echo "-a always,exit -F path=$path -F perm=x -F auid>=$uid_min -F auid!=unset -k usermod"
+    done
+    while IFS= read -r path; do
+        [[ -n "$path" ]] && echo "-a always,exit -F path=$path -F perm=x -F auid>=$uid_min -F auid!=unset -k privileged"
+    done < <(_audit_privileged_programs)
+    if [[ "$(_audit_immutable)" == true ]]; then
+        echo "-e 2"
+    fi
+    return 0
+}
+
+# UH_AUDIT_IMMUTABLE=true locks the loaded rules until the next reboot.
+_audit_immutable() {
+    local v="${UH_AUDIT_IMMUTABLE:-false}"
+    if [[ "$v" != true && "$v" != false ]]; then
+        log_warning "UH_AUDIT_IMMUTABLE='$v' is not true/false — leaving the rules changeable" >&2
+        v=false
+    fi
+    printf '%s' "$v"
+}
+
+# True when the kernel holds locked (-e 2) rules: nothing loads until reboot.
+audit_rules_locked() {
+    grep -qE '^enabled[[:space:]]+2' <<<"$(auditctl -s 2>/dev/null)"
+}
+
 apply_audit_config() {
-    log_message "${SHIELD} [7/22] Audit Daemon"
+    log_message "${SHIELD} [7/23] Audit Daemon"
 
     if ! is_linux; then
         log_warning "auditd is Linux-specific — skipping on ${DISTRO_TYPE}"
         return 0
     fi
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would install auditd and write comprehensive audit rules"
+        log_dry "Would install auditd and write $(_audit_rules_content | grep -c '^-[aw] ' || true) audit rules (CIS 6.3.3 groups, privileged programs, module loading)"
+        [[ "$(_audit_immutable)" == true ]] && log_dry "  and lock them until reboot (-e 2, UH_AUDIT_IMMUTABLE=true)"
         return 0
     fi
 
@@ -1277,30 +1690,16 @@ apply_audit_config() {
     backup_file /etc/audit/rules.d/99-hardening.rules
     _backup_audit_rules_file
 
-    cat > /etc/audit/rules.d/99-hardening.rules << 'EOF'
--D
--b 8192
--f 1
--w /etc/passwd          -p wa -k identity
--w /etc/group           -p wa -k identity
--w /etc/shadow          -p wa -k identity
--w /etc/gshadow         -p wa -k identity
--w /etc/sudoers         -p wa -k sudoers
--w /etc/sudoers.d       -p wa -k sudoers
--w /etc/ssh/sshd_config -p wa -k sshd
--w /etc/crontab         -p wa -k cron
--w /etc/cron.d          -p wa -k cron
--w /var/spool/cron      -p wa -k cron
--w /var/log/lastlog     -p wa -k logins
--w /sbin/insmod         -p x  -k modules
--w /sbin/rmmod          -p x  -k modules
--w /sbin/modprobe       -p x  -k modules
--a always,exit -F arch=b64 -S init_module -S delete_module -k modules
--a always,exit -F arch=b64 -S setuid -S setgid -F exit=0 -k privesc
--a always,exit -F arch=b64 -S mount -k mounts
-EOF
+    _audit_rules_content > /etc/audit/rules.d/99-hardening.rules
+    local rule_count
+    rule_count=$(grep -c '^-[aw] ' /etc/audit/rules.d/99-hardening.rules || true)
 
     enable_service auditd
+    if audit_rules_locked; then
+        log_warning "Audit rules written, but the rules loaded now are locked (-e 2) — the new ones load at the next reboot"
+        count_fix
+        return 0
+    fi
     load_audit_rules || true
     # enable_service logs "enabled" unconditionally, and the rules were once
     # reported as configured on Alpine where none had loaded: check both.
@@ -1309,14 +1708,14 @@ EOF
     elif ! audit_rules_loaded; then
         log_warning "Audit rules written but not loaded in the kernel (auditctl -l does not list them) — they apply at the next auditd start; check: auditctl -R $UH_AUDIT_RULES_FILE"
     else
-        log_success "Auditd configured with 17 audit rules (loaded)"
+        log_success "Auditd configured with $rule_count audit rules (loaded)$( [[ "$(_audit_immutable)" == true ]] && echo ', locked until reboot')"
         count_fix
     fi
 }
 
 # --- 8. Password policy (login.defs only — PAM is never touched) --------------
 apply_password_policies() {
-    log_message "${LOCK} [8/22] Password Policy"
+    log_message "${LOCK} [8/23] Password Policy"
 
     # PAM modification was removed after it locked an eCryptfs system out of its
     # own login screen. Policy is set through login.defs only. See SECURITY.md.
@@ -1379,7 +1778,7 @@ UH_SUID_SAFELIST=(
 )
 
 apply_suid_hardening() {
-    log_message "${FIRE} [9/22] SUID/SGID Hardening ${RED}(HIGH RISK)${NC}"
+    log_message "${FIRE} [9/23] SUID/SGID Hardening ${RED}(HIGH RISK)${NC}"
 
     if ! confirm_risky "Remove SUID from non-essential binaries?"; then
         log_info "Skipped SUID hardening"
@@ -1443,7 +1842,7 @@ aide_database_is_valid() {
 }
 
 apply_aide() {
-    log_message "${SHIELD} [10/22] AIDE File Integrity"
+    log_message "${SHIELD} [10/23] AIDE File Integrity"
     if [[ "$DRY_RUN" == true ]]; then
         log_dry "Would install AIDE and initialise its baseline database"
         return 0
@@ -1910,7 +2309,7 @@ aide_verify() {
 
 # --- 11. rkhunter ------------------------------------------------------------
 apply_rkhunter() {
-    log_message "${SHIELD} [11/22] Rootkit Scanner"
+    log_message "${SHIELD} [11/23] Rootkit Scanner"
     if [[ "$DRY_RUN" == true ]]; then
         log_dry "Would install rkhunter and enable daily scans"
         return 0
@@ -1941,7 +2340,7 @@ UH_UNNEEDED_SERVICES=(
 )
 
 apply_disable_services() {
-    log_message "${GEAR} [12/22] Disable Unnecessary Services"
+    log_message "${GEAR} [12/23] Disable Unnecessary Services"
     if [[ "$DRY_RUN" == true ]]; then
         log_dry "Would disable up to ${#UH_UNNEEDED_SERVICES[@]} unnecessary network services"
         return 0
@@ -2050,7 +2449,7 @@ undo_apparmor_enforce() {
 }
 
 apply_apparmor() {
-    log_message "${SHIELD} [13/22] Mandatory Access Control"
+    log_message "${SHIELD} [13/23] Mandatory Access Control"
 
     if ! is_linux; then
         log_warning "AppArmor/SELinux are Linux-specific — skipping on ${DISTRO_TYPE}"
@@ -2088,7 +2487,7 @@ apply_apparmor() {
 
 # --- 14. etckeeper -----------------------------------------------------------
 apply_etckeeper() {
-    log_message "${GEAR} [14/22] /etc Version Control"
+    log_message "${GEAR} [14/23] /etc Version Control"
     if [[ "$DRY_RUN" == true ]]; then
         log_dry "Would initialise etckeeper git tracking for /etc"
         return 0
@@ -2114,7 +2513,7 @@ apply_etckeeper() {
 
 # --- 15. Boot security -------------------------------------------------------
 apply_boot_secure() {
-    log_message "${LOCK} [15/22] Boot Security"
+    log_message "${LOCK} [15/23] Boot Security"
 
     if ! is_linux; then
         log_warning "GRUB hardening is Linux-specific — skipping on ${DISTRO_TYPE}"
@@ -2179,7 +2578,7 @@ EOF
 # Genuinely interactive: it needs a password typed twice and cannot be
 # meaningfully automated, so it skips in auto-mode rather than pretending.
 apply_grub_password() {
-    log_message "${LOCK} [16/22] GRUB Password ${RED}(HIGH RISK)${NC}"
+    log_message "${LOCK} [16/23] GRUB Password ${RED}(HIGH RISK)${NC}"
 
     if ! is_linux; then
         log_warning "GRUB is Linux-specific — skipping on ${DISTRO_TYPE}"
@@ -2241,7 +2640,7 @@ apply_grub_password() {
 # on a real run if Docker was missing — a hardening tool should not be
 # installing a container runtime, so the dry-run text is corrected here.
 apply_docker_security() {
-    log_message "${GEAR} [17/22] Docker Security"
+    log_message "${GEAR} [17/23] Docker Security"
 
     if ! command -v docker >/dev/null 2>&1; then
         log_warning "Docker is not installed — skipping Docker hardening"
@@ -2402,7 +2801,7 @@ tool_written_content() {
 # traffic, so it stays opt-in and reports N/A-style skips rather than
 # installing Apache onto a machine that has none.
 apply_modsecurity() {
-    log_message "${SHIELD} [18/22] ModSecurity WAF"
+    log_message "${SHIELD} [18/23] ModSecurity WAF"
 
     if ! is_linux; then
         log_warning "ModSecurity packaging here is Linux-specific — skipping on ${DISTRO_TYPE}"
@@ -2445,11 +2844,17 @@ apply_modsecurity() {
 # The CIS benchmarks ask for two kinds of kernel module to be unloadable: the
 # uncommon network protocols (1.2.x) and the uncommon filesystems (1.1.1.x).
 # Both are the same mechanism — a modprobe.d entry — so they are one module
-# here rather than two, which is also what keeps the free tier at 22.
+# here rather than two.
 #
 # `install X /bin/false` stops an on-demand autoload; `blacklist X` stops a
 # load by name. CIS asks for both, and either alone leaves a way in.
-UH_BLACKLIST_PROTOCOLS=(dccp sctp rds tipc)
+# dccp, sctp, rds, tipc: CIS 3.2.1-3.2.4 (sctp and tipc also STIG
+# RHEL-09-213060/213065). atm, can: STIG RHEL-09-213045/213050.
+UH_BLACKLIST_PROTOCOLS=(dccp sctp rds tipc atm can)
+# Hardware buses an attacker with physical access reaches the kernel through.
+# firewire-core: STIG RHEL-09-213055. bluetooth: STIG RHEL-09-291035, opt-in
+# (UH_BLACKLIST_BLUETOOTH=true) because laptops and desktops use it.
+UH_BLACKLIST_HARDWARE=(firewire-core)
 # Deliberately NOT here: overlay (containers), vfat (EFI system partition),
 # iso9660 (installer and rescue media). Blacklisting those breaks hosts.
 UH_BLACKLIST_FILESYSTEMS=(cramfs freevxfs hfs hfsplus jffs2 squashfs udf)
@@ -2474,8 +2879,21 @@ _squashfs_required() {
     awk '$3 == "squashfs" { found = 1 } END { exit !found }' /proc/mounts 2>/dev/null
 }
 
+# The hardware modules this run blacklists: the default set, plus bluetooth
+# when UH_BLACKLIST_BLUETOOTH=true.
+_kmod_hardware_wanted() {
+    local bt="${UH_BLACKLIST_BLUETOOTH:-false}"
+    if [[ "$bt" != true && "$bt" != false ]]; then
+        log_warning "UH_BLACKLIST_BLUETOOTH='$bt' is not true/false — leaving bluetooth loadable" >&2
+        bt=false
+    fi
+    printf '%s\n' "${UH_BLACKLIST_HARDWARE[@]}"
+    [[ "$bt" == true ]] && echo bluetooth
+    return 0
+}
+
 apply_unused_protocols() {
-    log_message "${GEAR} [19/22] Disable Unused Kernel Modules"
+    log_message "${GEAR} [19/23] Disable Unused Kernel Modules"
 
     if ! is_linux; then
         log_warning "modprobe blacklisting is Linux-specific — skipping on ${DISTRO_TYPE}"
@@ -2493,12 +2911,15 @@ apply_unused_protocols() {
         fi
         fs_wanted+=("$fs")
     done
+    local -a hw_wanted=()
+    mapfile -t hw_wanted < <(_kmod_hardware_wanted)
 
     if [[ "$DRY_RUN" == true ]]; then
         log_dry "Would blacklist ${#UH_BLACKLIST_PROTOCOLS[@]} unused protocols (${UH_BLACKLIST_PROTOCOLS[*]})"
         log_dry "Would blacklist ${#fs_wanted[@]} uncommon filesystems (${fs_wanted[*]})"
         [[ ${#fs_skipped[@]} -gt 0 ]] && \
             log_dry "Would leave ${fs_skipped[*]} alone (snapd present — blacklisting it would break every snap)"
+        log_dry "Would blacklist ${#hw_wanted[@]} hardware bus module(s) (${hw_wanted[*]})"
         return 0
     fi
 
@@ -2530,20 +2951,30 @@ apply_unused_protocols() {
         done
     } > "$md/disable-unused-filesystems.conf"
 
+    backup_file "$md/disable-unused-hardware.conf"
+    {
+        echo "# Written by Ultimate Hardening — hardware buses (STIG RHEL-09-213055, RHEL-09-291035)."
+        for fs in "${hw_wanted[@]}"; do
+            echo "install $fs /bin/false"
+            echo "blacklist $fs"
+        done
+    } > "$md/disable-unused-hardware.conf"
+
     # Blacklisting stops the NEXT autoload; it does not unload what is already
     # resident. Unload the ones nothing is using so the running kernel matches
     # the file, and say so plainly about the ones still in use.
     local -a still_loaded=()
-    for fs in "${UH_BLACKLIST_PROTOCOLS[@]}" "${fs_wanted[@]}"; do
-        grep -qE "^${fs}[[:space:]]" /proc/modules 2>/dev/null || continue
-        if _kmod_in_use "$fs"; then
+    for fs in "${UH_BLACKLIST_PROTOCOLS[@]}" "${fs_wanted[@]}" "${hw_wanted[@]}"; do
+        # /proc/modules spells modules with underscores (firewire_core).
+        grep -qE "^${fs//-/_}[[:space:]]" /proc/modules 2>/dev/null || continue
+        if _kmod_in_use "${fs//-/_}"; then
             still_loaded+=("$fs")
         elif ! modprobe -r "$fs" >>"$LOG_FILE" 2>&1; then
             still_loaded+=("$fs")
         fi
     done
 
-    log_success "Kernel modules blacklisted: ${#UH_BLACKLIST_PROTOCOLS[@]} protocols (${UH_BLACKLIST_PROTOCOLS[*]}), ${#fs_wanted[@]} filesystems (${fs_wanted[*]})"
+    log_success "Kernel modules blacklisted: ${#UH_BLACKLIST_PROTOCOLS[@]} protocols (${UH_BLACKLIST_PROTOCOLS[*]}), ${#fs_wanted[@]} filesystems (${fs_wanted[*]}), ${#hw_wanted[@]} hardware (${hw_wanted[*]})"
     if [[ ${#fs_skipped[@]} -gt 0 ]]; then
         log_warning "Left alone: ${fs_skipped[*]} — snapd uses squashfs, and blacklisting it would stop every snap from mounting after the next boot"
     fi
@@ -2558,7 +2989,7 @@ apply_unused_protocols() {
 # chmod 700 on installed compilers so an unprivileged foothold cannot build
 # tooling in place. Records what it changed so --revert can put it back.
 apply_compiler_restriction() {
-    log_message "${GEAR} [20/22] Compiler Access Restriction"
+    log_message "${GEAR} [20/23] Compiler Access Restriction"
 
     if [[ "$DRY_RUN" == true ]]; then
         log_dry "Would restrict gcc/g++/clang/clang++/cc/c++ to root only (chmod 700)"
@@ -2642,7 +3073,7 @@ _syslog_install_tls_driver() {
 }
 
 apply_remote_syslog() {
-    log_message "${NET_ICON} [21/22] Remote Syslog"
+    log_message "${NET_ICON} [21/23] Remote Syslog"
 
     local server="${UH_SYSLOG_SERVER:-}"
     local proto="${UH_SYSLOG_PROTO:-udp}"
@@ -2789,7 +3220,7 @@ apply_remote_syslog() {
 
 # --- 22. UMASK hardening -----------------------------------------------------
 apply_umask_hardening() {
-    log_message "${LOCK} [22/22] UMASK Hardening"
+    log_message "${LOCK} [22/23] UMASK Hardening"
 
     if [[ "$DRY_RUN" == true ]]; then
         log_dry "Would set a restrictive default umask of 027 in login.defs, profile.d and bash.bashrc"
@@ -2826,6 +3257,269 @@ EOF
     return 0
 }
 
+# --- 23. Base system: /dev/shm, time sync, sudo -----------------------------
+# Three small CIS items with no module of their own. Each part can be left
+# out with UH_SKIP_SETTINGS: dev_shm, time_sync, use_pty, logfile.
+
+# /dev/shm mount options. CIS Ubuntu 22.04 / RHEL 9 1.1.2.2.2-1.1.2.2.4,
+# STIG RHEL-09-231110/231115/231120. noexec breaks the few programs that run
+# code from shared memory; skip it with UH_SKIP_SETTINGS=dev_shm.
+UH_SHM_OPTIONS="nodev,nosuid,noexec"
+UH_SHM_RECORD_NAME=shm_options_before.txt
+UH_FSTAB="${UH_FSTAB:-/etc/fstab}"   # test hook
+
+# The live mount options of /dev/shm, or nothing when it is not mounted.
+_shm_live_options() {
+    local out; out=$(findmnt -no OPTIONS /dev/shm 2>/dev/null || true)
+    printf '%s' "${out%%$'\n'*}"
+}
+
+# True when $1 (comma list) holds nodev, nosuid and noexec.
+_shm_options_hardened() {
+    local opt
+    for opt in ${UH_SHM_OPTIONS//,/ }; do
+        [[ ",$1," == *",$opt,"* ]] || return 1
+    done
+}
+
+# Prints fstab with the /dev/shm line carrying the hardened options: an
+# existing line gets the missing ones added, otherwise one is appended.
+_shm_fstab_rewritten() {
+    awk -v want="$UH_SHM_OPTIONS" '
+        !/^[[:space:]]*#/ && $2 == "/dev/shm" {
+            n = split(want, w, ",")
+            for (i = 1; i <= n; i++) if (("," $4 ",") !~ ("," w[i] ",")) $4 = $4 "," w[i]
+            found = 1
+        }
+        { print }
+        END {
+            if (!found) {
+                print "# Ultimate Hardening: /dev/shm without devices, setuid or executables (CIS 1.1.2.2)"
+                print "tmpfs /dev/shm tmpfs defaults," want " 0 0"
+            }
+        }' "$UH_FSTAB"
+}
+
+# Errors findmnt --verify reports for the fstab given, or nothing where
+# findmnt has no --verify (util-linux before 2.29, busybox).
+_fstab_error_count() {
+    findmnt --verify --tab-file "$1" >/dev/null 2>&1 && { echo 0; return 0; }
+    findmnt --verify --tab-file "$1" 2>&1 | grep -c '^[[:space:]]*\[E\]' || true
+}
+
+_harden_dev_shm() {
+    if setting_skipped dev_shm; then
+        log_info "  Left /dev/shm as it is (UH_SKIP_SETTINGS)"
+        return 1
+    fi
+    local live; live=$(_shm_live_options)
+    if [[ -z "$live" ]]; then
+        log_info "  /dev/shm is not mounted here — nothing to do"
+        return 1
+    fi
+    if _shm_options_hardened "$live" && grep -qE '^[^#]*[[:space:]]/dev/shm[[:space:]].*noexec' "$UH_FSTAB" 2>/dev/null; then
+        log_info "  /dev/shm already mounted nodev,nosuid,noexec"
+        return 0
+    fi
+    if [[ "$DRY_RUN" == true ]]; then
+        log_dry "Would mount /dev/shm $UH_SHM_OPTIONS (fstab line, then remount)"
+        return 0
+    fi
+
+    # The options before the first run, for revert's remount.
+    local rec="$BACKUP_GENESIS_DIR/$UH_SHM_RECORD_NAME"
+    if [[ "$SKIP_BACKUP" != true && ! -f "$rec" ]]; then
+        ( umask 077; mkdir -p "$BACKUP_GENESIS_DIR" ) 2>/dev/null
+        printf '%s\n' "$live" > "$rec" 2>/dev/null || true
+    fi
+
+    backup_file "$UH_FSTAB"
+    local tmp before after
+    tmp=$(mktemp) || return 1
+    _shm_fstab_rewritten > "$tmp"
+    before=$(_fstab_error_count "$UH_FSTAB"); after=$(_fstab_error_count "$tmp")
+    if (( after > before )); then
+        log_warning "  /dev/shm: the new fstab line fails findmnt --verify — fstab left as it was"
+        rm -f "$tmp"
+        return 1
+    fi
+    cat "$tmp" > "$UH_FSTAB"; rm -f "$tmp"
+    relabel_path "$UH_FSTAB"
+
+    if mount -o "remount,$UH_SHM_OPTIONS" /dev/shm >>"$LOG_FILE" 2>&1; then
+        log_success "  /dev/shm mounted $UH_SHM_OPTIONS"
+    else
+        log_warning "  /dev/shm: fstab updated, but the remount failed — the options apply at the next boot"
+    fi
+    return 0
+}
+
+# Revert's remount: back to the options recorded before the first run.
+restore_shm_options() {
+    local rec="$BACKUP_GENESIS_DIR/$UH_SHM_RECORD_NAME" before opts="" opt
+    [[ -f "$rec" ]] || return 0
+    before=$(head -1 "$rec")
+    for opt in nodev:dev nosuid:suid noexec:exec; do
+        if [[ ",$before," == *",${opt%%:*},"* ]]; then opts+="${opt%%:*},"; else opts+="${opt##*:},"; fi
+    done
+    mount -o "remount,${opts%,}" /dev/shm >>"$LOG_FILE" 2>&1 \
+        && log_success "Remounted /dev/shm with its earlier options (${opts%,})" \
+        || log_warning "Could not remount /dev/shm; its earlier options return at the next boot"
+}
+
+# Time sync. CIS Ubuntu 22.04 2.3.1.1 (one time sync daemon), STIG
+# RHEL-09-252010-252025 (chrony). A daemon already running is kept; with none,
+# systemd-timesyncd is enabled where it exists, chrony installed otherwise.
+UH_TIME_DAEMONS="chronyd chrony systemd-timesyncd ntpd ntp ntpsec openntpd"
+
+_time_sync_running() {
+    local svc
+    for svc in $UH_TIME_DAEMONS; do
+        is_service_active "$svc" && { echo "$svc"; return 0; }
+    done
+    return 1
+}
+
+_has_timesyncd() {
+    _has_systemd && [[ -n "$(systemctl list-unit-files systemd-timesyncd.service --no-legend 2>/dev/null)" ]]
+}
+
+_enable_time_sync() {
+    if setting_skipped time_sync; then
+        log_info "  Left time sync as it is (UH_SKIP_SETTINGS)"
+        return 1
+    fi
+    local running
+    if running=$(_time_sync_running); then
+        log_info "  Time sync already running: $running"
+        return 0
+    fi
+    local svc=systemd-timesyncd
+    if ! _has_timesyncd; then
+        svc=chronyd
+        [[ "$(get_package_manager)" == apt ]] && svc=chrony
+    fi
+    if [[ "$DRY_RUN" == true ]]; then
+        log_dry "Would enable time sync ($svc)"
+        return 0
+    fi
+    record_service_state "$svc"
+    if [[ "$svc" != systemd-timesyncd ]]; then
+        install_package chrony || { log_warning "  chrony unavailable — no time sync enabled"; return 1; }
+    fi
+    enable_service "$svc"
+    if is_service_active "$svc"; then
+        log_success "  Time sync running: $svc"
+    else
+        log_warning "  $svc enabled but not running (containers and some VMs leave time to the host) — check: $(service_status_hint "$svc")"
+    fi
+    return 0
+}
+
+# sudo. CIS Ubuntu 22.04 / RHEL 9 5.2.2 (use_pty) and 5.2.3 (logfile).
+# Written as a drop-in only after visudo accepts it, and only where sudoers
+# reads /etc/sudoers.d: /etc/sudoers itself is never edited.
+UH_SUDOERS_DIR="${UH_SUDOERS_DIR:-/etc/sudoers.d}"   # test hook
+UH_SUDOERS_DROPIN_NAME=50-ultimate-hardening
+UH_SUDO_LOGFILE=/var/log/sudo.log
+
+_sudoers_reads_dropins() {
+    grep -qE '^[[:space:]]*[#@]includedir[[:space:]]+/etc/sudoers\.d[[:space:]]*$' "${UH_SUDOERS_FILE:-/etc/sudoers}" 2>/dev/null
+}
+
+# The Defaults lines this run writes: those not already set somewhere else
+# and not skipped.
+_sudo_defaults_wanted() {
+    local existing
+    existing=$(grep -hsE '^[[:space:]]*Defaults' "${UH_SUDOERS_FILE:-/etc/sudoers}" "$UH_SUDOERS_DIR"/* 2>/dev/null \
+               | grep -v "$UH_SUDOERS_DROPIN_NAME" || true)
+    if ! setting_skipped use_pty && ! grep -qE '(^|[[:space:],])use_pty' <<< "$existing"; then
+        echo "Defaults use_pty"
+    fi
+    if ! setting_skipped logfile && ! grep -qE 'logfile[[:space:]]*=' <<< "$existing"; then
+        echo "Defaults logfile=\"$UH_SUDO_LOGFILE\""
+    fi
+    return 0
+}
+
+_harden_sudo() {
+    if ! command -v visudo >/dev/null 2>&1; then
+        log_info "  sudo is not installed — nothing to do"
+        return 1
+    fi
+    if ! _sudoers_reads_dropins; then
+        log_warning "  sudoers has no includedir for /etc/sudoers.d — sudo left as it is (this tool never edits /etc/sudoers)"
+        return 1
+    fi
+    local dropin="$UH_SUDOERS_DIR/$UH_SUDOERS_DROPIN_NAME" wanted
+    wanted=$(_sudo_defaults_wanted)
+    if [[ -z "$wanted" ]]; then
+        log_info "  sudo already uses a pty and a log file"
+        return 0
+    fi
+    if [[ "$DRY_RUN" == true ]]; then
+        log_dry "Would add to $dropin: $(tr '\n' ';' <<< "$wanted")"
+        return 0
+    fi
+    local tmp; tmp=$(mktemp) || return 1
+    { echo "# Written by Ultimate Hardening (CIS 5.2.2, 5.2.3). Revert removes this file."; echo "$wanted"; } > "$tmp"
+    if ! visudo -cf "$tmp" >>"$LOG_FILE" 2>&1; then
+        log_warning "  visudo rejected the sudo settings — nothing written"
+        rm -f "$tmp"
+        return 1
+    fi
+    install -m 0440 -o root -g root "$tmp" "$dropin" 2>>"$LOG_FILE" || cp "$tmp" "$dropin"
+    chmod 0440 "$dropin" 2>/dev/null || true
+    rm -f "$tmp"
+    relabel_path "$dropin"
+    # The whole configuration, with the drop-in in place, must still parse.
+    if ! visudo -c >>"$LOG_FILE" 2>&1; then
+        rm -f "$dropin"
+        log_warning "  sudo's configuration failed visudo -c with the drop-in — removed it again"
+        return 1
+    fi
+    log_success "  sudo: $(tr '\n' ' ' <<< "$wanted" | sed 's/Defaults //g; s/ $//')"
+    return 0
+}
+
+apply_base_system() {
+    log_message "${GEAR} [23/23] Base System (/dev/shm, time sync, sudo)"
+    if ! is_linux; then
+        log_warning "Base system settings are Linux-specific — skipping on ${DISTRO_TYPE}"
+        return 0
+    fi
+    local done_any=false
+    _harden_dev_shm && done_any=true
+    _enable_time_sync && done_any=true
+    _harden_sudo && done_any=true
+    [[ "$DRY_RUN" == true ]] && return 0
+    if [[ "$done_any" == true ]]; then
+        log_success "Base system hardened"
+        count_fix
+    fi
+    return 0
+}
+
+# Revert of module 23: fstab back and /dev/shm remounted, the time daemon
+# back to how it was (the package stays), the sudo drop-in removed.
+undo_base_system() {
+    local acted=false
+    if revert_backed_up_file "$UH_FSTAB" >/dev/null 2>&1 && [[ -f "$BACKUP_GENESIS_DIR/$UH_SHM_RECORD_NAME" ]]; then
+        restore_shm_options
+        acted=true
+    fi
+    local svc
+    for svc in systemd-timesyncd chronyd chrony; do
+        recorded_service_state "$svc" >/dev/null && { restore_service_state "$svc"; acted=true; }
+    done
+    if [[ -f "$UH_SUDOERS_DIR/$UH_SUDOERS_DROPIN_NAME" ]]; then
+        rm -f "$UH_SUDOERS_DIR/$UH_SUDOERS_DROPIN_NAME" && { log_success "Removed $UH_SUDOERS_DIR/$UH_SUDOERS_DROPIN_NAME"; acted=true; }
+    fi
+    [[ "$acted" == true ]] && log_success "Base system reverted" \
+        || log_info "Base system: nothing reverted — this module does not appear to have changed anything here"
+    return 0
+}
+
 # --- module runner -----------------------------------------------------------
 # One module returning non-zero must not truncate the run.
 #
@@ -2833,7 +3527,7 @@ EOF
 # line, under the `set -euo pipefail` the tier scripts set. A single non-zero
 # return therefore killed the script mid-sequence and every module after it was
 # silently skipped -- no error, no summary, just a run that stopped. That is
-# exactly what apply_firewall did on Rocky 9: it aborted at [3/22], modules
+# exactly what apply_firewall did on Rocky 9: it aborted at module 3 of 22, modules
 # 4-22 never ran, and the host was left hardened through SSH and untouched from
 # the firewall onward with nothing in the output saying so.
 #
@@ -2887,6 +3581,7 @@ run_module() {
         label="${MOD_LABEL[$key]:-$key}"
     fi
 
+    UH_MODULES_RUN+=("$key")
     "$fn" || rc=$?
     if [[ $rc -eq 0 ]]; then
         return 0
@@ -2915,6 +3610,168 @@ report_module_results() {
     return 0
 }
 
+
+# --- Post-hardening health check (--verify) ----------------------------------
+# A run can finish "successfully" and still leave a host worse off: sshd not
+# back, a unit that now fails to start, the firewall gone. Each aggregate run
+# records what was healthy before it changed anything; --verify then checks
+# that the same things are still healthy, and exits UH_EXIT_VERIFY_FAILED
+# with the reasons when they are not. It changes nothing.
+UH_EXIT_VERIFY_FAILED=20
+UH_HEALTH_SNAPSHOT_NAME=health-snapshot
+UH_MODULES_RUN=()
+
+_health_snapshot_file() { echo "$UH_STATE_DIR/$UH_HEALTH_SNAPSHOT_NAME"; }
+
+# Is systemd the running init? systemctl alone also exists in containers
+# and on hosts booted with another init.
+_systemd_running() { _has_systemd && [[ -d /run/systemd/system ]]; }
+
+# systemd units in the failed state, sorted, one per line. Empty elsewhere.
+# Never fails: the callers run under set -e and pipefail.
+_failed_units() {
+    _systemd_running || return 0
+    systemctl --failed --plain --no-legend --no-pager 2>/dev/null | awk '{print $1}' | sort -u || true
+}
+
+# Is a firewall enforcing right now? The same backends the compliance check
+# counts (ufw's own status, since its unit is a oneshot; module 3's nftables
+# table; firewalld; pf).
+firewall_loaded() {
+    if command -v ufw >/dev/null 2>&1 && grep -q '^Status: active' <<<"$(ufw status 2>/dev/null)"; then
+        return 0
+    fi
+    { command -v nft >/dev/null 2>&1 && nft list chain inet uh_filter input >/dev/null 2>&1; } && return 0
+    is_service_active nftables || is_service_active firewalld || is_service_active pf
+}
+
+_sshd_running() { is_service_active sshd || is_service_active ssh; }
+
+# Ports sshd is configured to listen on, one per line (22 when it cannot say).
+_sshd_ports() {
+    local ports
+    ports=$(_sshd_effective_settings | awk 'tolower($1) == "port" {print $2}' | sort -u)
+    printf '%s\n' "${ports:-22}"
+}
+
+# True when something listens on TCP port $1. Unknown (no ss) counts as yes.
+_tcp_port_listening() {
+    command -v ss >/dev/null 2>&1 || return 0
+    [[ -n "$(ss -Htln "sport = :$1" 2>/dev/null)" ]]
+}
+
+# Record the health baseline, in memory and (outside a dry run) in the state
+# dir for a later standalone --verify.
+record_health_snapshot() {
+    UH_HEALTH_FAILED_BEFORE=$(_failed_units)
+    UH_HEALTH_FIREWALL_BEFORE=no; firewall_loaded && UH_HEALTH_FIREWALL_BEFORE=yes
+    UH_HEALTH_SSHD_BEFORE=no; _sshd_running && UH_HEALTH_SSHD_BEFORE=yes
+    UH_HEALTH_SNAPSHOT_TAKEN=true
+    [[ "${DRY_RUN:-false}" == true ]] && return 0
+    if [[ -L "$UH_STATE_DIR" ]] || ! ( umask 077; mkdir -p "$UH_STATE_DIR" ) 2>/dev/null; then
+        return 0
+    fi
+    {
+        echo "taken=$(date '+%Y-%m-%d %H:%M:%S')"
+        echo "firewall_before=$UH_HEALTH_FIREWALL_BEFORE"
+        echo "sshd_before=$UH_HEALTH_SSHD_BEFORE"
+        echo "failed_units=$(tr '\n' ' ' <<< "$UH_HEALTH_FAILED_BEFORE")"
+    } > "$(_health_snapshot_file)" 2>/dev/null || true
+}
+
+# After an aggregate run: note whether module 3 ran, so a later --verify
+# expects a firewall even if there was none before.
+record_health_after_run() {
+    [[ "${DRY_RUN:-false}" == true ]] && return 0
+    local f; f=$(_health_snapshot_file)
+    [[ -f "$f" ]] || return 0
+    local key ran=no
+    for key in "${UH_MODULES_RUN[@]}"; do [[ "$key" == firewall ]] && ran=yes; done
+    echo "firewall_applied=$ran" >> "$f" 2>/dev/null || true
+}
+
+# $1 = key. The value from the snapshot file.
+_health_snapshot_value() {
+    sed -n "s/^$1=//p" "$(_health_snapshot_file)" 2>/dev/null | tail -1
+}
+
+# Load the baseline from the file when this process did not take one.
+_load_health_snapshot() {
+    [[ "${UH_HEALTH_SNAPSHOT_TAKEN:-false}" == true ]] && return 0
+    if [[ ! -f "$(_health_snapshot_file)" ]]; then
+        log_warning "No health baseline from an earlier run ($(_health_snapshot_file)) — checking against nothing, so every failed unit counts"
+        UH_HEALTH_FAILED_BEFORE=""; UH_HEALTH_FIREWALL_BEFORE=no; UH_HEALTH_SSHD_BEFORE=no
+        return 0
+    fi
+    UH_HEALTH_FAILED_BEFORE=$(tr ' ' '\n' <<< "$(_health_snapshot_value failed_units)" | sed '/^$/d')
+    UH_HEALTH_FIREWALL_BEFORE=$(_health_snapshot_value firewall_before)
+    UH_HEALTH_SSHD_BEFORE=$(_health_snapshot_value sshd_before)
+    log_info "Comparing with the health baseline taken $(_health_snapshot_value taken)"
+}
+
+# Checks the host after hardening. Prints one line per check; returns 1 and
+# names every problem when anything broke.
+verify_health() {
+    log_message "${SHIELD} Post-hardening health check"
+    _load_health_snapshot
+    local -a problems=()
+
+    # sshd: only demanded where it was running before.
+    if [[ "$UH_HEALTH_SSHD_BEFORE" == yes ]]; then
+        if ! _sshd_running; then
+            problems+=("sshd was running before hardening and is not running now — check: $(service_status_hint sshd)")
+        else
+            local port
+            while read -r port; do
+                if _tcp_port_listening "$port"; then
+                    log_success "  sshd is running and listening on port $port"
+                else
+                    problems+=("sshd is running but nothing listens on its port $port")
+                fi
+            done < <(_sshd_ports)
+        fi
+    else
+        log_info "  sshd was not running before this run — not checked"
+    fi
+
+    # Units that failed only after the run.
+    local unit new_failed=""
+    while read -r unit; do
+        [[ -z "$unit" ]] && continue
+        grep -qxF -- "$unit" <<< "$UH_HEALTH_FAILED_BEFORE" || new_failed+="$unit "
+    done < <(_failed_units)
+    if [[ -n "$new_failed" ]]; then
+        problems+=("systemd units failed since the run: ${new_failed% } — see: systemctl status ${new_failed%% *}")
+    elif _systemd_running; then
+        log_success "  No systemd unit has failed since the run"
+    else
+        log_info "  systemd is not running here — unit failures not checked"
+    fi
+
+    # Firewall: expected where one was enforcing before, or module 3 ran.
+    local firewall_expected=false key
+    [[ "$UH_HEALTH_FIREWALL_BEFORE" == yes ]] && firewall_expected=true
+    for key in "${UH_MODULES_RUN[@]}"; do [[ "$key" == firewall ]] && firewall_expected=true; done
+    [[ "$(_health_snapshot_value firewall_applied)" == yes ]] && firewall_expected=true
+    if [[ "$firewall_expected" == true ]]; then
+        if firewall_loaded; then
+            log_success "  A firewall is loaded"
+        else
+            problems+=("no firewall is loaded, although one was before or module 3 ran")
+        fi
+    else
+        log_info "  No firewall was loaded before and module 3 did not run — not checked"
+    fi
+
+    if (( ${#problems[@]} == 0 )); then
+        log_success "Health check passed"
+        return 0
+    fi
+    local p
+    for p in "${problems[@]}"; do log_error "  $p"; done
+    log_error "Health check FAILED (${#problems[@]} problem(s)); exit status $UH_EXIT_VERIFY_FAILED"
+    return 1
+}
 
 # --- Aggregate ---------------------------------------------------------------
 # Ban and unban a documentation address (RFC 5737 / RFC 3849) once, so the
@@ -2956,9 +3813,10 @@ _run_first_four_modules() {
 
 # Every module, including the High-risk one (module 9, SUID/SGID hardening).
 apply_all_modules() {
-    log_message "${ROCKET} Applying all 22 hardening modules (including High risk)"
+    log_message "${ROCKET} Applying all 23 hardening modules (including High risk)"
     create_backup_dir
     UH_MODULE_FAILED=()
+    record_health_snapshot
 
     # Resolve every module's packages before the first module changes anything,
     # so an unobtainable dependency is reported up front rather than discovered
@@ -2984,8 +3842,10 @@ apply_all_modules() {
     run_module compiler  apply_compiler_restriction
     run_module syslog    apply_remote_syslog
     run_module umask     apply_umask_hardening
+    run_module basesys   apply_base_system
+    record_health_after_run
 
-    report_module_results "All 22 modules processed"
+    report_module_results "All 23 modules processed"
 }
 
 # Safe + Medium risk only — skips module 9 (SUID/SGID hardening), the one
@@ -3001,6 +3861,7 @@ apply_safe_modules() {
     log_message "${ROCKET} Applying Safe/Medium modules (skipping the High-risk SUID/SGID and GRUB password modules)"
     create_backup_dir
     UH_MODULE_FAILED=()
+    record_health_snapshot
 
     # Resolve every module's packages before the first module changes anything,
     # so an unobtainable dependency is reported up front rather than discovered
@@ -3024,6 +3885,8 @@ apply_safe_modules() {
     run_module compiler  apply_compiler_restriction
     run_module syslog    apply_remote_syslog
     run_module umask     apply_umask_hardening
+    run_module basesys   apply_base_system
+    record_health_after_run
 
     report_module_results "Safe/Medium modules processed (High-risk 9 and 16 skipped, run them separately)"
 }

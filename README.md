@@ -41,7 +41,7 @@ runs as root on my own servers to be built.
   write, the original state is kept separately, `--dry-run` shows each change
   first, and `--revert` restores it. SSH config is validated with `sshd -t` and
   rolled back automatically if it fails.
-- **Portability, tested rather than claimed.** 22 modules across 8 Linux families
+- **Portability, tested rather than claimed.** 23 modules across 8 Linux families
   (plus the BSDs, detected and adapted, and read-only checks on macOS); every
   push runs the integration suite in a fresh container on each of 10 distro
   images, the checks and dry run on a real macOS machine, plus ShellCheck. The tests apply real hardening and assert the system actually
@@ -134,19 +134,19 @@ new format.
 
 ## What it hardens
 
-22 modules, each independently selectable from the menu. The interactive menu
+23 modules, each independently selectable from the menu. The interactive menu
 shows a live `[enable ]` / `[disable]` / `[  N/A  ]` status per module, derived
 from the same compliance checks `--cis-only` runs:
 
 | # | Module | Risk | What it does |
 |---|--------|------|--------------|
 | 1 | System updates | Safe | Distro-aware package upgrade |
-| 2 | SSH hardening | Medium | 13 settings, validated with `sshd -t` before restart. Password and root login are turned off only when an account other than root has an SSH key (`UH_SSH_LOCKOUT_CHECK=false` skips the check) |
+| 2 | SSH hardening | Medium | 13 settings plus an allowlist of ciphers, key exchange (post-quantum where OpenSSH supports it), encrypt-then-MAC MACs and host key algorithms, limited to what the installed OpenSSH knows (17 in all; left to crypto-policies on RHEL and Fedora). Validated with `sshd -t` before restart. Password and root login are turned off only when an account other than root has an SSH key (`UH_SSH_LOCKOUT_CHECK=false` skips the check) |
 | 3 | Firewall | Medium | nftables, UFW or firewalld — default-deny inbound on **IPv4 and IPv6** |
-| 4 | Fail2Ban | Safe | SSH jail, ban after 3 failures |
+| 4 | Fail2Ban | Safe | SSH jail, ban after 3 failures; repeat bans grow longer up to a week (fail2ban 0.11+); a recidive jail for addresses banned 5 times a day; nginx, Apache and Postfix jails only where they are installed. Checked with `fail2ban-client -t` first, falling back to the SSH jail alone |
 | 5 | File permissions | Safe | `/etc/shadow`, `/etc/passwd`, sticky `/tmp` |
-| 6 | Kernel / network | Safe | 27 sysctl parameters — ASLR, SYN cookies, martians |
-| 7 | Auditd | Safe | 17 rules — identity, sudoers, module loading, mounts |
+| 6 | Kernel / network | Safe | 36 sysctl parameters, each with its CIS or STIG source in the file — ASLR, BPF and ptrace limits, SYN cookies, redirects, martians, IPv6 source routing and router adverts (left on where they give the host its IPv6 address) |
+| 7 | Auditd | Safe | The CIS 6.3.3 rule groups (identity, sudoers and sudo log, time and network changes, logins and sessions, permission changes, failed access, deletions, MAC policy, module loading, mounts) plus one rule per setuid/setgid program; 32- and 64-bit syscalls, each checked against the kernel's table so none is rejected. `UH_AUDIT_IMMUTABLE=true` locks the rules until reboot (`-e 2`) |
 | 8 | Password policy | Safe | `login.defs` only — **PAM is never modified** |
 | 9 | SUID/SGID | **High** | Strips SUID outside a safe list, inventory recorded |
 | 10 | AIDE | Safe | File integrity baseline + daily cron check |
@@ -158,10 +158,11 @@ from the same compliance checks `--cis-only` runs:
 | 16 | GRUB password | **High** | PBKDF2 bootloader password; interactive only |
 | 17 | Docker security | Medium | Inter-container comms off, live-restore, log rotation, merged into your daemon.json; userns-remap where Docker holds no data yet. `--dry-run` says whether Docker would restart and warns when containers share the default bridge |
 | 18 | ModSecurity | Medium | WAF + core rule set, only if Apache/httpd is present |
-| 19 | Unused kernel modules | Safe | Blacklists DCCP, SCTP, RDS, TIPC and the CIS uncommon filesystems (cramfs, freevxfs, hfs, hfsplus, jffs2, squashfs, udf). squashfs is left alone where snapd needs it. |
+| 19 | Unused kernel modules | Safe | Blacklists DCCP, SCTP, RDS, TIPC, ATM and CAN, the CIS uncommon filesystems (cramfs, freevxfs, hfs, hfsplus, jffs2, squashfs, udf) and FireWire (STIG); Bluetooth too with `UH_BLACKLIST_BLUETOOTH=true`. squashfs is left alone where snapd needs it. |
 | 20 | Compiler access | Medium | Restricts gcc/clang to root, records original modes |
 | 21 | Remote syslog | Safe | Forwards to a collector over UDP, TCP or TLS (`UH_SYSLOG_PROTO`, `UH_SYSLOG_TLS_CA`). TLS verifies the collector and queues to disk while it is unreachable. |
 | 22 | UMASK hardening | Safe | Default umask 027 |
+| 23 | Base system | Medium | `/dev/shm` mounted nodev,nosuid,noexec (fstab line checked with `findmnt --verify`, then remounted); time sync on (the running daemon kept, else systemd-timesyncd or chrony); sudo `use_pty` and a log file in a drop-in checked with `visudo`, never editing `/etc/sudoers`. `UH_SKIP_SETTINGS=dev_shm`, `time_sync`, `use_pty` or `logfile` leaves a part out |
 
 ## Trust
 
@@ -257,7 +258,8 @@ directly with `sudo UH_USB_STORAGE_BLACKLIST=false ./src/free/ultimate_hardening
 When one setting conflicts with how a host is used, leave that setting alone
 instead of skipping its whole module. `UH_SKIP_SETTINGS` takes sshd keywords,
 `login.defs` keys and sysctl keys, separated by spaces or commas; shell patterns
-work:
+work. Module 23's parts go by the names `dev_shm`, `time_sync`, `use_pty` and
+`logfile`:
 
 ```bash
 sudo UH_SKIP_SETTINGS="AllowTcpForwarding net.ipv6.*" ./src/free/ultimate_hardening.sh --auto-mode
@@ -266,6 +268,15 @@ sudo UH_SKIP_SETTINGS="AllowTcpForwarding net.ipv6.*" ./src/free/ultimate_harden
 Each skipped setting is named in the output, and `--dry-run` counts it. The
 compliance checks still report a skipped setting as failing, since the host
 does not meet it.
+
+### Health check after hardening
+
+`--verify` checks that a run left the host working: sshd still running and
+listening on its port (where it ran before), no systemd unit failed that was
+not already failing, and a firewall loaded where one was before or module 3
+ran. Each full run records the baseline first. Use it after a run
+(`--auto-mode --verify`) or on its own later; it changes nothing and exits 20,
+naming each problem, when something broke.
 
 ### Compliance results for scripts and CI
 
@@ -352,9 +363,9 @@ that hardens an AMI and fails the build if the score regresses.
 
 ## Tiers
 
-The free tier is MIT licensed with no expiry: all 22 hardening modules, the
+The free tier is MIT licensed with no expiry: all 23 hardening modules, the
 CIS checks, dry-run and full revert. It is actively developed: tagged releases,
-a changelog, and a module set that keeps growing. Paid tiers run the same 22 modules and add
+a changelog, and a module set that keeps growing. Paid tiers run the same 23 modules and add
 reporting, fleet management and a few extra hardening modules on top.
 
 What the free tier looks like:
@@ -369,8 +380,8 @@ What the free tier looks like:
 </td>
 <td align="center" width="33%">
   <a href="docs/images/readme/overview.png"><img src="docs/images/readme/overview.png" width="220"
-     alt="The interactive menu listing 22 hardening modules. Each row carries a risk level and a live status tag: [enable ] where the settings are already in place, [disable] where they are not, and [N/A] for modules that cannot apply on this host."></a>
-  <br><sub><b>All 22 modules</b><br>status read live, never remembered</sub>
+     alt="The interactive menu listing 23 hardening modules. Each row carries a risk level and a live status tag: [enable ] where the settings are already in place, [disable] where they are not, and [N/A] for modules that cannot apply on this host."></a>
+  <br><sub><b>All 23 modules</b><br>status read live, never remembered</sub>
 </td>
 <td align="center" width="33%">
   <a href="docs/images/readme/compliance-check.png"><img src="docs/images/readme/compliance-check.png" width="220"
@@ -383,10 +394,10 @@ What the free tier looks like:
 </div>
 
 The free tier stands on its own. Everything a single host needs is here and
-stays here: the 22 modules, the compliance checks with their results as JSON or
+stays here: the 23 modules, the compliance checks with their results as JSON or
 SARIF (`--json`, `--sarif`), per-setting exclusions, dry-run and full revert.
 
-Pro and Enterprise are not released yet. When they are, they run these same 22
+Pro and Enterprise are not released yet. When they are, they run these same 23
 modules unchanged. Pro adds reports, scheduled runs with email alerts, a waiver
 register and three extra hardening modules; Enterprise adds fleet management:
 a multi-host dashboard, remote deploy, policy-as-code with drift detection,

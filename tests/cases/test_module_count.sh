@@ -11,7 +11,7 @@
 source "${REPO_ROOT:-/repo}/tests/lib/assert.sh"
 
 REPO="${REPO_ROOT:-/repo}"
-EXPECTED=22
+EXPECTED=23
 
 # --- lib/menu.sh is the source of truth for the table -----------------------
 count=$(bash -c "source '$REPO/lib/core.sh'
@@ -57,13 +57,13 @@ fi
 # --- module headers in lib/modules.sh ---------------------------------------
 # Counted on the log_message lines that ARE the headers, not on every line
 # containing the pattern: a comment that quotes a module number (explaining a
-# past failure at [3/22], say) is not a 23rd module, and counting it as one
+# past failure at [3/22], say) is not another module, and counting it as one
 # made this assertion fail for a documentation change.
 headers=$(grep -cE 'log_message .*\[[0-9]+/'"$EXPECTED"'\]' "$REPO/lib/modules.sh" 2>/dev/null || echo 0)
 assert_exit_code "$EXPECTED" "$headers" "lib/modules.sh has $EXPECTED [n/$EXPECTED] module headers"
 
 # No module may still be numbered against an older total.
-if grep -qE '\[[0-9]+/(15|24|25)\]' "$REPO/lib/modules.sh" 2>/dev/null; then
+if grep -qE '\[[0-9]+/(15|22|24|25)\]' "$REPO/lib/modules.sh" 2>/dev/null; then
     fail "lib/modules.sh still has module headers numbered against an old total"
 else
     pass_msg "no stale module numbering in lib/modules.sh"
@@ -101,7 +101,7 @@ done
 # --- public docs must not advertise a different number ----------------------
 for doc in README.md PRICING.md docs/index.html; do
     [[ -f "$REPO/$doc" ]] || continue
-    if grep -qE '\b(15|24|25|30) (hardening |security )?modules\b' "$REPO/$doc" 2>/dev/null; then
+    if grep -qE '\b(15|22|24|25|30) (hardening |security )?modules\b' "$REPO/$doc" 2>/dev/null; then
         fail "$doc advertises a module count that is not $EXPECTED"
     else
         pass_msg "$doc does not advertise a stale module count"

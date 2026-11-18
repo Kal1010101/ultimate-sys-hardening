@@ -11,7 +11,7 @@ assert_output_contains "$out" "auto-mode" "--help works"
 
 # Pro and Enterprise source the same lib/ from one directory deeper (src/pro,
 # src/enterprise) — their own LIB_DIR discovery must resolve it too, and a
-# real --auto-fix --dry-run must walk all 22 modules rather than dying partway
+# real --auto-fix --dry-run must walk all 23 modules rather than dying partway
 # through (the class of bug this test exists to catch).
 #
 # They live in a separate private repository, so a clone of the public
@@ -32,7 +32,7 @@ for tier_script in "$PRO_SCRIPT" "$ENTERPRISE_SCRIPT"; do
 
     if [[ $EUID -eq 0 ]]; then
         tier_out=$(bash "$tier_script" --auto-mode --auto-fix --dry-run 2>&1)
-        assert_output_contains "$tier_out" "\[22/22\]" "$(basename "$tier_script") --auto-fix --dry-run reaches the final module"
+        assert_output_contains "$tier_out" "\[23/23\]" "$(basename "$tier_script") --auto-fix --dry-run reaches the final module"
     else
         # Not using skip() here: it exits the whole script, and the checks
         # below (function definitions, unknown-flag handling) don't need root.

@@ -567,11 +567,13 @@ UH_TOOL_CREATED_PATHS=(
     "/etc/modprobe.d/99-hardening-usb.conf"
     "/etc/modprobe.d/disable-unused-protocols.conf"
     "/etc/modprobe.d/disable-unused-filesystems.conf"
+    "/etc/modprobe.d/disable-unused-hardware.conf"
     "/etc/profile.d/hardening-umask.sh"
     "/etc/fail2ban/filter.d/alpine-sshd.local"
     "/etc/ssh/sshd_config.d/00-ultimate-hardening.conf"
     "/etc/nftables-uh_filter.nft"
     "/etc/fail2ban/jail.d/99-ultimate-hardening.local"
+    "/etc/sudoers.d/50-ultimate-hardening"
 )
 
 # Files a module also rewrites whole, but under a name an admin may already

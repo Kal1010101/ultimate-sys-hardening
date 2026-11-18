@@ -802,13 +802,16 @@ full_system_revert() {
     # The merged audit rules file auditd loads at start (Alpine never
     # rebuilds it): restored, or removed if hardening created it.
     restore_audit_rules
+    # Module 23's /dev/shm options: fstab is restored above, the live mount
+    # only changes on a remount.
+    is_linux && restore_shm_options
     # Profiles that were in complain mode: the restored files take effect only
     # once reloaded, and force-complain links are not in the file backup.
     [[ -f "$BACKUP_GENESIS_DIR/$UH_APPARMOR_RECORD_NAME" ]] && undo_apparmor_enforce
     # Services hardening turned on go back to how they were (not nftables:
     # stopping its unit flushes every table; module 3's revert handles it).
     local svc_before
-    for svc_before in fail2ban auditd apparmor; do
+    for svc_before in fail2ban auditd apparmor systemd-timesyncd chronyd chrony; do
         recorded_service_state "$svc_before" >/dev/null && restore_service_state "$svc_before"
     done
     restart_sshd || true

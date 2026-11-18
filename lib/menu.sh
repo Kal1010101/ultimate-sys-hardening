@@ -2,7 +2,7 @@
 # =============================================================================
 #  lib/menu.sh — shared module table for all three tiers
 #
-#  Renders the 22 shared hardening modules as one consistent table:
+#  Renders the 23 shared hardening modules as one consistent table:
 #
 #      1) System updates              (Safe)    [enable ]
 #      2) SSH hardening               (Medium)  [disable]
@@ -36,8 +36,8 @@
 # =============================================================================
 
 # Parallel arrays: module key -> label / risk / apply function.
-# Order matches the numbered 1-22 menu everywhere else in the project.
-MOD_KEYS=(updates ssh firewall fail2ban perms kernel audit password suid aide rkhunter services apparmor etckeeper boot grubpw docker modsec protocols compiler syslog umask)
+# Order matches the numbered 1-23 menu everywhere else in the project.
+MOD_KEYS=(updates ssh firewall fail2ban perms kernel audit password suid aide rkhunter services apparmor etckeeper boot grubpw docker modsec protocols compiler syslog umask basesys)
 
 declare -A MOD_LABEL=(
     [updates]="System updates"
@@ -62,6 +62,7 @@ declare -A MOD_LABEL=(
     [compiler]="Compiler access restriction"
     [syslog]="Remote syslog"
     [umask]="UMASK hardening"
+    [basesys]="Base system (shm, time, sudo)"
 )
 
 declare -A MOD_RISK=(
@@ -70,7 +71,7 @@ declare -A MOD_RISK=(
     [suid]=high [aide]=safe [rkhunter]=safe [services]=safe
     [apparmor]=medium [etckeeper]=safe [boot]=safe
     [grubpw]=high [docker]=medium [modsec]=medium [protocols]=safe
-    [compiler]=medium [syslog]=safe [umask]=safe
+    [compiler]=medium [syslog]=safe [umask]=safe [basesys]=medium
 )
 
 # Which file(s) a module's own apply_* function calls backup_file() on —
@@ -96,7 +97,7 @@ declare -A MOD_REVERT_FILES=(
     [password]="/etc/login.defs"
     [grubpw]="/etc/grub.d/40_custom"
     [docker]="/etc/docker/daemon.json"
-    [protocols]="/etc/modprobe.d/disable-unused-protocols.conf /etc/modprobe.d/disable-unused-filesystems.conf"
+    [protocols]="/etc/modprobe.d/disable-unused-protocols.conf /etc/modprobe.d/disable-unused-filesystems.conf /etc/modprobe.d/disable-unused-hardware.conf"
     [syslog]="/etc/rsyslog.conf"
     [umask]="/etc/login.defs /etc/profile.d/hardening-umask.sh /etc/bash.bashrc"
 )
@@ -122,7 +123,7 @@ declare -A MOD_STATE=()
 module_applicable() {
     local key="$1"
     case "$key" in
-        kernel|apparmor|boot|protocols)
+        kernel|apparmor|boot|protocols|basesys)
             is_linux && return 0 || return 1 ;;
         grubpw)
             is_linux && command -v grub-mkpasswd-pbkdf2 >/dev/null 2>&1 ;;
@@ -294,6 +295,11 @@ module_probe_state() {
         umask)
             [[ -f /etc/profile.d/hardening-umask.sh ]] \
                 && grep -qE '^[[:space:]]*UMASK[[:space:]]+027' /etc/login.defs 2>/dev/null \
+                && echo on || echo off ;;
+        basesys)
+            # Its sudo drop-in, or the fstab line that keeps /dev/shm noexec.
+            { [[ -f "$UH_SUDOERS_DIR/$UH_SUDOERS_DROPIN_NAME" ]] \
+                || grep -qE '^[^#]*[[:space:]]/dev/shm[[:space:]].*noexec' "$UH_FSTAB" 2>/dev/null; } \
                 && echo on || echo off ;;
         *)
             echo off ;;
@@ -638,6 +644,11 @@ revert_module() {
             else
                 log_info "${label}: nothing reverted — no baseline database or cron check found (this module doesn't appear to have been applied by the tool on this host)"
             fi
+            return 0
+            ;;
+        basesys)
+            confirm "Revert ${label} — put back /etc/fstab and the /dev/shm options, the time sync service state, and remove the sudo drop-in?" || { log_info "Revert cancelled"; return 0; }
+            undo_base_system
             return 0
             ;;
         perms)

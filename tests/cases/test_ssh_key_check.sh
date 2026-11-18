@@ -34,6 +34,9 @@ run_ssh_module() {
         DRY_RUN=false SKIP_BACKUP=false FIXES_APPLIED=0
         BACKUP_GENESIS_DIR="'"$W"'/genesis" BACKUP_DIR="'"$W"'/run" UH_BACKUP_ROOT="'"$W"'"
         restorecon() { :; }
+        # The crypto allowlist varies with the OpenSSH build; test_ssh_crypto
+        # covers it, so the counts here stay the 13 base settings.
+        _ssh_crypto_settings() { :; }
         sshd_config_valid() { return 0; }
         restart_sshd() { return 0; }
         is_service_active() { return 0; }
