@@ -147,7 +147,7 @@ from the same compliance checks `--cis-only` runs:
 | 5 | File permissions | Safe | `/etc/shadow`, `/etc/passwd`, sticky `/tmp` |
 | 6 | Kernel / network | Safe | 36 sysctl parameters, each with its CIS or STIG source in the file — ASLR, BPF and ptrace limits, SYN cookies, redirects, martians, IPv6 source routing and router adverts (left on where they give the host its IPv6 address) |
 | 7 | Auditd | Safe | The CIS 6.3.3 rule groups (identity, sudoers and sudo log, time and network changes, logins and sessions, permission changes, failed access, deletions, MAC policy, module loading, mounts) plus one rule per setuid/setgid program; 32- and 64-bit syscalls, each checked against the kernel's table so none is rejected. `UH_AUDIT_IMMUTABLE=true` locks the rules until reboot (`-e 2`) |
-| 8 | Password policy | Safe | `login.defs` only — **PAM is never modified** |
+| 8 | Password policy | Safe | `login.defs` only — **PAM is never modified**. Maximum password age 365 days, as in current CIS Benchmarks (applies to accounts created afterwards) |
 | 9 | SUID/SGID | **High** | Strips SUID outside a safe list, inventory recorded |
 | 10 | AIDE | Safe | File integrity baseline + daily cron check |
 | 11 | rkhunter | Safe | Rootkit scanner with daily scan |

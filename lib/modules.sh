@@ -1778,11 +1778,12 @@ apply_password_policies() {
     fi
 
     backup_file "$defs"
-    set_config "PASS_MAX_DAYS" "90" "$defs" "	"
+    # 365, not 90: short forced rotation weakens passwords (see the CIS check).
+    set_config "PASS_MAX_DAYS" "365" "$defs" "	"
     set_config "PASS_MIN_DAYS" "1"  "$defs" "	"
     set_config "PASS_WARN_AGE" "14" "$defs" "	"
 
-    log_success "Password aging set: 90-day max, 14-day warning (PAM untouched)"
+    log_success "Password aging set: 365-day max, 14-day warning (PAM untouched)"
     count_fix
 }
 

@@ -39,6 +39,14 @@ and the project follows [Semantic Versioning](https://semver.org).
   `UH_BLACKLIST_BLUETOOTH=true`.
 
 ### Changed
+- Module 8 sets the password maximum age to 365 days instead of 90, and the
+  `--cis-only` check now passes at 365 days or fewer, as in current CIS
+  Benchmarks. Short forced rotation leads to weaker, predictable passwords,
+  and NIST SP 800-63B advises against periodic changes. The check's JSON
+  and SARIF id changes from `password-max-age-is-90-days-or-fewer` to
+  `password-max-age-is-365-days-or-fewer`; update any waiver or filter that
+  names the old id. `login.defs` only applies to accounts created later, so
+  existing accounts keep their expiry until changed with `chage`.
 - CI now runs a PR risk check on every pull request
   (`scripts/pr-risk-check.sh`). It marks the parts a reviewer must read
   closely, such as changes to CI, packaging, install and update code, binary

@@ -233,13 +233,16 @@ run_cis_checks() {
     fi
 
     # -- Password aging --------------------------------------------------------
+    # 365 days, as in current CIS Benchmarks. Forced short rotation (the old 90
+    # days) pushes people to weaker, predictable passwords; NIST SP 800-63B
+    # advises against periodic changes.
     if [[ -f /etc/login.defs ]]; then
         local maxdays
         maxdays=$(grep -E '^PASS_MAX_DAYS' /etc/login.defs 2>/dev/null | awk '{print $2}' | head -1 || true)
-        if [[ -n "$maxdays" ]] && [[ "$maxdays" -le 90 ]] 2>/dev/null; then
-            record_check "Password max age is 90 days or fewer" "true"
+        if [[ -n "$maxdays" ]] && [[ "$maxdays" -le 365 ]] 2>/dev/null; then
+            record_check "Password max age is 365 days or fewer" "true"
         else
-            record_check "Password max age is 90 days or fewer" "false" "Currently ${maxdays:-unset}"
+            record_check "Password max age is 365 days or fewer" "false" "Currently ${maxdays:-unset}"
         fi
     fi
 

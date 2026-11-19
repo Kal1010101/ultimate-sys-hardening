@@ -113,8 +113,8 @@ mutate_and_check \
 import os
 p=os.environ["REPO_ROOT"]+"/lib/modules.sh"
 s=open(p).read()
-old="    backup_file \"$defs\"\n    set_config \"PASS_MAX_DAYS\" \"90\" \"$defs\" \"\t\""
-new="    backup_file \"$defs\"\n    [[ -f /etc/pam.d/common-auth ]] \u0026\u0026 echo \"auth required pam_faillock.so deny=5\" >> /etc/pam.d/common-auth\n    set_config \"PASS_MAX_DAYS\" \"90\" \"$defs\" \"\t\""
+old="    set_config \"PASS_MAX_DAYS\" \"365\" \"$defs\" \"\t\""
+new="    [[ -f /etc/pam.d/common-auth ]] \u0026\u0026 echo \"auth required pam_faillock.so deny=5\" >> /etc/pam.d/common-auth\n    set_config \"PASS_MAX_DAYS\" \"365\" \"$defs\" \"\t\""
 assert old in s
 open(p,"w").write(s.replace(old,new,1))
 '

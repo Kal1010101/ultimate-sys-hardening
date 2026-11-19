@@ -126,7 +126,7 @@ block_cis() {
                  "Kernel log restricted to root" \
                  "Kernel pointers hidden" \
                  "SUID core dumps disabled" \
-                 "Password max age is 90 days or fewer" \
+                 "Password max age is 365 days or fewer" \
                  "/etc/passwd permissions are 644 or stricter" \
                  "/etc/shadow permissions are 640 or stricter" \
                  "/etc/group permissions are 644 or stricter" \
