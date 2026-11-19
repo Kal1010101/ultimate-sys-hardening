@@ -71,7 +71,8 @@ assert_output_contains "$(cat "$W/out")" 'restored \(unchanged since hardening_b
 
 # --- the backup holding the copy is pruned -----------------------------------
 new_host
-touch -d '200 days ago' "$R2"
+# POSIX -t, not -d '200 days ago': BusyBox touch (Alpine) cannot parse that.
+touch -t 202001010000 "$R2"
 run 'UH_BACKUP_RETENTION_DAYS=90; create_backup_dir' hardening_backup_20260105_000000
 assert_file_absent "$R2" "run 2's backup is pruned"
 assert_file_contains "$R3/files$F" '^hardened$' "its copy of the file was first copied into run 3, which points at it"
