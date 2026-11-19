@@ -23,6 +23,9 @@ new_host() {   # $1 = yes|no running, $2 = default zone, $3 = services of that z
     echo "$2" > "$W/fw/default"
     printf '%s\n' $3 > "$W/fw/zone.$2"
     touch "$W/fw/zone.drop"
+    mkdir -p "$W/fw/zones"
+    printf '# firewalld config file\nDefaultZone=%s\n' "$2" > "$W/fw/firewalld.conf"
+    echo "<zone><short>$2</short></zone>" > "$W/fw/zones/$2.xml"
     : > "$W/calls"; : > "$W/forbidden"
 }
 
@@ -34,6 +37,8 @@ run() {   # $1 = shell; $2 = SSH_CONNECTION value (empty = local console)
         F='$W/fw'
         DRY_RUN=false; SKIP_BACKUP=false; LOG_FILE='$W/run.log'
         UH_BACKUP_ROOT='$W/backups'; BACKUP_GENESIS_DIR='$W/backups/genesis'; BACKUP_DIR='$W/backups/hardening_backup_1'
+        FIREWALLD_CONF=\"\$F/firewalld.conf\"; FIREWALLD_ZONE_DIR=\"\$F/zones\"
+        relabel_path() { :; }
         count_fix() { :; }
         is_service_active() { [[ \"\$1\" == firewalld && -f \"\$F/active\" ]] || [[ \"\$1\" == sshd && -f \"\$F/sshd\" ]]; }
         enable_service() { echo \"ENABLE \$1\" >> '$W/calls'; touch \"\$F/active\"; }
@@ -56,7 +61,8 @@ run() {   # $1 = shell; $2 = SSH_CONNECTION value (empty = local console)
                 case \"\$arg\" in
                     --state) [[ -f \"\$F/active\" ]] && echo running || echo 'not running' ;;
                     --get-default-zone) cat \"\$F/default\" ;;
-                    --set-default-zone=*) echo \"\${arg#--set-default-zone=}\" > \"\$F/default\" ;;
+                    --set-default-zone=*) echo \"\${arg#--set-default-zone=}\" > \"\$F/default\"
+                                         sed -i \"s/^DefaultZone=.*/DefaultZone=\${arg#--set-default-zone=}/\" \"\$F/firewalld.conf\" ;;
                     --add-service=*) echo \"\${arg#--add-service=}\" >> \"\$F/zone.\$zone\" ;;
                     --remove-service=*) grep -vx \"\${arg#--remove-service=}\" \"\$F/zone.\$zone\" > \"\$F/t\"; mv \"\$F/t\" \"\$F/zone.\$zone\" ;;
                     --query-service=*) grep -qx \"\${arg#--query-service=}\" \"\$F/zone.\$zone\" 2>/dev/null; return ;;
@@ -119,6 +125,7 @@ assert_output_contains "$(cat "$W/out")" 'sshd is running.*firewall-cmd --set-de
 new_host yes drop "ssh http https"
 run '_fw_firewalld'
 assert_file_absent "$W/backups/genesis/firewalld_state.txt" "an earlier release's rules are not recorded as the original state"
+assert_file_absent "$W/backups/genesis/files$W/fw/firewalld.conf" "nor is firewalld.conf saved as the state before hardening"
 run revert_firewall
 assert_output_contains "$(cat "$W/calls")" '^STOP firewalld$' "with no record, revert falls back to stopping firewalld"
 
@@ -144,6 +151,28 @@ run '_fw_firewalld'
 assert_file_contains "$W/backups/genesis/firewalld_state.txt" '^default_zone=public$' "without an earlier run, http/https in public are the host's own and recorded"
 run revert_firewall
 zone_has public http && pass_msg "and revert leaves them open" || fail "revert removed the host's own http service"
+
+# --- module 3 alone must leave genesis a file backup (Rocky 9, VM lab) ------
+# Only the state record was written, so genesis had no files/ directory and a
+# full `--revert-to genesis` refused: "No backup matches 'genesis'".
+new_host yes public "ssh dhcpv6-client"
+run _fw_firewalld
+assert_file_contains "$W/backups/genesis/files$W/fw/firewalld.conf" '^DefaultZone=public$' "firewalld.conf from before hardening is in genesis"
+assert_file_contains "$W/backups/genesis/files$W/fw/zones/public.xml" 'public' "and so are the zone files"
+run "source '$REPO/lib/cis.sh'; resolve_revert_target genesis"
+[[ "$(cat "$W/out")" == "$W/backups/genesis" ]] && pass_msg "so --revert-to genesis finds a restore point after module 3 alone" \
+                                                 || fail "genesis did not resolve after module 3 alone: $(head -1 "$W/out")"
+
+# --- full revert, sshd running, original zone without SSH --------------------
+# The full revert copies firewalld.conf back first. When the zone is then kept
+# to avoid an SSH lockout, the file must not switch zones at the next reload.
+new_host yes home "dhcpv6-client"
+touch "$W/fw/sshd"
+run _fw_firewalld
+cp "$W/backups/genesis/files$W/fw/firewalld.conf" "$W/fw/firewalld.conf"
+run revert_firewall
+[[ "$(cat "$W/fw/default")" == drop ]] && pass_msg "the live zone stays drop while sshd runs" || fail "switched to $(cat "$W/fw/default")"
+assert_file_contains "$W/fw/firewalld.conf" '^DefaultZone=drop$' "and the restored firewalld.conf is set back to the zone kept live"
 
 if [[ -s "$W/forbidden" ]]; then
     fail "a real system tool would have been called: $(head -2 "$W/forbidden" | tr '\n' ';')"

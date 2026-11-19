@@ -491,6 +491,13 @@ FIREWALLD_STATE_NAME=firewalld_state.txt
 # The zone an earlier release left ssh, http and https in. Written instead of
 # the state record, it also stops later runs recording the hardened state.
 FIREWALLD_EARLIER_RELEASE_NAME=firewalld_earlier_release_zone.txt
+# The files module 3 changes on disk: firewalld.conf holds DefaultZone, and
+# the zone files hold each zone's services. Backed up as well as the state
+# record above: with only that record, genesis had no files/ directory on a
+# host where module 3 was the only change (Rocky 9, VM lab), so a full
+# `--revert-to genesis` refused with "No backup matches 'genesis'".
+FIREWALLD_CONF=/etc/firewalld/firewalld.conf
+FIREWALLD_ZONE_DIR=/etc/firewalld/zones
 
 # Releases up to 2.4.9 added ssh, http and https to the default zone. Since
 # --set-default-zone was fixed that is the drop zone; before, that call always
@@ -542,9 +549,37 @@ _record_firewalld_state() {
         || log_warning "Could not record firewalld's state in $rec — revert will not be able to put it back"
 }
 
+# Same rule as the ufw files: an earlier release's rules are not saved as the
+# state before hardening, so the files are skipped when that was recorded.
+_backup_firewalld_files() {
+    [[ -f "$BACKUP_GENESIS_DIR/$FIREWALLD_EARLIER_RELEASE_NAME" ]] && return 0
+    local zone_file
+    backup_file "$FIREWALLD_CONF"
+    for zone_file in "$FIREWALLD_ZONE_DIR"/*.xml; do
+        [[ -f "$zone_file" ]] && backup_file "$zone_file"
+    done
+    return 0
+}
+
 _zone_allows_ssh() {
     firewall-cmd --permanent --zone="$1" --query-service=ssh >/dev/null 2>&1 \
         || firewall-cmd --permanent --zone="$1" --query-port=22/tcp >/dev/null 2>&1
+}
+
+# A full revert copies firewalld.conf back before _restore_firewalld_state
+# runs, so when that function keeps the live zone to avoid an SSH lockout, the
+# restored file would still switch zones at the next reload or boot. Writes
+# the live default zone back into the file in that case.
+_keep_live_default_zone_in_conf() {
+    local live
+    live=$(firewall-cmd --get-default-zone 2>/dev/null) || return 0
+    [[ "$live" =~ ^[A-Za-z0-9_.-]+$ && -f "$FIREWALLD_CONF" ]] || return 0
+    grep -qx "DefaultZone=$live" "$FIREWALLD_CONF" && return 0
+    if sed -i "s/^DefaultZone=.*/DefaultZone=$live/" "$FIREWALLD_CONF"; then
+        relabel_path "$FIREWALLD_CONF"
+    else
+        log_warning "Could not set DefaultZone=$live in $FIREWALLD_CONF — firewalld may switch zones at its next reload"
+    fi
 }
 
 # Put firewalld back the way _record_firewalld_state found it. Returns 1 when
@@ -567,6 +602,7 @@ _restore_firewalld_state() {
     # env_reset drops that variable, so `sudo` over SSH looked like a console.
     if [[ "$was_active" == yes ]] && ! _zone_allows_ssh "$zone" \
        && { [[ -n "${SSH_CONNECTION:-}" ]] || is_service_active sshd || is_service_active ssh; }; then
+        _keep_live_default_zone_in_conf
         log_warning "firewalld: nothing changed. The default zone before hardening ($zone) does not allow SSH, and sshd is running, so switching back would lock SSH out. If that is intended, run from a local console: firewall-cmd --set-default-zone=$zone"
         return 0
     fi
@@ -605,6 +641,7 @@ _fw_firewalld() {
         sleep 0.5
     done
     _record_firewalld_state "$was_active"
+    _backup_firewalld_files
 
     # --set-default-zone is a "stand-alone option" in firewall-cmd's own
     # parser and cannot be combined with --permanent at all — firewall-cmd

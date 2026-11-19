@@ -62,6 +62,12 @@ and the project follows [Semantic Versioning](https://semver.org).
   with "no GRUB on this system". It looked only for `grub-mkpasswd-pbkdf2`,
   and those distributions name the tool `grub2-mkpasswd-pbkdf2`. Both names
   are now found.
+- Full revert to the original state refused with "No backup matches
+  'genesis'" when module 3 on firewalld was the only change (Rocky 9), and
+  the drop zone stayed. Module 3 now also backs up `firewalld.conf` and the
+  zone files in `/etc/firewalld/zones`. When the revert keeps the live zone
+  to avoid locking SSH out, the restored `firewalld.conf` is set back to that
+  zone too, so a reload or reboot does not switch zones later.
 
 ## [2.6.4] — 2026-11-17
 
