@@ -68,6 +68,19 @@ and the project follows [Semantic Versioning](https://semver.org).
   zone files in `/etc/firewalld/zones`. When the revert keeps the live zone
   to avoid locking SSH out, the restored `firewalld.conf` is set back to that
   zone too, so a reload or reboot does not switch zones later.
+- A restore point picked in the interactive `--revert` chooser now stays in
+  `UH_REVERT_TARGET`, so the Pro and Enterprise revert step can tell a
+  point-in-time revert from a revert to the original state. A cancel in the
+  chooser sets `UH_REVERT_CANCELLED=true`, so that step does nothing either.
+- A full revert to a chosen earlier backup restored no file that the
+  original (genesis) backup also held, which is almost every file, and
+  reported "Reverted 0 files". It now restores every file in the chosen
+  backup.
+- A run that finds a file unchanged since an earlier backup takes no new copy,
+  so a revert to that run left the file as it was. The run now records which
+  backup holds the copy (`unchanged_files.txt`), and the revert restores the
+  file from there. When that earlier backup is pruned, the file is first
+  copied into the run that points at it.
 
 ## [2.6.4] — 2026-11-17
 

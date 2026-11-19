@@ -53,6 +53,32 @@ fi
 out=$(bash -c "$LIB; DRY_RUN=true; UH_REVERT_TARGET=''; full_system_revert" 2>&1)
 assert_output_contains "$out" 'genesis' "with no target, revert defaults to the original (genesis)"
 
+# --- a point picked in the chooser is left for the paid revert hook ---------
+# The chooser only runs on a real terminal, so `script` gives it one. The pick
+# lived only in a local variable; the paid tiers' hook, run after this
+# function, saw UH_REVERT_TARGET empty, took it for genesis, and offered to
+# revert paid modules on a point-in-time revert.
+if command -v script >/dev/null 2>&1; then
+    picked="$W/root/hardening_backup_20260910_120000_free"
+    cat > "$W/pick.sh" <<PICK
+$LIB
+AUTO_MODE=false; DRY_RUN=true; UH_REVERT_TARGET=''
+choose_backup_point() { echo '$picked'; }
+full_system_revert >/dev/null 2>&1
+echo "target=\$UH_REVERT_TARGET cancelled=\$UH_REVERT_CANCELLED"
+PICK
+    out=$(script -qec "bash '$W/pick.sh'" /dev/null </dev/null 2>&1 | tr -d '\r')
+    assert_output_contains "$out" "target=$picked cancelled=false\$" "a point picked in the chooser is left in UH_REVERT_TARGET"
+
+    # Cancelled: the paid hook runs after this function anyway, and an empty
+    # target alone read as genesis, so it offered to revert paid modules.
+    sed -i "s|^choose_backup_point() .*|choose_backup_point() { return 1; }|" "$W/pick.sh"
+    out=$(script -qec "bash '$W/pick.sh'" /dev/null </dev/null 2>&1 | tr -d '\r')
+    assert_output_contains "$out" "target= cancelled=true\$" "a cancel in the chooser is left in UH_REVERT_CANCELLED"
+else
+    pass_msg "SKIPPED chooser check: no 'script' command to give it a terminal"
+fi
+
 # --- an unknown target refuses rather than reverting to the wrong thing ------
 out=$(bash -c "$LIB; DRY_RUN=true; UH_REVERT_TARGET='19990101'; full_system_revert; echo rc=\$?" 2>&1)
 assert_output_contains "$out" 'No backup matches' "an unknown target is refused"

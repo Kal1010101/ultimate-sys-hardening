@@ -309,6 +309,7 @@ prune_old_backups() {
     local dir pruned=0
     while IFS= read -r dir; do
         [[ "$dir" == "$BACKUP_DIR" ]] && continue   # never prune the one just created
+        _materialize_unchanged_copies "$dir"
         rm -rf "$dir" 2>/dev/null && bump pruned
     done < <(find "$UH_BACKUP_ROOT" -maxdepth 1 -type d -name 'hardening_backup_*' -mtime "+${days}" 2>/dev/null)
     (( pruned > 0 )) && log_info "Pruned ${pruned} backup director$( [[ $pruned -eq 1 ]] && echo y || echo ies ) older than ${days} days"
@@ -375,6 +376,56 @@ _seed_genesis() {
     return 0
 }
 
+# A run that skips a copy because the file is unchanged since an earlier
+# backup records which backup holds that copy (path|backup dir), in its own
+# directory. Without it, a revert pinned to that run had no copy of the file
+# and left it as it is now. A file recorded here is not copied into the same
+# run afterwards (see backup_file).
+UH_UNCHANGED_RECORD_NAME=unchanged_files.txt
+
+# $1 = path, $2 = the earlier copy it matched ($holder/files$1).
+_record_unchanged_copy() {
+    local src="$1" holder="${2%/files"$1"}"
+    printf '%s|%s\n' "$src" "$holder" >> "$BACKUP_DIR/$UH_UNCHANGED_RECORD_NAME" 2>/dev/null \
+        || log_warning "Could not record that $src is unchanged since $holder — a revert to this run will not restore it"
+}
+
+# Prints the backup dir that run $1 recorded as holding $2's copy. Only
+# genesis or a per-run dir directly under UH_BACKUP_ROOT is accepted, so an
+# edited record cannot point a revert at another file.
+_unchanged_copy_holder() {
+    local run_dir="$1" path="$2" holder
+    [[ -f "$run_dir/$UH_UNCHANGED_RECORD_NAME" ]] || return 1
+    holder=$(awk -F'|' -v p="$path" '$1 == p { print $2; exit }' "$run_dir/$UH_UNCHANGED_RECORD_NAME")
+    [[ -n "$holder" && "$holder" != *..* ]] || return 1
+    if [[ "$holder" == "$BACKUP_GENESIS_DIR" ]] \
+       || [[ "${holder%/*}" == "$UH_BACKUP_ROOT" && "${holder##*/}" == hardening_backup_* ]]; then
+        printf '%s' "$holder"
+        return 0
+    fi
+    return 1
+}
+
+# Before $1 is pruned, copy each file another backup's record points into
+# it over to that backup, so the backup still restores it.
+_materialize_unchanged_copies() {
+    local doomed="$1" rec run_dir path holder kept
+    while IFS= read -r rec; do
+        run_dir="${rec%/*}"
+        [[ "$run_dir" == "$doomed" ]] && continue
+        kept=""
+        while IFS='|' read -r path holder; do
+            if [[ "$holder" == "$doomed" && -f "$doomed/files$path" ]] \
+               && mkdir -p "$(dirname "$run_dir/files$path")" \
+               && cp -a "$doomed/files$path" "$run_dir/files$path"; then
+                continue
+            fi
+            kept+="$path|$holder"$'\n'
+        done < "$rec"
+        printf '%s' "$kept" > "$rec"
+    done < <(find "$UH_BACKUP_ROOT" -mindepth 2 -maxdepth 2 -path '*/hardening_backup_*/'"$UH_UNCHANGED_RECORD_NAME" -type f 2>/dev/null)
+}
+
 # Most recently captured copy of $1, across genesis and every EXISTING
 # per-run backup (never the one create_backup_dir just made for this run —
 # that one is still empty for this path, so it would never match anyway).
@@ -436,11 +487,18 @@ backup_file() {
     # necessarily a first-ever capture.
     local prior skip_copy=false
     prior=$(_latest_backup_copy "$src")
+    # Already recorded as unchanged in this run: that record holds the state
+    # before the run, which a copy taken now, after a module changed the
+    # file, would not.
+    _unchanged_copy_holder "$BACKUP_DIR" "$src" >/dev/null && return 0
     [[ -n "$prior" ]] && _same_bytes "$src" "$prior" && skip_copy=true
 
     _seed_genesis "$src" || log_warning "Could not seed genesis backup for $src (revert-to-original may be incomplete for this file)"
 
-    [[ "$skip_copy" == true ]] && return 0
+    if [[ "$skip_copy" == true ]]; then
+        _record_unchanged_copy "$src" "$prior"
+        return 0
+    fi
 
     local dest="$BACKUP_DIR/files$src"
     mkdir -p "$(dirname "$dest")" 2>/dev/null || return 1

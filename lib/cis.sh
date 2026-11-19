@@ -679,11 +679,20 @@ full_system_revert() {
     # backup pins a point in time (genesis is NOT preferred over it); "genesis"
     # or no choice keeps the historical restore-to-true-original behaviour.
     local _target="${UH_REVERT_TARGET:-}"
+    # Read by the paid tiers' revert hook, which runs after this function
+    # whatever it returns: a cancel left the target empty, which the hook took
+    # for genesis, and it offered to revert paid modules after "Revert cancelled."
+    UH_REVERT_CANCELLED=false
     # Only prompt when there is a real terminal — a piped/scripted --revert (and
     # the test suite) falls through to the default, it never blocks on input.
     if [[ -z "$_target" && "$AUTO_MODE" != true && -t 0 ]]; then
-        _target=$(choose_backup_point) || { log_info "Revert cancelled."; return 0; }
+        _target=$(choose_backup_point) || { UH_REVERT_CANCELLED=true; log_info "Revert cancelled."; return 0; }
     fi
+    # Left in UH_REVERT_TARGET for the paid tiers' revert hook, which runs
+    # after this function: a point picked in the chooser lived only in
+    # _target, so the hook took the empty value for genesis and offered to
+    # revert paid modules on a point-in-time revert.
+    UH_REVERT_TARGET="$_target"
     local _pin_perrun=false
     if [[ -n "$_target" ]]; then
         local _resolved; _resolved=$(resolve_revert_target "$_target") || _resolved=""
@@ -782,13 +791,33 @@ full_system_revert() {
 
     # ...then fall back to the latest per-run backup for anything genesis
     # doesn't have (only relevant on hosts that predate genesis tracking).
+    # A pinned point restores every file it holds: genesis was not restored
+    # above then, and skipping files genesis also holds left a pinned revert
+    # restoring nothing (Debian 12, VM lab: "Reverted 0 files").
     if [[ -n "${BACKUP_DIR:-}" ]] && [[ -d "$BACKUP_DIR/files" ]]; then
         while IFS= read -r stored; do
             local target="${stored#"$BACKUP_DIR"/files}"
-            [[ -f "$BACKUP_GENESIS_DIR/files$target" ]] && continue  # already restored above
+            [[ "$have_genesis" == true && -f "$BACKUP_GENESIS_DIR/files$target" ]] && continue  # already restored above
             cp -a "$stored" "$target" 2>/dev/null && { relabel_path "$target"; log_info "  restored (per-run): $target"; bump restored; } || \
                 log_warning "  could not restore $target"
         done < <(find "$BACKUP_DIR/files" -type f 2>/dev/null)
+    fi
+
+    # Files that run left unchanged since an earlier backup: their copy is in
+    # the backup its record names (see _record_unchanged_copy).
+    if [[ -n "${BACKUP_DIR:-}" && -f "$BACKUP_DIR/$UH_UNCHANGED_RECORD_NAME" ]]; then
+        local upath _uholder uholder
+        while IFS='|' read -r upath _uholder; do
+            [[ "$upath" == /* && "$upath" != *..* ]] || continue
+            [[ "$have_genesis" == true && -f "$BACKUP_GENESIS_DIR/files$upath" ]] && continue
+            [[ -f "$BACKUP_DIR/files$upath" ]] && continue
+            if ! uholder=$(_unchanged_copy_holder "$BACKUP_DIR" "$upath") || [[ ! -f "$uholder/files$upath" ]]; then
+                log_warning "  could not restore $upath: the earlier backup holding its copy is gone"
+                continue
+            fi
+            cp -a "$uholder/files$upath" "$upath" 2>/dev/null && { relabel_path "$upath"; log_info "  restored (unchanged since $(basename "$uholder")): $upath"; bump restored; } || \
+                log_warning "  could not restore $upath"
+        done < "$BACKUP_DIR/$UH_UNCHANGED_RECORD_NAME"
     fi
 
     # Remove files the hardening added rather than modified. Files that

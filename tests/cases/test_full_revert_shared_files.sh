@@ -69,6 +69,11 @@ check "stock banner" "genesis holds the original: it is restored"
 run "stock banner" none pin
 check "$BANNER" "pinned to a per-run backup without a copy: the file is kept, not deleted"
 
+# The per-run restore skipped every file genesis also held, even when pinned,
+# so a pinned revert restored nothing (Debian 12, VM lab: "Reverted 0 files").
+run "stock banner" "banner before run 1" pin
+check "banner before run 1" "pinned, both backups hold a copy: the per-run copy is restored, not skipped for genesis"
+
 run none "$BANNER" pin
 check absent "pinned, and the only copy anywhere is the module's own output: removed"
 
