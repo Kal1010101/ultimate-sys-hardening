@@ -56,6 +56,11 @@ and the project follows [Semantic Versioning](https://semver.org).
   `not_checked` count; SARIF lists those checks as notes. A normal user's run
   log goes to `~/.local/state/ultimate-hardening/`. Every other mode,
   `--dry-run` included, still needs root.
+- The site's interactive replay (`docs/demo.html`) was re-recorded on a
+  Debian 12 VM with the 23-module menu, apply-all on 24 and 25. Every line
+  of the platform screen can now be clicked: Debian plays the recording,
+  the same as auto-detect, and the others say only the Debian run is
+  recorded.
 
 ### Fixed
 - Module 16 (GRUB password) skipped every Fedora, RHEL and openSUSE host

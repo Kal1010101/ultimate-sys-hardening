@@ -6,7 +6,7 @@
      recomputes it, so edit the script and re-run that rather than hand-editing
      the hash. The recordings sit in a type="application/json" block, which the
      browser never executes, so CSP does not need to allow it. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-/OEWHQRmOR9m8UFLEx0Oq/T0dKgteiFofXnKucK3CU0='; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-0VNQYf6rMncJ9oqaME3P6CHXgjoJUFf9pkrwEecEKr8='; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Try Ultimate Hardening — interactive replay</title>
@@ -308,10 +308,15 @@
     state = 'distro';
     pendingChoice = null;
     play(data.launch + '\n' + data.distro, function () {
-      makePickable(['0']);
+      // Every platform line answers as if typed, so a click on one that was
+      // not recorded gets the same note instead of nothing. On a two- or
+      // three-platform line (9-11, 12-13) a click answers the first one.
+      makePickable(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13']);
       ask(data.distroPrompt, function (answer) {
-        if (answer !== '0' && answer !== '') {
-          note('The recording used 0 (auto-detect), which found Debian. ' +
+        // 1 (Debian) prints the same "Platform: debian" on the recorded host
+        // as auto-detect did, so it plays the same recording.
+        if (answer !== '0' && answer !== '1' && answer !== '') {
+          note('The recording used 0 (auto-detect), which found Debian, the same as choosing 1. ' +
                'The other platforms are real menu options, but this replay only has the Debian run.');
           return false;
         }
