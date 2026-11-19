@@ -56,6 +56,15 @@ runs as root on my own servers to be built.
   coming soon, and what is not certified.
 - **Plain, reviewable code.** Plain Bash, MIT licensed, no telemetry, no phone-home.
 
+**How this was built**
+
+This project is written with AI assistance: much of the code, tests and
+documentation was drafted with an AI coding assistant. I decide what it does,
+review every change, run it on real machines, and maintain it. That is also why
+the safety net above exists: the container test suite, the KVM runs before each
+release, ShellCheck and CodeQL in CI, `--dry-run` and `--revert` are there so
+you don't have to take the code on trust, mine or the assistant's.
+
 ---
 
 Most hardening tools audit and hand you a report. This one audits, applies the
