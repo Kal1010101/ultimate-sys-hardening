@@ -82,7 +82,9 @@ new_host
 sed -i 's/log_martians=0/log_martians=1/' "$F"
 cp "$F" "$W/expected"
 run '_align_ufw_sysctl "$UH_SYSCTL_DROPIN"'
-cmp -s "$F" "$W/expected" && pass_msg "no conflicting key: the file is not touched" || fail "file changed with nothing to align"
+# Compared as text, not with cmp: the Arch, Fedora and RHEL-family test
+# images have no diffutils.
+[[ "$(cat "$F")" == "$(cat "$W/expected")" ]] && pass_msg "no conflicting key: the file is not touched" || fail "file changed with nothing to align"
 [[ -z "$(find "$W/backups" -name sysctl.conf 2>/dev/null)" ]] && pass_msg "and no backup is taken" \
                                                            || fail "backup taken with nothing to change"
 
