@@ -1,6 +1,6 @@
 # Maintainer: Kal1010101 <ultimate-sys-hardening@protonmail.com>
 pkgname=ultimate-hardening
-pkgver=2.6.4
+pkgver=2.7.0
 pkgrel=1
 pkgdesc='CIS-aligned Linux hardening with backup, dry-run and full revert'
 arch=('any')
@@ -8,7 +8,7 @@ url='https://github.com/Kal1010101/ultimate-sys-hardening'
 license=('MIT')
 depends=('bash')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('a91b8e7cff3f9053ed255772caba05b3f2c2eae6433159851599141667965dfb')
+sha256sums=('f305df290bbb5e68ed149bf04f15282aa0294f8d2c239855a12dc486af02614c')
 
 package() {
     cd "ultimate-sys-hardening-$pkgver"
