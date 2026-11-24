@@ -6,6 +6,8 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [2.7.0] — 2026-11-24
+
 ### Added
 - Module 23, Base system: `/dev/shm` mounted nodev,nosuid,noexec (CIS
   1.1.2.2.x; the fstab line is checked with `findmnt --verify` first), time
@@ -759,7 +761,8 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
-[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.6.4...HEAD
+[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.7.0...HEAD
+[2.7.0]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.7.0
 [2.6.4]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.4
 [2.6.3]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.3
 [2.6.2]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.2
