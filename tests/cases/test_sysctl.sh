@@ -32,6 +32,14 @@ grep -q 'accept_ra' <<< "$slaac" && fail "accept_ra written on a host using rout
 grep -q '^net.ipv6.conf.all.accept_ra = 0' <<< "$static" && pass_msg "accept_ra = 0 written on a host without them" \
                                  || fail "accept_ra missing on a host without router adverts"
 
+# ufw re-applies its own sysctl file at start (after systemd-sysctl at boot);
+# its stock log_martians=0 must not survive to undo the drop-in.
+if [[ -f /etc/ufw/sysctl.conf ]]; then
+    grep -q '^net/ipv4/conf/all/log_martians=0' /etc/ufw/sysctl.conf \
+        && fail "ufw's sysctl file still sets log_martians=0, which undoes the drop-in at every boot" \
+        || pass_msg "ufw's sysctl file does not set log_martians back to 0"
+fi
+
 # Idempotency: second run must not duplicate entries
 run_hardening --auto-mode --skip-backup >/dev/null
 n=$(grep -c '^kernel\.randomize_va_space' "$f")

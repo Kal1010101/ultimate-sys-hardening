@@ -71,6 +71,12 @@ and the project follows [Semantic Versioning](https://semver.org).
   recorded.
 
 ### Fixed
+- On Debian and Ubuntu with ufw, module 6's `log_martians = 1` (CIS 3.3.4)
+  was undone at every reboot: ufw loads its own sysctl file
+  (`/etc/ufw/sysctl.conf`) when it starts, after the system's sysctl files,
+  and that file sets `log_martians=0`. Modules 6 and 3 now set any value
+  there that disagrees with module 6 to module 6's value, and revert puts
+  the file back.
 - Module 16 (GRUB password) skipped every Fedora, RHEL and openSUSE host
   with "no GRUB on this system". It looked only for `grub-mkpasswd-pbkdf2`,
   and those distributions name the tool `grub2-mkpasswd-pbkdf2`. Both names

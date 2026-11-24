@@ -467,6 +467,9 @@ _fw_ufw() {
     ufw default deny incoming  >>"$LOG_FILE" 2>&1 || true
     ufw default allow outgoing >>"$LOG_FILE" 2>&1 || true
     ufw allow ssh              >>"$LOG_FILE" 2>&1 || true
+    # Module 6 may have run first: enable loads ufw's sysctl file, which would
+    # undo its values now and at every boot.
+    [[ -f "$UH_SYSCTL_DROPIN" ]] && { _align_ufw_sysctl "$UH_SYSCTL_DROPIN" || true; }
     ufw --force enable         >>"$LOG_FILE" 2>&1 || true
     log_success "UFW: deny inbound, allow outbound, SSH open"
     count_fix
@@ -1443,6 +1446,55 @@ restore_sysctl_before() {
     sysctl --system >>"$LOG_FILE" 2>&1 || true
 }
 
+# ufw loads its own sysctl file (IPT_SYSCTL in /etc/default/ufw) every time it
+# starts, which at boot is after systemd-sysctl. Debian and Ubuntu ship that
+# file with log_martians=0, so the hardened value held until the first reboot
+# and was then lost. Where both files set a key, ufw's line takes this
+# module's value.
+UFW_DEFAULTS=/etc/default/ufw
+UH_SYSCTL_DROPIN=/etc/sysctl.d/99-hardening.conf
+
+_ufw_sysctl_file() {
+    sed -n 's/^IPT_SYSCTL=//p' "$UFW_DEFAULTS" 2>/dev/null | tail -n 1 | tr -d "\"'"
+}
+
+# $1 = the sysctl settings this module wants (key = value lines),
+# $2 = ufw's sysctl file. Prints ufw's keys (as ufw writes them) that differ.
+_ufw_sysctl_conflicts() {
+    awk -F'[[:space:]]*=[[:space:]]*' '
+        NR == FNR { if ($1 ~ /^[a-z]/) want[$1] = $2; next }
+        $1 ~ /^[a-z]/ { k = $1; gsub("/", ".", k); if ((k in want) && $2 != want[k]) print $1 }
+    ' "$1" "$2"
+}
+
+# $1 = the sysctl settings this module wants. Rewrites the conflicting lines of
+# ufw's sysctl file in place (same inode, so its owner, mode and SELinux label
+# stay). Full revert and this module's revert restore the backup.
+_align_ufw_sysctl() {
+    local wanted="$1" ufw_file conflicts tmp
+    ufw_file=$(_ufw_sysctl_file)
+    # -r, not -f: a dry run passes the settings as a process substitution.
+    [[ -n "$ufw_file" && -f "$ufw_file" && -r "$wanted" ]] || return 0
+    conflicts=$(_ufw_sysctl_conflicts "$wanted" "$ufw_file")
+    [[ -n "$conflicts" ]] || return 0
+    if [[ "$DRY_RUN" == true ]]; then
+        log_dry "Would set $(wc -l <<<"$conflicts") value(s) in $ufw_file to match (ufw loads it at start): $(tr '\n' ' ' <<<"$conflicts")"
+        return 0
+    fi
+    backup_file "$ufw_file"
+    tmp=$(awk -F'[[:space:]]*=[[:space:]]*' '
+        NR == FNR { if ($1 ~ /^[a-z]/) want[$1] = $2; next }
+        $1 ~ /^[a-z]/ { k = $1; gsub("/", ".", k); if ((k in want) && $2 != want[k]) { print $1 "=" want[k]; next } }
+        { print }
+    ' "$wanted" "$ufw_file") || { log_warning "Could not read $ufw_file — ufw may undo some sysctl values at its next start"; return 1; }
+    if printf '%s\n' "$tmp" > "$ufw_file"; then
+        log_info "  ufw loads $ufw_file at start, after the sysctl files; set to match there: $(tr '\n' ' ' <<<"$conflicts")"
+    else
+        log_warning "Could not write $ufw_file — ufw will set $(tr '\n' ' ' <<<"$conflicts")back at its next start"
+        return 1
+    fi
+}
+
 apply_kernel_hardening() {
     log_message "${GEAR} [6/23] Kernel & Network Hardening"
 
@@ -1457,6 +1509,7 @@ apply_kernel_hardening() {
     fi
     if [[ "$DRY_RUN" == true ]]; then
         log_dry "Would write $(_kernel_sysctl_settings | grep -c '^[a-z]') sysctl parameters to /etc/sysctl.d/99-hardening.conf"
+        _align_ufw_sysctl <(_kernel_sysctl_settings)
         return 0
     fi
 
@@ -1468,6 +1521,7 @@ apply_kernel_hardening() {
     _kernel_sysctl_settings > "$sysctl_file"
 
     sysctl -p "$sysctl_file" >>"$LOG_FILE" 2>&1 || true
+    _align_ufw_sysctl "$sysctl_file" || true
     local n; n=$(grep -c '^[a-z]' "$sysctl_file" 2>/dev/null || echo 0)
     log_success "Kernel hardening applied ($n parameters)"
     count_fix

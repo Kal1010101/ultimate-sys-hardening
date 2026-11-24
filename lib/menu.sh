@@ -92,7 +92,9 @@ declare -A MOD_REVERT_FILES=(
     # than trying to restore a backup that was never taken.
     [ssh]="/etc/ssh/sshd_config /etc/ssh/sshd_config.d/00-ultimate-hardening.conf /etc/issue.net"
     [fail2ban]="/etc/fail2ban/jail.d/99-ultimate-hardening.local /etc/fail2ban/jail.local /etc/fail2ban/filter.d/alpine-sshd.local"
-    [kernel]="/etc/sysctl.d/99-hardening.conf"
+    # ufw's sysctl file is changed only where it set a key back (see
+    # _align_ufw_sysctl); with no backup, revert leaves it untouched.
+    [kernel]="/etc/sysctl.d/99-hardening.conf /etc/ufw/sysctl.conf"
     [audit]="/etc/audit/rules.d/99-hardening.rules"
     [password]="/etc/login.defs"
     [grubpw]="/etc/grub.d/40_custom"
