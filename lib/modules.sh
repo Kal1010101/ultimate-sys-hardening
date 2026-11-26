@@ -3617,7 +3617,8 @@ directory_account_sources() {
                 echo "$src"
             done
     fi
-    if grep -qsE '^[+-]' "$UH_PASSWD_FILE" "$UH_GROUP_FILE"; then
+    # nss_compat skips blanks before the + or -, so an indented line counts.
+    if grep -qsE '^[[:space:]]*[+-]' "$UH_PASSWD_FILE" "$UH_GROUP_FILE"; then
         echo "+/- lines in the passwd or group file"
     fi
     return 0

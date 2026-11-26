@@ -199,6 +199,13 @@ rm -rf "$W/sssd"
 cp "$W/passwd.private" "$W/passwd.compat"; echo '+::::::' >> "$W/passwd.compat"
 [[ "$(umask_for modern "$W/passwd.compat" "$W/group.private")" == 027 ]] \
     && pass_msg "a +/- compat line in passwd: falls back to 027" || fail "compat + line is not 027"
+# nss_compat skips blanks before the + or -, so an indented line counts too.
+cp "$W/passwd.private" "$W/passwd.compat2"; printf '  +@admins::::::\n' >> "$W/passwd.compat2"
+[[ "$(umask_for modern "$W/passwd.compat2" "$W/group.private")" == 027 ]] \
+    && pass_msg "an indented compat line in passwd (  +@netgroup): 027" || fail "indented compat line is not 027"
+cp "$W/group.private" "$W/group.compat"; printf '\t-badgroup:::\n' >> "$W/group.compat"
+[[ "$(umask_for modern "$W/passwd.private" "$W/group.compat")" == 027 ]] \
+    && pass_msg "a tab-indented compat line in group: 027" || fail "tab-indented group compat line is not 027"
 out=$(printf 'passwd: files ldap\ngroup: files ldap\n' > "$W/nsswitch.case"
       bash -c 'source "$1/lib/core.sh"; source "$1/lib/platform.sh"; source "$1/lib/modules.sh"
                DRY_RUN=true AUTO_MODE=true LOG_FILE=/dev/null UH_PROFILE=modern UH_SHARED_DIRS=""
