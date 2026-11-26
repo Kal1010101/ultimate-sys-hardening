@@ -1409,14 +1409,163 @@ _drop_accept_ra_if_needed() {
     fi
 }
 
+# --- IP forwarding on hosts that route traffic ---------------------------------
+# Container hosts (Docker, Podman, containerd, CRI-O, LXD/Incus), Kubernetes
+# nodes (kubelet, k3s, RKE2), VPN gateways and routers need forwarding on.
+# Writing ip_forward = 0 there does not show at once (Docker turns it back on
+# when its daemon starts), but Kubernetes networking can break at the next
+# reboot. On such a host module 6 leaves both forwarding settings as they are.
+# UH_KEEP_FORWARDING: auto (default) decides from what is installed and
+# configured; yes always leaves forwarding alone; no always turns it off.
+: "${UH_KEEP_FORWARDING:=auto}"
+# Where sysctl reads its files, in the order systemd-sysctl does. A test hook.
+: "${UH_SYSCTL_CONF_PATHS:=/etc/sysctl.conf /etc/sysctl.d /run/sysctl.d /usr/local/lib/sysctl.d /usr/lib/sysctl.d /lib/sysctl.d}"
+# Programs whose presence means the host forwards for containers or pods.
+: "${UH_FORWARDING_RUNTIMES:=dockerd containerd podman crio kubelet k3s rke2 lxd incusd}"
+UH_FORWARDING_LINE_RE='^net\.(ipv4\.ip_forward|ipv6\.conf\.all\.forwarding)[[:space:]]*='
+# keep | off, set once per run by decide_forwarding. Empty reads as off.
+UH_FORWARDING_DECISION=""
+UH_FORWARDING_WHY=""
+
+# A sysctl file, other than this module's drop-in, that turns forwarding on:
+# someone decided this host routes. Prints the first such file.
+_forwarding_enabled_in_config() {
+    local p f ufw_file
+    ufw_file=$(_ufw_sysctl_file)
+    for p in $UH_SYSCTL_CONF_PATHS ${ufw_file:+"$ufw_file"}; do
+        for f in "$p" "$p"/*.conf; do
+            [[ -f "$f" && "$f" != "$UH_SYSCTL_DROPIN" ]] || continue
+            if grep -qE '^[[:space:]]*net[./]ipv4[./](ip_forward|conf[./]all[./]forwarding)[[:space:]]*=[[:space:]]*1|^[[:space:]]*net[./]ipv6[./]conf[./]all[./]forwarding[[:space:]]*=[[:space:]]*1' "$f" 2>/dev/null; then
+                echo "$f"; return 0
+            fi
+        done
+    done
+    return 1
+}
+
+# Interface names of one link type, space separated.
+_links_of_type() {
+    command -v ip >/dev/null 2>&1 || return 0
+    ip -o link show type "$1" 2>/dev/null | awk -F': ' '{sub(/@.*/, "", $2); printf "%s ", $2}'
+}
+
+# The container or Kubernetes programs installed here, one "<name> is
+# installed" line each. The /tmp noexec check uses it too.
+container_runtime_reasons() {
+    local bin
+    for bin in $UH_FORWARDING_RUNTIMES; do
+        command -v "$bin" >/dev/null 2>&1 && echo "$bin is installed"
+    done
+    return 0
+}
+
+# Why this host needs forwarding, one reason per line; nothing when it does not.
+forwarding_needed_reasons() {
+    local links f
+    container_runtime_reasons
+    links=$(_links_of_type wireguard); [[ -n "$links" ]] && echo "WireGuard interface ${links% }"
+    links=$(_links_of_type tun);       [[ -n "$links" ]] && echo "tunnel interface ${links% } (OpenVPN or similar)"
+    f=$(_forwarding_enabled_in_config) && echo "forwarding is turned on in $f"
+    return 0
+}
+
+# Prints why forwarding should be left as it is and returns 0, or returns 1.
+# Never asks: the CIS check uses it too.
+forwarding_keep_reason() {
+    case "${UH_KEEP_FORWARDING,,}" in
+        yes|true|keep) echo "UH_KEEP_FORWARDING=yes"; return 0 ;;
+        no|false|off)  return 1 ;;
+    esac
+    local reasons; reasons=$(forwarding_needed_reasons)
+    [[ -n "$reasons" ]] || return 1
+    printf '%s\n' "$reasons" | paste -sd ';' - | sed 's/;/; /g'
+}
+
+# Decides once per run whether module 6 leaves forwarding as it is. Asks in an
+# interactive run, defaulting to leaving it; never in a dry or unattended run.
+decide_forwarding() {
+    [[ -n "$UH_FORWARDING_DECISION" ]] && return 0
+    case "${UH_KEEP_FORWARDING,,}" in
+        auto|yes|true|keep|no|false|off) ;;
+        *) log_warning "UH_KEEP_FORWARDING='${UH_KEEP_FORWARDING}' is not auto, yes or no; using auto"
+           UH_KEEP_FORWARDING=auto ;;
+    esac
+    UH_FORWARDING_DECISION=off
+    UH_FORWARDING_WHY=$(forwarding_keep_reason) || return 0
+    UH_FORWARDING_DECISION=keep
+    [[ "$DRY_RUN" == true || "${UH_KEEP_FORWARDING,,}" != auto ]] && return 0
+    confirm "This host looks like it routes traffic (${UH_FORWARDING_WHY}). Leave IP forwarding as it is?" Y \
+        || { UH_FORWARDING_DECISION=off; UH_FORWARDING_WHY=""; }
+    return 0
+}
+
+# Filters sysctl lines on stdin: drops the forwarding settings when kept.
+_drop_forwarding_if_kept() {
+    if [[ "$UH_FORWARDING_DECISION" == keep ]]; then
+        grep -vE "$UH_FORWARDING_LINE_RE" || true
+    else
+        cat
+    fi
+}
+
+# --- Kubernetes kernel parameters ----------------------------------------------
+# RKE2's CIS profile installs /etc/sysctl.d/60-rke2-cis.conf, and Rancher's and
+# k3s's hardening guides use /etc/sysctl.d/90-kubelet.conf. With
+# protect-kernel-defaults, kubelet refuses to start when the live values differ
+# from what it expects. This module's drop-in (99-) loads after both, so a key
+# they set would be overridden: such keys are left out and left to them. The
+# two lists do not overlap today; this keeps it that way.
+: "${UH_RKE2_CIS_SYSCTL:=/etc/sysctl.d/60-rke2-cis.conf}"
+: "${UH_K8S_SYSCTL_FILES:=$UH_RKE2_CIS_SYSCTL /etc/sysctl.d/90-kubelet.conf}"
+: "${UH_RKE2_CONFIG:=/etc/rancher/rke2/config.yaml}"
+
+# The sysctl keys the Kubernetes files set, one per line.
+_k8s_sysctl_keys() {
+    local f
+    for f in $UH_K8S_SYSCTL_FILES; do
+        [[ -f "$f" ]] || continue
+        awk -F'[[:space:]]*=[[:space:]]*' '/^[[:space:]]*[a-z]/ { k = $1; gsub(/^[[:space:]]+/, "", k); gsub("/", ".", k); print k }' "$f"
+    done | sort -u
+}
+
+# Filters sysctl lines on stdin: drops keys a Kubernetes file sets.
+_drop_k8s_owned_keys() {
+    local owned; owned=$(_k8s_sysctl_keys)
+    if [[ -z "$owned" ]]; then cat; return 0; fi
+    awk -F'[[:space:]]*=[[:space:]]*' 'NR == FNR { own[$0] = 1; next } !($1 in own)' <(printf '%s\n' "$owned") -
+}
+
+# This module's keys that a Kubernetes file sets, space separated, for the log.
+_k8s_owned_keys_in_conf() {
+    local owned; owned=$(_k8s_sysctl_keys)
+    [[ -n "$owned" ]] || return 0
+    _kernel_sysctl_conf | awk -F'[[:space:]]*=[[:space:]]*' 'NR == FNR { own[$0] = 1; next } ($1 in own) { printf "%s ", $1 }' \
+        <(printf '%s\n' "$owned") - | sed 's/ $//'
+}
+
+# True when RKE2 is configured for its CIS profile but its sysctl file is not
+# installed: kubelet may then refuse to start, whatever this module writes.
+rke2_cis_sysctl_missing() {
+    local f
+    for f in "$UH_RKE2_CONFIG" "${UH_RKE2_CONFIG%.yaml}.yaml.d"/*.yaml; do
+        [[ -f "$f" ]] || continue
+        grep -qE '^[[:space:]]*profile:[[:space:]]*["'\'']?cis' "$f" 2>/dev/null || continue
+        [[ -f "$UH_RKE2_CIS_SYSCTL" ]] && return 1
+        return 0
+    done
+    return 1
+}
+
 # The live value of every setting this module changes, recorded once before
 # its first run (genesis, first run wins per key). Removing the drop-in on
 # revert does not change live values; they stayed hardened until a reboot.
 UH_SYSCTL_RECORD_NAME=sysctl_before.txt
 
-# The sysctl settings this run writes: the module's set minus UH_SKIP_SETTINGS.
+# The sysctl settings this run writes: the module's set minus UH_SKIP_SETTINGS,
+# accept_ra where router adverts give the address, forwarding where kept, and
+# keys a Kubernetes sysctl file sets.
 _kernel_sysctl_settings() {
-    _kernel_sysctl_conf | drop_skipped_settings | _drop_accept_ra_if_needed
+    _kernel_sysctl_conf | drop_skipped_settings | _drop_accept_ra_if_needed | _drop_forwarding_if_kept | _drop_k8s_owned_keys
 }
 
 # $1 = this module's drop-in. Hosts hardened by a release that kept no record
@@ -1506,6 +1655,21 @@ apply_kernel_hardening() {
     [[ -n "$skipped" ]] && log_info "  Left as they are (UH_SKIP_SETTINGS): $skipped"
     if _ipv6_uses_router_adverts; then
         log_info "  IPv6 router adverts left on (accept_ra): this host has an address from them, and turning them off would drop its IPv6"
+    fi
+    local k8s_keys; k8s_keys=$(_k8s_owned_keys_in_conf)
+    [[ -n "$k8s_keys" ]] && log_info "  Left to Kubernetes (set in its sysctl file, which this drop-in would override): $k8s_keys"
+    if rke2_cis_sysctl_missing; then
+        log_warning "  RKE2 is set to its CIS profile, but $UH_RKE2_CIS_SYSCTL is missing; kubelet may refuse to start."
+        log_warning "  Copy rke2-cis-sysctl.conf there from /usr/share/rke2 (RPM) or /usr/local/share/rke2 (tarball), as RKE2's CIS guide says."
+    fi
+    decide_forwarding
+    if [[ "$UH_FORWARDING_DECISION" == keep ]]; then
+        if [[ "$DRY_RUN" == true ]]; then
+            log_dry "Would leave IP forwarding as it is: ${UH_FORWARDING_WHY}"
+        else
+            log_info "  IP forwarding left as it is: ${UH_FORWARDING_WHY}"
+        fi
+        [[ "${UH_KEEP_FORWARDING,,}" == auto ]] && log_info "  (UH_KEEP_FORWARDING=no turns it off anyway)"
     fi
     if [[ "$DRY_RUN" == true ]]; then
         log_dry "Would write $(_kernel_sysctl_settings | grep -c '^[a-z]') sysctl parameters to /etc/sysctl.d/99-hardening.conf"
@@ -1718,12 +1882,36 @@ _audit_uid_min() {
     [[ "$v" =~ ^[0-9]+$ ]] && printf '%s' "$v" || printf '1000'
 }
 
+# The kernel's audit buffer (-b), in events. CIS asks for at least 8192. On a
+# container or Kubernetes host the mounts and setuid/setgid rules fire on
+# every container start and volume mount, so a burst can overflow 8192 and
+# the kernel drops events (auditctl -s: lost); 32768 costs a few MB of kernel
+# memory. UH_AUDIT_BACKLOG sets it outright.
+UH_AUDIT_BACKLOG_DEFAULT=8192
+UH_AUDIT_BACKLOG_BUSY=32768
+: "${UH_AUDIT_BACKLOG:=}"
+
+# Prints the buffer size module 7 writes.
+audit_backlog_limit() {
+    if [[ -n "$UH_AUDIT_BACKLOG" ]]; then
+        if [[ "$UH_AUDIT_BACKLOG" =~ ^[0-9]+$ ]] && (( UH_AUDIT_BACKLOG >= UH_AUDIT_BACKLOG_DEFAULT )); then
+            echo "$UH_AUDIT_BACKLOG"; return 0
+        fi
+        log_warning "UH_AUDIT_BACKLOG='${UH_AUDIT_BACKLOG}' is not a number of at least ${UH_AUDIT_BACKLOG_DEFAULT} (CIS minimum); choosing automatically" >&2
+    fi
+    if [[ -n "$(container_runtime_reasons)" ]]; then
+        echo "$UH_AUDIT_BACKLOG_BUSY"
+    else
+        echo "$UH_AUDIT_BACKLOG_DEFAULT"
+    fi
+}
+
 # The rules file module 7 writes.
 _audit_rules_content() {
     local uid_min arch key filters syscalls perms path s kept
     uid_min=$(_audit_uid_min)
     echo "-D"
-    echo "-b 8192"
+    echo "-b $(audit_backlog_limit 2>/dev/null)"
     echo "-f 1"
     while IFS='|' read -r key perms path; do
         [[ -n "$path" ]] || continue
@@ -1776,6 +1964,10 @@ apply_audit_config() {
         log_warning "auditd is Linux-specific — skipping on ${DISTRO_TYPE}"
         return 0
     fi
+    local backlog; backlog=$(audit_backlog_limit)
+    if [[ -z "$UH_AUDIT_BACKLOG" && "$backlog" == "$UH_AUDIT_BACKLOG_BUSY" ]]; then
+        log_info "  Audit buffer ${backlog} events, not ${UH_AUDIT_BACKLOG_DEFAULT}: container or Kubernetes host ($(container_runtime_reasons | paste -sd ';' - | sed 's/;/; /g')), whose container starts and mounts come in bursts"
+    fi
     if [[ "$DRY_RUN" == true ]]; then
         log_dry "Would install auditd and write $(_audit_rules_content | grep -c '^-[aw] ' || true) audit rules (CIS 6.3.3 groups, privileged programs, module loading)"
         [[ "$(_audit_immutable)" == true ]] && log_dry "  and lock them until reboot (-e 2, UH_AUDIT_IMMUTABLE=true)"
@@ -1815,13 +2007,31 @@ apply_audit_config() {
 }
 
 # --- 8. Password policy (login.defs only — PAM is never touched) --------------
+# Maximum password age per profile. cis: 365 days, as in current CIS
+# Benchmarks (forced short rotation, the old 90, pushes people to weaker,
+# predictable passwords). modern: 99999, login.defs' "never expires", because
+# NIST SP 800-63B-4 says not to force periodic changes at all.
+UH_CIS_PASS_MAX_DAYS=365
+UH_MODERN_PASS_MAX_DAYS=99999
+
+profile_pass_max_days() {
+    if [[ "$(active_profile)" == modern ]]; then
+        printf '%s' "$UH_MODERN_PASS_MAX_DAYS"
+    else
+        printf '%s' "$UH_CIS_PASS_MAX_DAYS"
+    fi
+}
+
 apply_password_policies() {
     log_message "${LOCK} [8/23] Password Policy"
+    local max_days profile
+    max_days=$(profile_pass_max_days)
+    profile=$(active_profile)
 
     # PAM modification was removed after it locked an eCryptfs system out of its
     # own login screen. Policy is set through login.defs only. See SECURITY.md.
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would set password aging in /etc/login.defs (PAM untouched)"
+        log_dry "Would set password aging in /etc/login.defs: PASS_MAX_DAYS ${max_days} (${profile} profile; PAM untouched)"
         return 0
     fi
 
@@ -1832,12 +2042,17 @@ apply_password_policies() {
     fi
 
     backup_file "$defs"
-    # 365, not 90: short forced rotation weakens passwords (see the CIS check).
-    set_config "PASS_MAX_DAYS" "365" "$defs" "	"
+    set_config "PASS_MAX_DAYS" "$max_days" "$defs" "	"
     set_config "PASS_MIN_DAYS" "1"  "$defs" "	"
     set_config "PASS_WARN_AGE" "14" "$defs" "	"
+    record_profile profile
+    record_profile password
 
-    log_success "Password aging set: 365-day max, 14-day warning (PAM untouched)"
+    if [[ "$profile" == modern ]]; then
+        log_success "Password aging set: no forced expiry (modern profile, NIST SP 800-63B-4), 1-day minimum (PAM untouched)"
+    else
+        log_success "Password aging set: 365-day max, 14-day warning (PAM untouched)"
+    fi
     count_fix
 }
 
@@ -3332,11 +3547,274 @@ apply_remote_syslog() {
 }
 
 # --- 22. UMASK hardening -----------------------------------------------------
+# cis: 027, owner rwx, group rx, others nothing.
+# modern: 007, so members of a project group can edit each other's files. That
+# is only safe when every user has a private primary group (the user-private-
+# group scheme most distributions use): where users share one, such as SUSE's
+# common "users" group, 007 would let every user write every other user's new
+# files, so modern falls back to 027 there and says so.
+UH_CIS_UMASK=027
+UH_MODERN_UMASK=007
+: "${UH_PASSWD_FILE:=/etc/passwd}"
+: "${UH_GROUP_FILE:=/etc/group}"
+UH_SHARED_DIRS_RECORD_NAME=shared-dirs.record
+UH_SHARED_DIRS_ACL_NAME=shared-dirs.acl
+# Mode for each UH_SHARED_DIRS directory: setgid so new files take the
+# directory's group, rwx for owner and group, nothing for others.
+UH_SHARED_DIR_MODE=2770
+
+# Accounts can also come from a directory service, which the passwd and group
+# files never show. Those users often share one primary group (AD's "Domain
+# Users": SSSD keeps the directory's GID unless auto_private_groups is set), so
+# modern cannot tell their groups are private and falls back to 027.
+: "${UH_NSSWITCH_FILE:=/etc/nsswitch.conf}"
+: "${UH_SSSD_CONF_PATHS:=/etc/sssd/sssd.conf /etc/sssd/conf.d}"
+# nsswitch sources that read only the local files (compat adds +/- lines,
+# which are checked separately).
+UH_LOCAL_NSS_SOURCES="files systemd altfiles compat"
+
+# True when SSSD has a domain configured. RHEL-family installs list "sss" in
+# nsswitch.conf by default, even with no directory joined.
+_sssd_has_domain() {
+    local p f
+    for p in $UH_SSSD_CONF_PATHS; do
+        for f in "$p" "$p"/*.conf; do
+            [[ -f "$f" ]] && grep -qsE '^[[:space:]]*\[domain/' "$f" && return 0
+        done
+    done
+    return 1
+}
+
+# Where accounts come from besides the local files, one per line (sss, ldap,
+# nis, winbind, ..., or +/- lines); nothing on a host with local accounts only.
+directory_account_sources() {
+    if [[ -r "$UH_NSSWITCH_FILE" ]]; then
+        # Parsed the way glibc reads it: the colon after the database name is
+        # optional (whitespace alone also ends the name, so "passwd ldap"
+        # counts and "passwd_compat:" does not), spaces around it are
+        # optional, and an action ([SUCCESS=merge], [NOTFOUND=return]) need
+        # not be spaced from the source after it ("[NOTFOUND=return]ldap").
+        # Whitespace is spelled out, not [[:space:]]: mawk 1.3.3 (Debian 10
+        # and older) has no character classes and would match no line at all.
+        awk -v local_srcs="$UH_LOCAL_NSS_SOURCES" '
+            BEGIN {
+                ws = "[ \t\r\f\v]"
+                n = split(local_srcs, l, " "); for (i = 1; i <= n; i++) is_local[l[i]] = 1
+            }
+            $0 ~ "^" ws "*(passwd|group)(" ws "*:|" ws ")" {
+                line = $0
+                sub(/#.*/, "", line)
+                sub("^" ws "*(passwd|group)" ws "*:?", "", line)
+                gsub(/\[[^]]*\]/, " ", line)
+                n = split(line, srcs, ws "+")
+                for (i = 1; i <= n; i++) {
+                    # An unclosed "[" is not a source either.
+                    if (srcs[i] == "" || srcs[i] ~ /^\[/) continue
+                    if (!(srcs[i] in is_local)) print srcs[i]
+                }
+            }' "$UH_NSSWITCH_FILE" | sort -u | while read -r src; do
+                [[ "$src" == sss ]] && ! _sssd_has_domain && continue
+                echo "$src"
+            done
+    fi
+    if grep -qsE '^[+-]' "$UH_PASSWD_FILE" "$UH_GROUP_FILE"; then
+        echo "+/- lines in the passwd or group file"
+    fi
+    return 0
+}
+
+# True when login accounts share a primary group, or when new accounts would
+# (USERGROUPS_ENAB no makes useradd put every new user in one group), or when
+# accounts also come from a directory service whose groups cannot be checked.
+primary_groups_are_shared() {
+    local usergroups uid_min uid_max
+    [[ -n "$(directory_account_sources)" ]] && return 0
+    usergroups=$(awk '$1 == "USERGROUPS_ENAB" { v = $2 } END { print tolower(v) }' /etc/login.defs 2>/dev/null || true)
+    [[ "$usergroups" == no ]] && return 0
+    uid_min=$(awk '$1 == "UID_MIN" { v = $2 } END { print v }' /etc/login.defs 2>/dev/null || true)
+    uid_max=$(awk '$1 == "UID_MAX" { v = $2 } END { print v }' /etc/login.defs 2>/dev/null || true)
+    # A group is private when exactly one login account has it as its primary
+    # group, it carries that account's name, it lists no other member, and no
+    # other group has its GID. A member added with `usermod -aG alice www-data`
+    # (often done so a web server can read ~alice) would otherwise get write
+    # access to everything alice creates once the umask is 007.
+    awk -F: -v min="${uid_min:-1000}" -v max="${uid_max:-60000}" '
+        NR == FNR {
+            if ($3 in group_name) dup_gid[$3] = 1
+            group_name[$3] = $1; members[$3] = $4; next
+        }
+        $3 >= min && $3 <= max {
+            users_in[$4]++
+            if (group_name[$4] != $1 || ($4 in dup_gid)) shared = 1
+            n = split(members[$4], m, ",")
+            for (i = 1; i <= n; i++) if (m[i] != "" && m[i] != $1) shared = 1
+        }
+        END {
+            for (gid in users_in) if (users_in[gid] > 1) shared = 1
+            exit shared ? 0 : 1
+        }' "$UH_GROUP_FILE" "$UH_PASSWD_FILE" 2>/dev/null
+}
+
+# The umask module 22 sets under the active profile.
+profile_umask_value() {
+    if [[ "$(active_profile)" == modern ]] && ! primary_groups_are_shared; then
+        printf '%s' "$UH_MODERN_UMASK"
+    else
+        printf '%s' "$UH_CIS_UMASK"
+    fi
+}
+
+# A UH_SHARED_DIRS entry is accepted only when it is an existing, real
+# directory (no symlink anywhere in its path) at least two levels deep and not
+# inside a system tree: mode 2770 on /etc, /home or /usr would lock users out
+# of the system.
+_shared_dir_is_allowed() {
+    local dir="$1"
+    [[ "$dir" == /?*/?* && -d "$dir" && "$(readlink -f "$dir" 2>/dev/null)" == "$dir" ]] || return 1
+    case "$dir" in
+        /etc/*|/usr/*|/bin/*|/sbin/*|/lib/*|/lib32/*|/lib64/*|/boot/*|/dev/*|/proc/*|/sys/*|/run/*|/root/*|/var/*)
+            return 1 ;;
+    esac
+    return 0
+}
+
+# Shared directories are changed and restored through the directory itself,
+# never through its path: each step runs in a subshell that has done
+# `cd -P` into it and acts on ".". A user who can write a parent directory
+# could otherwise swap the path for a symlink between a check and a chmod, or
+# before a revert, and have root change another file (/etc/sudoers, say).
+
+# "uid:gid:device:inode" of the current directory: which directory it is.
+_shared_dir_identity() { stat -c '%u:%g:%d:%i' . 2>/dev/null; }
+
+# Record a shared directory once (first run wins, like the genesis backup):
+# "<dir>|<mode>|<identity>" in the record, its ACL entries (no owner, group or
+# flags: this feature never changes those) under a "# file: <dir>" line in the
+# ACL file. Runs inside the directory.
+_record_shared_dir() {
+    local dir="$1" rec acl
+    rec="$BACKUP_GENESIS_DIR/$UH_SHARED_DIRS_RECORD_NAME"
+    acl="$BACKUP_GENESIS_DIR/$UH_SHARED_DIRS_ACL_NAME"
+    awk -F'|' -v d="$dir" '$1 == d { found = 1 } END { exit found ? 0 : 1 }' "$rec" 2>/dev/null && return 0
+    ( umask 077; mkdir -p "$BACKUP_GENESIS_DIR" ) 2>/dev/null || return 1
+    printf '%s|%s|%s\n' "$dir" "$(stat -c '%a' .)" "$(_shared_dir_identity)" >> "$rec" || return 1
+    chmod 600 "$rec" 2>/dev/null || true
+    if command -v getfacl >/dev/null 2>&1; then
+        { printf '# file: %s\n' "$dir"; getfacl --omit-header -p . | grep -v '^#'; echo; } >> "$acl" 2>/dev/null || return 1
+        chmod 600 "$acl" 2>/dev/null || true
+    fi
+    return 0
+}
+
+# Modern only, opt-in: UH_SHARED_DIRS="/srv/team /data/proj" makes each listed
+# directory a group workspace (setgid 2770, plus default ACLs so new files are
+# group-writable whatever umask the creating process has).
+apply_shared_dirs() {
+    [[ -n "${UH_SHARED_DIRS:-}" ]] || return 0
+    local dir
+    for dir in $UH_SHARED_DIRS; do
+        if ! _shared_dir_is_allowed "$dir"; then
+            log_warning "UH_SHARED_DIRS: skipped '$dir' — it must be an existing directory, no symlinks, at least two levels deep and outside system trees (/etc, /usr, /var...)"
+            continue
+        fi
+        if [[ "$DRY_RUN" == true ]]; then
+            log_dry "Would make $dir a group workspace: mode $UH_SHARED_DIR_MODE and default ACLs u::rwx,g::rwx,o::---"
+            continue
+        fi
+        _apply_shared_dir "$dir" || true
+    done
+}
+
+# One directory, from inside it. The physical path is checked after the cd:
+# from then on "." is that directory, whatever happens to the path.
+_apply_shared_dir() {
+    local dir="$1"
+    (
+        cd -P -- "$dir" 2>/dev/null && [[ "$(pwd -P)" == "$dir" ]] || {
+            log_warning "UH_SHARED_DIRS: skipped '$dir' — it changed while being checked (now a symlink or gone)"; exit 1; }
+        if [[ "$SKIP_BACKUP" != true ]] && ! _record_shared_dir "$dir"; then
+            log_warning "UH_SHARED_DIRS: skipped '$dir' — could not record its current mode and ACL, so it could not be reverted"
+            exit 1
+        fi
+        chmod "$UH_SHARED_DIR_MODE" . || exit 1
+        if command -v setfacl >/dev/null 2>&1; then
+            setfacl -d -m u::rwx,g::rwx,o::--- . 2>>"$LOG_FILE" \
+                || log_warning "UH_SHARED_DIRS: could not set default ACLs on $dir (filesystem without ACL support?) — mode $UH_SHARED_DIR_MODE is set"
+        else
+            log_warning "UH_SHARED_DIRS: setfacl not found — $dir has mode $UH_SHARED_DIR_MODE but no default ACLs (install the acl package)"
+        fi
+        log_success "Group workspace: $dir (mode $UH_SHARED_DIR_MODE)"
+    )
+}
+
+# chmod with a 3-digit mode keeps a directory's setgid bit on GNU coreutils,
+# so clear the special bits first; the recorded mode sets them again if the
+# directory had them. $1 = the directory (always "." here), $2 = the mode.
+_set_exact_dir_mode() {
+    chmod u-s,g-s "$1" && chmod "$2" "$1"
+}
+
+# The recorded ACL entries of one directory, from the ACL file ($1).
+_recorded_shared_acl() {
+    awk -v f="# file: $2" '$0 == f { on = 1; next } on && /^$/ { exit } on { print }' "$1" 2>/dev/null
+}
+
+# Put one directory back: only when "." is still the directory that was
+# recorded (same device, inode and owner). Anything else at that path, a
+# symlink above all, is left alone. $1 dir, $2 mode, $3 identity, $4 ACL file.
+_restore_shared_dir() {
+    local dir="$1" mode="$2" ident="$3" acl="$4"
+    (
+        if ! cd -P -- "$dir" 2>/dev/null || [[ -z "$ident" || "$(_shared_dir_identity)" != "$ident" ]]; then
+            log_warning "  $dir is not the directory that was recorded (moved, replaced or gone) — left alone"
+            exit 1
+        fi
+        if command -v setfacl >/dev/null 2>&1; then
+            setfacl -P -k -b . 2>/dev/null || true
+            local entries; entries=$(_recorded_shared_acl "$acl" "$dir")
+            if [[ -n "$entries" ]]; then
+                printf '%s\n' "$entries" | setfacl -P --set-file=- . 2>>"$LOG_FILE" \
+                    || log_warning "  could not restore the recorded ACL of $dir"
+            fi
+        fi
+        # Last, so the mode matches the record exactly whatever the ACL did.
+        _set_exact_dir_mode . "$mode" || exit 1
+        log_info "  restored: $dir (mode $mode)"
+    )
+}
+
+# Put back every shared directory's recorded mode and ACL, then forget them.
+undo_shared_dirs() {
+    local rec acl dir mode ident restored=0
+    rec="$BACKUP_GENESIS_DIR/$UH_SHARED_DIRS_RECORD_NAME"
+    acl="$BACKUP_GENESIS_DIR/$UH_SHARED_DIRS_ACL_NAME"
+    [[ -f "$rec" ]] || return 0
+    while IFS='|' read -r dir mode ident; do
+        [[ "$dir" == /* && "$mode" =~ ^[0-7]{3,4}$ ]] || continue
+        _restore_shared_dir "$dir" "$mode" "$ident" "$acl" && bump restored
+    done < "$rec"
+    rm -f "$rec" "$acl"
+    if (( restored > 0 )); then log_success "Shared directories restored: $restored"; fi
+    return 0
+}
+
 apply_umask_hardening() {
     log_message "${LOCK} [22/23] UMASK Hardening"
+    local value profile
+    value=$(profile_umask_value)
+    profile=$(active_profile)
+
+    local directory_sources
+    directory_sources=$(directory_account_sources | paste -sd, - | sed 's/,/, /g')
+    if [[ "$profile" == modern && "$value" != "$UH_MODERN_UMASK" && -n "$directory_sources" ]]; then
+        log_warning "Accounts also come from a directory service here (${directory_sources}): their primary groups cannot be checked and are often shared (AD's Domain Users), so the modern profile uses umask $UH_CIS_UMASK, not $UH_MODERN_UMASK, on this host"
+    elif [[ "$profile" == modern && "$value" != "$UH_MODERN_UMASK" ]]; then
+        log_warning "Users share a primary group here (a primary group has other members or another login, or USERGROUPS_ENAB is no): umask $UH_MODERN_UMASK would let them write each other's files, so the modern profile uses $UH_CIS_UMASK on this host"
+    fi
 
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would set a restrictive default umask of 027 in login.defs, profile.d and bash.bashrc"
+        log_dry "Would set a default umask of ${value} (${profile} profile) in login.defs, profile.d and bash.bashrc"
+        if [[ "$profile" == modern ]]; then apply_shared_dirs; fi
         return 0
     fi
 
@@ -3345,27 +3823,39 @@ apply_umask_hardening() {
     if [[ -f /etc/login.defs ]]; then
         backup_file /etc/login.defs
         if grep -qE '^[[:space:]]*UMASK' /etc/login.defs 2>/dev/null; then
-            sed -i 's/^[[:space:]]*UMASK.*/UMASK           027/' /etc/login.defs
+            sed -i "s/^[[:space:]]*UMASK.*/UMASK           ${value}/" /etc/login.defs
         else
-            echo "UMASK           027" >> /etc/login.defs
+            echo "UMASK           ${value}" >> /etc/login.defs
         fi
     fi
 
     if [[ -d /etc/profile.d ]]; then
         backup_file /etc/profile.d/hardening-umask.sh
-        cat > /etc/profile.d/hardening-umask.sh << 'EOF'
-# Restrictive default umask (ultimate-hardening)
-umask 027
-EOF
+        printf '# Restrictive default umask (ultimate-hardening, %s profile)\numask %s\n' \
+            "$profile" "$value" > /etc/profile.d/hardening-umask.sh
         chmod 644 /etc/profile.d/hardening-umask.sh 2>/dev/null || true
     fi
 
     if [[ -f /etc/bash.bashrc ]]; then
         backup_file /etc/bash.bashrc
-        grep -qE '^umask 027' /etc/bash.bashrc 2>/dev/null || echo "umask 027" >> /etc/bash.bashrc
+        # Replace a line this module wrote under either profile, so switching
+        # profiles leaves one umask line rather than two.
+        if grep -qE "^umask (${UH_CIS_UMASK}|${UH_MODERN_UMASK})$" /etc/bash.bashrc 2>/dev/null; then
+            sed -i -E "s/^umask (${UH_CIS_UMASK}|${UH_MODERN_UMASK})$/umask ${value}/" /etc/bash.bashrc
+        else
+            echo "umask ${value}" >> /etc/bash.bashrc
+        fi
     fi
 
-    log_success "UMASK hardening applied (027 — owner rwx, group rx, others none)"
+    if [[ "$profile" == modern ]]; then apply_shared_dirs; fi
+    record_profile profile
+    record_profile umask
+
+    if [[ "$value" == "$UH_MODERN_UMASK" ]]; then
+        log_success "UMASK hardening applied (007 — owner and group rwx, others none; modern profile)"
+    else
+        log_success "UMASK hardening applied (027 — owner rwx, group rx, others none)"
+    fi
     count_fix
     return 0
 }
@@ -3924,12 +4414,25 @@ _run_first_four_modules() {
     fi
 }
 
+# Module 20 in an aggregate run. The modern profile leaves it out: on a
+# shared/multi-user server, users building their own software is the point.
+# It stays selectable from the menu under either profile.
+_run_compiler_module_for_profile() {
+    if [[ "$(active_profile)" == modern ]]; then
+        log_info "Module 20 (Compiler access restriction) left out: modern profile. Run it from the menu if you want it."
+        return 0
+    fi
+    run_module compiler apply_compiler_restriction
+}
+
 # Every module, including the High-risk one (module 9, SUID/SGID hardening).
 apply_all_modules() {
     log_message "${ROCKET} Applying all 23 hardening modules (including High risk)"
+    log_info "Profile: $(active_profile)"
     create_backup_dir
     UH_MODULE_FAILED=()
     record_health_snapshot
+    record_profile profile
 
     # Resolve every module's packages before the first module changes anything,
     # so an unobtainable dependency is reported up front rather than discovered
@@ -3952,7 +4455,7 @@ apply_all_modules() {
     run_module docker    apply_docker_security
     run_module modsec    apply_modsecurity
     run_module protocols apply_unused_protocols
-    run_module compiler  apply_compiler_restriction
+    _run_compiler_module_for_profile
     run_module syslog    apply_remote_syslog
     run_module umask     apply_umask_hardening
     run_module basesys   apply_base_system
@@ -3972,9 +4475,11 @@ apply_all_modules() {
 # honest name; this is what apply_all_safe() should always have been.
 apply_safe_modules() {
     log_message "${ROCKET} Applying Safe/Medium modules (skipping the High-risk SUID/SGID and GRUB password modules)"
+    log_info "Profile: $(active_profile)"
     create_backup_dir
     UH_MODULE_FAILED=()
     record_health_snapshot
+    record_profile profile
 
     # Resolve every module's packages before the first module changes anything,
     # so an unobtainable dependency is reported up front rather than discovered
@@ -3995,7 +4500,7 @@ apply_safe_modules() {
     run_module docker    apply_docker_security
     run_module modsec    apply_modsecurity
     run_module protocols apply_unused_protocols
-    run_module compiler  apply_compiler_restriction
+    _run_compiler_module_for_profile
     run_module syslog    apply_remote_syslog
     run_module umask     apply_umask_hardening
     run_module basesys   apply_base_system

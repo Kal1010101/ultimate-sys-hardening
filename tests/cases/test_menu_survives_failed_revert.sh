@@ -55,24 +55,25 @@ assert_output_contains "$out" 'REACHED_END' "revert_menu 2: returns to the menu 
 # --- the free tier's own menu (R and S live in show_menu, not in lib/) --------
 # show_menu is lifted out of the free script the way docs/build-terminals.sh
 # does it, with the screen-clearing and state probe stubbed (the probe needs
-# root). After the choice, Enter dismisses "Press Enter", and Q quits from the
-# redrawn menu: reaching Q's "Log file" line proves the menu came back.
+# root). After the choice, Enter dismisses "Press Enter", and P (back to the
+# profile screen) leaves the redrawn menu: reaching MENU_RETURNED proves the
+# menu came back.
 free_menu() {
     printf '%b' "$1" | bash -c "$LIB
         UH_VERSION=test; DISTRO_TYPE=debian
         clear() { :; }
         refresh_module_states() { :; }
         eval \"\$(sed -n '/^show_menu() {/,/^}/p' '$REPO/src/free/ultimate_hardening.sh')\"
-        show_menu" 2>&1
+        show_menu; echo MENU_RETURNED" 2>&1
 }
 
-out=$(free_menu 'R\nyes\n\nQ\n')
+out=$(free_menu 'R\nyes\n\nP\n')
 assert_output_contains "$out" 'No backup' "free menu R: reports there is no backup"
-assert_output_contains "$out" 'Log file' "free menu R: returns to the menu instead of exiting"
+assert_output_contains "$out" 'MENU_RETURNED' "free menu R: returns to the menu instead of exiting"
 
-out=$(free_menu 'S\n\nQ\n')
+out=$(free_menu 'S\n\nP\n')
 assert_output_contains "$out" 'No SUID inventory' "free menu S: reports there is no SUID inventory"
-assert_output_contains "$out" 'Log file' "free menu S: returns to the menu instead of exiting"
+assert_output_contains "$out" 'MENU_RETURNED' "free menu S: returns to the menu instead of exiting"
 
 # --- the full-revert error points at something the free tier has ---------------
 out=$(UH_REVERT_TARGET=genesis menu_path full_system_revert '' || true)

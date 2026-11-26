@@ -43,6 +43,8 @@ cis_check_module() {
     local label="$1"
     case "$label" in
         *"separate partition"*)   echo "" ;;   # not fixable by any module
+        "/tmp mounted "*)         echo "" ;;   # mount options: no module sets them
+        "No audit events lost")   echo "" ;;   # load, not a setting: re-running module 7 does not clear it
         *"filesystems blacklisted"*|*"protocols blacklisted"*) echo "protocols" ;;
         *"sshd_config present"*)  echo "ssh" ;;
         *"SSH"*)                  echo "ssh" ;;
@@ -84,6 +86,12 @@ _cis_remediation_hint() {
         *"separate partition"*)
             echo "Not automated — separate partitions are an OS-install-time decision, not something a running system can safely repartition"
             return 0 ;;
+        "/tmp mounted "*)
+            echo "Not automated — add nodev,nosuid,noexec to the /tmp line in /etc/fstab (or Options= in a tmp.mount drop-in), then remount /tmp"
+            return 0 ;;
+        "No audit events lost")
+            echo "Not automated — a busy host needs a bigger buffer: UH_AUDIT_BACKLOG=32768 and run module 7 again; events lost at boot, before auditd starts, need audit_backlog_limit=8192 on the kernel command line. The count resets at reboot or with auditctl --reset-lost"
+            return 0 ;;
         *"sshd_config present"*)
             echo "Suggested fix: install/reinstall openssh-server, then run module 2 (SSH hardening)"
             return 0 ;;
@@ -102,10 +110,20 @@ _cis_remediation_hint() {
 # file on every redraw.
 record_check() {
     local label="$1" passed="$2" detail="${3:-}"
+    # One result is one line everywhere it goes: the state DB export reads
+    # rows line by line, and a newline in a detail would forge a row there.
+    label=${label//[$'\n\r']/ }; detail=${detail//[$'\n\r']/ }
     if [[ "$passed" == "unchecked" ]]; then
         CHECK_RESULTS+=("${label}|unchecked|${detail}")
         bump CHECKS_UNCHECKED
         [[ "${UH_QUIET_CHECKS:-false}" == true ]] || log_info "  $label — not checked: $detail"
+        return 0
+    fi
+    # Waived: out of the score, kept in the results with the reason. The
+    # modern profile waives the password-age check this way.
+    if [[ "$passed" == "waived" ]]; then
+        CHECK_RESULTS+=("${label}|waived|${detail}")
+        [[ "${UH_QUIET_CHECKS:-false}" == true ]] || log_info "  $label — waived: $detail"
         return 0
     fi
     if [[ "$passed" != "true" ]]; then
@@ -120,6 +138,17 @@ record_check() {
         bump CHECKS_FAILED
         [[ "${UH_QUIET_CHECKS:-false}" == true ]] || log_warning "  $label — $detail"
     fi
+}
+
+# The per-mount options of /tmp, comma separated; empty when /tmp is not its
+# own mount. From mountinfo, not `mount` output: there the mount point is its
+# own field (5) with spaces escaped as \040, so a user's FUSE mount named
+# "x on /tmp type tmpfs (noexec)" cannot pose as /tmp and pass the checks.
+# The last line wins, as the last mount on a path is the one in use.
+: "${UH_MOUNTINFO:=/proc/self/mountinfo}"
+_tmp_mount_options() {
+    [[ -r "$UH_MOUNTINFO" ]] || return 0
+    awk '$5 == "/tmp" { o = $6 } END { print o }' "$UH_MOUNTINFO"
 }
 
 run_cis_checks() {
@@ -144,6 +173,28 @@ run_cis_checks() {
             record_check "$part is a separate partition" "false" "Not a separate mount point"
         fi
     done
+
+    # /tmp mount options, CIS 1.1.2.1.2-4 (nodev, nosuid, noexec). They apply
+    # only to /tmp as its own mount; without one, the partition check above
+    # already says so, and a "not checked" line would wrongly ask for root.
+    # On a container or Kubernetes host a missing noexec is waived: container
+    # tools and installers run programs from /tmp.
+    if is_linux; then
+        local tmp_opts; tmp_opts=$(_tmp_mount_options)
+        if [[ -n "$tmp_opts" ]]; then
+            local opt runtime_why=""
+            for opt in nodev nosuid noexec; do
+                if [[ ",${tmp_opts}," == *",${opt},"* ]]; then
+                    record_check "/tmp mounted ${opt}" "true"
+                elif [[ "$opt" == noexec ]] && declare -F container_runtime_reasons >/dev/null \
+                     && runtime_why=$(container_runtime_reasons | paste -sd ';' - | sed 's/;/; /g') && [[ -n "$runtime_why" ]]; then
+                    record_check "/tmp mounted ${opt}" "waived" "container or Kubernetes host (${runtime_why}): noexec on /tmp breaks tools that run programs from it"
+                else
+                    record_check "/tmp mounted ${opt}" "false" "Mounted with: ${tmp_opts}"
+                fi
+            done
+        fi
+    fi
 
     # -- SSH -------------------------------------------------------------------
     local cfg="/etc/ssh/sshd_config"
@@ -185,6 +236,28 @@ run_cis_checks() {
         fi
     done
 
+    # Audit load: events the kernel dropped because the buffer was full. Only
+    # where auditd runs (otherwise the line above already fails); auditctl -s
+    # needs root.
+    if is_linux && is_service_active auditd && command -v auditctl >/dev/null 2>&1; then
+        if ! _cis_running_as_root; then
+            record_check "No audit events lost" "unchecked" "auditctl -s needs root"
+        else
+            local astat lost limit backlog
+            astat=$(auditctl -s 2>/dev/null || true)
+            lost=$(awk '$1 == "lost" {print $2}' <<< "$astat")
+            limit=$(awk '$1 == "backlog_limit" {print $2}' <<< "$astat")
+            backlog=$(awk '$1 == "backlog" {print $2}' <<< "$astat")
+            if [[ ! "$lost" =~ ^[0-9]+$ ]]; then
+                record_check "No audit events lost" "unchecked" "auditctl -s did not report a lost count"
+            elif (( lost == 0 )); then
+                record_check "No audit events lost" "true"
+            else
+                record_check "No audit events lost" "false" "${lost} lost since boot (buffer ${limit:-?}, ${backlog:-?} queued now)"
+            fi
+        fi
+    fi
+
     # ufw's systemd unit is a oneshot that applies the ruleset and exits —
     # `systemctl is-active ufw` reports "inactive" even while the firewall it
     # configured is genuinely enforcing. `is_service_active` (systemctl-based)
@@ -224,8 +297,13 @@ run_cis_checks() {
             local key="${spec%%:*}"; local rest="${spec#*:}"
             local want="${rest%%:*}"; local label="${rest#*:}"
             local actual; actual=$(sysctl -n "$key" 2>/dev/null || echo "unavailable")
+            local keep_why=""
             if [[ "$actual" == "$want" ]]; then
                 record_check "$label" "true"
+            elif [[ "$key" == net.ipv4.ip_forward && "$actual" == 1 ]] \
+                 && declare -F forwarding_keep_reason >/dev/null && keep_why=$(forwarding_keep_reason); then
+                # Module 6 leaves forwarding on where the host routes traffic.
+                record_check "$label" "waived" "this host routes traffic (${keep_why}); module 6 leaves forwarding on"
             else
                 record_check "$label" "false" "${key}=${actual}, expected ${want}"
             fi
@@ -236,7 +314,12 @@ run_cis_checks() {
     # 365 days, as in current CIS Benchmarks. Forced short rotation (the old 90
     # days) pushes people to weaker, predictable passwords; NIST SP 800-63B
     # advises against periodic changes.
-    if [[ -f /etc/login.defs ]]; then
+    # The modern profile waives it: NIST SP 800-63B-4 says not to force
+    # periodic changes, and modern sets no expiry on purpose.
+    if [[ -f /etc/login.defs && "$(active_profile)" == modern ]]; then
+        record_check "Password max age is 365 days or fewer" "waived" \
+            "modern profile: no forced password expiry (NIST SP 800-63B-4)"
+    elif [[ -f /etc/login.defs ]]; then
         local maxdays
         maxdays=$(grep -E '^PASS_MAX_DAYS' /etc/login.defs 2>/dev/null | awk '{print $2}' | head -1 || true)
         if [[ -n "$maxdays" ]] && [[ "$maxdays" -le 365 ]] 2>/dev/null; then
@@ -310,7 +393,7 @@ print_cis_score() {
 
     echo ""
     echo -e "${CYAN}══════════════════════════════════════════════════════════════════${NC}"
-    echo -e "${WHITE}  CIS Score: ${CIS_SCORE}%  (${CHECKS_PASSED}/${total} checks passed)${NC}"
+    echo -e "${WHITE}  CIS Score: ${CIS_SCORE}%  (${CHECKS_PASSED}/${total} checks passed)   Profile: $(active_profile)${NC}"
     if [[ $CHECKS_FAILED -eq 0 && ${CHECKS_UNCHECKED:-0} -eq 0 ]]; then
         echo -e "${GREEN}  ${CHECK_MARK} All checks passed${NC}"
     elif [[ $CHECKS_FAILED -gt 0 ]]; then
@@ -318,6 +401,10 @@ print_cis_score() {
     fi
     if [[ ${CHECKS_UNCHECKED:-0} -gt 0 ]]; then
         echo -e "${CYAN}  ${INFO} ${CHECKS_UNCHECKED} check(s) not checked: they need root (sudo $0 --cis-only)${NC}"
+    fi
+    local waived=$(( ${#CHECK_RESULTS[@]} - total - ${CHECKS_UNCHECKED:-0} ))
+    if (( waived > 0 )); then
+        echo -e "${CYAN}  ${INFO} ${waived} check(s) waived, not scored (listed above with the reason)${NC}"
     fi
     echo -e "${CYAN}══════════════════════════════════════════════════════════════════${NC}"
     return 0
@@ -403,6 +490,7 @@ cis_report_json() {
     printf '  "version": %s,\n' "$(_json_string "$UH_VERSION")"
     printf '  "host": %s,\n' "$(_json_string "$(hostname 2>/dev/null || echo unknown)")"
     printf '  "platform": %s,\n' "$(_json_string "${DISTRO_TYPE:-unknown}")"
+    printf '  "profile": %s,\n' "$(_json_string "$(active_profile)")"
     printf '  "generated": %s,\n' "$(_json_string "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
     local unchecked=${CHECKS_UNCHECKED:-0}
     local waived=$(( ${#CHECK_RESULTS[@]} - total - unchecked )) status
@@ -890,6 +978,12 @@ full_system_revert() {
     is_service_active auditd && restart_service auditd || true
 
     [[ -f "$SUID_BACKUP_FILE" ]] && undo_suid_hardening
+    # Module 22's group workspaces (UH_SHARED_DIRS) are directory modes and
+    # ACLs, outside the file backup.
+    undo_shared_dirs
+    # Back to the original state, no profile applies any more. A revert pinned
+    # to an earlier run keeps the record: that run's settings are back.
+    [[ "$_pin_perrun" == true ]] || forget_profile
 
     log_success "Reverted $restored files from $BACKUP_DIR"
     log_warning "Disabled services are NOT re-enabled automatically."

@@ -25,4 +25,17 @@ fi
     assert_unchanged /etc/ssh/sshd_config "$b" "--cis-only modified nothing"
 }
 
+# One result is one line: a newline or carriage return in a label or detail
+# becomes a space, in every state, so no export that reads results line by
+# line (the Enterprise state DB pack) can be handed a forged extra row.
+out=$(bash -c 'source "$1/lib/core.sh"; source "$1/lib/platform.sh"; source "$1/lib/modules.sh"; source "$1/lib/cis.sh"
+               UH_QUIET_CHECKS=true LOG_FILE=/dev/null
+               record_check $'"'"'two\nline'"'"' false $'"'"'one\r\nforged|false|row'"'"'
+               record_check w waived $'"'"'a\nb'"'"'; record_check u unchecked $'"'"'c\rd'"'"'
+               printf "%s\n" "${CHECK_RESULTS[@]}"' _ "${REPO_ROOT:-/repo}" 2>&1)
+[[ "$(wc -l <<<"$out")" == 3 ]] && grep -q '^two line|false|one  forged|false|row' <<<"$out" \
+    && grep -qx 'w|waived|a b' <<<"$out" && grep -qx 'u|unchecked|c d' <<<"$out" \
+    && pass_msg "newlines in check labels and details become spaces (one result, one line)" \
+    || fail "multi-line check result: $out"
+
 finish

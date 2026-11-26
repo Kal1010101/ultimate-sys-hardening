@@ -110,6 +110,11 @@ declare -A MOD_REVERT_FILES=(
 
 # Live state, filled by refresh_module_states(). Values: on | off | na
 declare -A MOD_STATE=()
+# For a module that is on: the profile recorded as having applied it, for the
+# modules whose result depends on the profile. Empty for every other module.
+declare -A MOD_APPLIED_PROFILE=()
+# Modules whose settings differ by profile and are recorded per module.
+MOD_PROFILE_KEYS=(password umask)
 
 # ------------------------------------------------------------ applicability --
 # Does this module do anything at all on THIS host? A module that cannot
@@ -295,9 +300,16 @@ module_probe_state() {
             grep -q '# ultimate-hardening: remote syslog' /etc/rsyslog.conf 2>/dev/null \
                 && echo on || echo off ;;
         umask)
-            [[ -f /etc/profile.d/hardening-umask.sh ]] \
-                && grep -qE '^[[:space:]]*UMASK[[:space:]]+027' /etc/login.defs 2>/dev/null \
+            # The umask the module sets under the active profile.
+            val=$(profile_umask_value)
+            grep -qE "^umask ${val}$" /etc/profile.d/hardening-umask.sh 2>/dev/null \
+                && grep -qE "^[[:space:]]*UMASK[[:space:]]+${val}([[:space:]]|$)" /etc/login.defs 2>/dev/null \
                 && echo on || echo off ;;
+        password)
+            # Reached when the password check is waived (modern profile): on
+            # when login.defs has the maximum age this profile sets.
+            val=$(awk '$1 == "PASS_MAX_DAYS" { v = $2 } END { print v }' /etc/login.defs 2>/dev/null || true)
+            [[ "$val" == "$(profile_pass_max_days)" ]] && echo on || echo off ;;
         basesys)
             # Its sudo drop-in, or the fstab line that keeps /dev/shm noexec.
             { [[ -f "$UH_SUDOERS_DIR/$UH_SUDOERS_DROPIN_NAME" ]] \
@@ -327,6 +339,9 @@ refresh_module_states() {
         passed="${rest%%|*}"
         mod=$(cis_check_module "$label")
         [[ -z "$mod" ]] && continue
+        # A waived check says nothing about whether the module ran; the
+        # module's own probe below decides instead.
+        [[ "$passed" == waived ]] && continue
         covered["$mod"]=1
         [[ "$passed" == "true" ]] || failed["$mod"]=1
     done
@@ -356,6 +371,29 @@ refresh_module_states() {
     for key in "${MOD_KEYS[@]}"; do
         module_applicable "$key" || MOD_STATE["$key"]=na
     done
+
+    refresh_profile_states
+}
+
+# Name the profile that applied each profile-dependent module. A module that
+# is off under the active profile but in place as the recorded profile left
+# it shows as on, tagged with that profile, rather than as plain "off":
+# selecting it then reverts it, as with any module that is on.
+refresh_profile_states() {
+    local key recorded current
+    current=$(active_profile)
+    MOD_APPLIED_PROFILE=()
+    for key in "${MOD_PROFILE_KEYS[@]}"; do
+        recorded=$(recorded_profile "$key")
+        [[ -n "$recorded" ]] || continue
+        [[ "${MOD_STATE[$key]:-off}" == na ]] && continue
+        if [[ "${MOD_STATE[$key]:-off}" != on && "$recorded" != "$current" ]]; then
+            [[ "$(UH_PROFILE="$recorded" module_probe_state "$key")" == on ]] || continue
+            MOD_STATE["$key"]=on
+        fi
+        [[ "${MOD_STATE[$key]}" == on ]] && MOD_APPLIED_PROFILE["$key"]="$recorded"
+    done
+    return 0
 }
 
 # ----------------------------------------------------------------- display --
@@ -370,11 +408,15 @@ _risk_tag() {
     esac
 }
 
+# $2 = the profile that applied the module, if recorded: the tag names it
+# instead of saying "enable", at the same fixed width.
 _state_tag() {
-    case "$1" in
-        on) printf '%b' "${GREEN}[enable ]${NC}" ;;
-        na) printf '%b' "${CYAN}[  N/A  ]${NC}" ;;
-        *)  printf '%b' "${YELLOW}[disable]${NC}" ;;
+    case "$1:${2:-}" in
+        on:modern) printf '%b' "${GREEN}[modern ]${NC}" ;;
+        on:cis)    printf '%b' "${GREEN}[cis    ]${NC}" ;;
+        on:*) printf '%b' "${GREEN}[enable ]${NC}" ;;
+        na:*) printf '%b' "${CYAN}[  N/A  ]${NC}" ;;
+        *)    printf '%b' "${YELLOW}[disable]${NC}" ;;
     esac
 }
 
@@ -484,7 +526,7 @@ render_module_list() {
         body=$(printf "%2s) %-32s %s  %s" \
             "$((i + 1))" "${MOD_LABEL[$key]}" \
             "$(_risk_tag "${MOD_RISK[$key]}")" \
-            "$(_state_tag "${MOD_STATE[$key]:-off}")")
+            "$(_state_tag "${MOD_STATE[$key]:-off}" "${MOD_APPLIED_PROFILE[$key]:-}")")
         if [[ -n "$inner" ]]; then
             echo -e "  ${WHITE}│${NC}  ${body}${pad}${WHITE}│${NC}"
         else
@@ -506,6 +548,73 @@ menu_box_row() {
     local n=$(( inner - ${#body} - 2 )) pad=""
     (( n > 0 )) && printf -v pad '%*s' "$n" ''
     echo -e "  ${WHITE}│${NC}  ${body}${pad}${WHITE}│${NC}"
+}
+
+# =============================================================================
+#  Profile selection (the first screen of every tier's interactive run)
+# =============================================================================
+# The program opens here, and leaving the hardening menu with P comes back
+# here; Q on this screen is the only menu way out (Ctrl-C works everywhere).
+# Sets UH_PROFILE and returns 0, or returns 1 for Q or end of input.
+#
+# The screen names the three modules that differ so the two profiles do not
+# read as two different products, and frames modern as a different target
+# rather than a weaker one.
+show_profile_menu() {
+    local choice recorded
+    recorded=$(recorded_profile)
+    clear 2>/dev/null || true
+    box_top
+    box_line "${CYAN}                 SELECT HARDENING PROFILE${NC}"
+    box_bottom
+    echo ""
+    echo -e "  ${GREEN}1)${NC} ${WHITE}Modern${NC}  for shared/multi-user servers (NIST password guidance)"
+    echo -e "  ${GREEN}2)${NC} ${WHITE}CIS${NC}     CIS Benchmark defaults"
+    echo ""
+    echo -e "  The profiles differ in three modules today; every other module is"
+    echo -e "  the same under both:"
+    echo -e "     8 Password policy  modern: no forced expiry (NIST SP 800-63B-4),"
+    echo -e "                                its compliance check is reported as waived"
+    echo -e "                        cis:    passwords expire after 365 days"
+    echo -e "    20 Compiler access  modern: left out of \"apply all\", still in the menu"
+    echo -e "                        cis:    included in \"apply all\""
+    echo -e "    22 UMASK            modern: 007, or 027 where users share a primary group"
+    echo -e "                        cis:    027"
+    echo ""
+    if [[ -n "$recorded" ]]; then
+        echo -e "  This host was last hardened with the ${WHITE}${recorded}${NC} profile."
+        echo ""
+    fi
+    echo -e "  ${GREEN}Q)${NC} Quit program"
+    echo ""
+    while true; do
+        read -r -p "$(echo -e "  ${WHITE}Choice:${NC} ")" choice || return 1
+        case "$choice" in
+            1) UH_PROFILE=modern; UH_PROFILE_SOURCE=menu; return 0 ;;
+            2) UH_PROFILE=cis;    UH_PROFILE_SOURCE=menu; return 0 ;;
+            Q|q) return 1 ;;
+            *) log_error "Invalid choice: '$choice' (1, 2 or Q)" ;;
+        esac
+    done
+}
+
+# Profile screen -> first-pass setup (the OS menu) -> hardening menu, round
+# and round, for every tier. $1 = the tier's hardening menu function, which
+# returns when the user picks P; $2 = what runs once, after the first profile
+# choice. Returns when the user quits from the profile screen. --profile
+# skips the profile screen on the first pass only.
+run_profile_loop() {
+    local menu_fn="$1" first_pass_fn="$2" first_pass=true
+    while true; do
+        if [[ "$first_pass" != true || "$UH_PROFILE_SOURCE" != flag ]]; then
+            show_profile_menu || return 0
+        fi
+        if [[ "$first_pass" == true ]]; then
+            "$first_pass_fn"
+            first_pass=false
+        fi
+        "$menu_fn"
+    done
 }
 
 # =============================================================================
@@ -726,6 +835,12 @@ revert_module() {
     # it used to delete a live, in-use /etc/selinux/config on exactly this
     # host shape). Reflect that honestly instead of claiming a revert and
     # restarting services for a change that never happened.
+    # Module 22's group workspaces are directory modes and ACLs, not files.
+    case "$key" in
+        umask)    undo_shared_dirs; forget_profile umask ;;
+        password) forget_profile password ;;
+    esac
+
     if (( reverted == 0 )); then
         log_info "${label}: nothing reverted — this module doesn't appear to have been applied by the tool on this host (already compliant by default)"
         return 0

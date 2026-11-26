@@ -96,6 +96,7 @@ AIDE_VERIFY=""
 VERIFY=false
 SAFE_ONLY=false
 REPORT_FORMAT=""
+PROFILE_FLAG=""
 
 usage() {
     cat << EOF
@@ -107,6 +108,12 @@ Everything needs root except --cis-only, --json, --sarif, --check-update,
 --version and --help. Without root, the few checks that need it are reported
 as "not checked" rather than failed.
 
+  --profile <modern|cis>
+                  Hardening profile. cis: CIS Benchmark defaults. modern: for
+                  shared/multi-user servers (no forced password expiry, umask
+                  007, compilers left out of "apply all"). Without it,
+                  unattended runs use UH_PROFILE, else the profile last applied
+                  on this host, else cis. Interactive runs ask first.
   --auto-mode     Run without prompts (accepts every module)
   --safe-only     With --auto-mode, skip the High-risk modules (9, 16)
   --dry-run       Print every intended change, modify nothing
@@ -136,6 +143,8 @@ Examples:
   sudo $0 --auto-mode --dry-run    Preview a full run, change nothing
   sudo $0 --auto-mode              Apply all 23 modules
   sudo $0 --auto-mode --safe-only  Apply everything except the High-risk modules
+  sudo $0 --auto-mode --profile modern
+                                   Apply all modules with the modern profile
   $0 --cis-only                    Score the system without root, change nothing
   sudo $0 --cis-only               The same, with the checks that need root
   sudo $0 --json > cis.json        The same checks, as JSON for scripts and CI
@@ -156,6 +165,11 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --auto-mode)   AUTO_MODE=true ;;
         --safe-only)   SAFE_ONLY=true ;;
+        --profile)
+            [[ -n "${2:-}" ]] || \
+                { echo -e "${RED}--profile requires modern or cis${NC}" >&2; usage >&2; exit 1; }
+            PROFILE_FLAG="$2"; shift ;;
+        --profile=*)   PROFILE_FLAG="${1#--profile=}" ;;
         --dry-run)     DRY_RUN=true ;;
         --skip-backup) SKIP_BACKUP=true ;;
         --cis-only)    CIS_ONLY=true; AUTO_MODE=true ;;
@@ -183,6 +197,11 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
+
+if ! resolve_profile "$PROFILE_FLAG"; then
+    echo "Run '$0 --help' for usage." >&2
+    exit 1
+fi
 
 # --verify without --auto-mode only checks. It still needs the platform
 # detected without the interactive distro menu.
@@ -213,7 +232,7 @@ show_menu() {
     # terminal, so the border holds text only.
     box_top
     box_line "${CYAN}       ULTIMATE HARDENING ${UH_VERSION} — FREE TIER${NC}"
-    box_line "${CYAN}       Platform: ${WHITE}${DISTRO_TYPE}${NC}"
+    box_line "${CYAN}       Platform: ${WHITE}${DISTRO_TYPE}${CYAN}   Profile: ${WHITE}$(active_profile)${NC}"
     box_bottom
 
     if [[ "$DRY_RUN" == true ]]; then
@@ -221,6 +240,7 @@ show_menu() {
     fi
     echo ""
     echo -e "  ${WHITE}[enable ]${NC} already in place   ${WHITE}[disable]${NC} not applied yet   ${WHITE}[  N/A  ]${NC} not applicable here"
+    echo -e "  ${WHITE}[cis    ]${NC} ${WHITE}[modern ]${NC} in place, applied with that profile"
     echo ""
     render_module_list
     echo ""
@@ -230,7 +250,7 @@ show_menu() {
     printf "  ${WHITE}%2s)${NC} %s\n"  U "Check for updates"
     printf "  ${WHITE}%2s)${NC} %s\n"  R "Revert everything from backup"
     printf "  ${WHITE}%2s)${NC} %s\n"  S "Revert SUID/SGID only"
-    printf "  ${WHITE}%2s)${NC} %s\n"  Q "Quit"
+    printf "  ${WHITE}%2s)${NC} %s\n"  P "Back to profile selection"
     echo ""
 
     local choice
@@ -268,11 +288,8 @@ show_menu() {
         # set -e that ended the program instead of returning to this menu.
         R|r) confirm_risky "Revert ALL hardening changes?" && { full_system_revert || true; } ;;
         S|s) undo_suid_hardening || true ;;
-        Q|q)
-            log_info "Log file: $UH_LOG_PATH"
-            [[ -d "$BACKUP_DIR" ]] && echo -e "  ${CYAN}Backup: $BACKUP_DIR${NC}"
-            exit 0
-            ;;
+        # Back to the profile screen; only Q there quits.
+        P|p) return 0 ;;
         *)  log_error "Invalid choice: '$choice'" ;;
     esac
 
@@ -302,6 +319,19 @@ main() {
     if [[ "$AIDE_REFRESH" == true ]];     then aide_refresh;        exit $?; fi
     if [[ "$AIDE_FINGERPRINT" == true ]]; then aide_fingerprint_current; exit $?; fi
     if [[ -n "$AIDE_VERIFY" ]];           then aide_verify "$AIDE_VERIFY"; exit $?; fi
+
+    # Interactive runs open on the profile screen and reach the OS menu from
+    # there (run_interactive); everything else detects the platform here.
+    #
+    # The update check is explicitly-invoked only (menu option U, or
+    # --check-update) — never automatic. That's a documented trust claim
+    # on the project site ("no telemetry, no network calls... the only
+    # outbound traffic is the optional, explicitly-invoked update check"),
+    # so it must never fire silently at startup.
+    if [[ "$AUTO_MODE" != true && "$VERIFY_ONLY" != true ]]; then
+        trap 'echo -e "\n${RED}Interrupted.${NC}"; exit 130' INT TERM
+        run_interactive
+    fi
 
     show_distro_menu
 
@@ -334,14 +364,21 @@ main() {
         fi
         exit "$(uh_exit_status)"
     fi
+}
 
-    # The update check is explicitly-invoked only (menu option U, or
-    # --check-update) — never automatic. That's a documented trust claim
-    # on the project site ("no telemetry, no network calls... the only
-    # outbound traffic is the optional, explicitly-invoked update check"),
-    # so it must never fire silently at startup.
-    trap 'echo -e "\n${RED}Interrupted.${NC}"; exit 130' INT TERM
-    show_menu
+# Profile screen -> OS menu (first pass only) -> hardening menu, round and
+# round (run_profile_loop in lib/menu.sh): P in the hardening menu comes back
+# to the profile screen, Q there quits.
+interactive_first_pass() {
+    show_distro_menu
+    refuse_changes_on_macos
+}
+
+run_interactive() {
+    run_profile_loop show_menu interactive_first_pass
+    log_info "Log file: $UH_LOG_PATH"
+    [[ -d "$BACKUP_DIR" ]] && echo -e "  ${CYAN}Backup: $BACKUP_DIR${NC}"
+    exit 0
 }
 
 main "$@"

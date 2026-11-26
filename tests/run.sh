@@ -79,13 +79,13 @@ set -e
 if command -v apt-get >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq >/dev/null 2>&1
-    apt-get install -y --no-install-recommends bash procps iproute2 openssh-server gzip openssl >/dev/null 2>&1
+    apt-get install -y --no-install-recommends bash procps iproute2 openssh-server gzip openssl acl >/dev/null 2>&1
 elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y --setopt=install_weak_deps=False bash procps-ng iproute openssh-server findutils gzip openssl >/dev/null 2>&1
+    dnf install -y --setopt=install_weak_deps=False bash procps-ng iproute openssh-server findutils gzip openssl acl >/dev/null 2>&1
 elif command -v apk >/dev/null 2>&1; then
-    apk add --no-cache bash procps iproute2 openssh gzip openssl >/dev/null 2>&1
+    apk add --no-cache bash procps iproute2 openssh gzip openssl acl >/dev/null 2>&1
 elif command -v pacman >/dev/null 2>&1; then
-    pacman -Syu --noconfirm bash procps-ng iproute2 openssh gzip openssl >/dev/null 2>&1
+    pacman -Syu --noconfirm bash procps-ng iproute2 openssh gzip openssl acl >/dev/null 2>&1
 fi
 BOOTSTRAP
 }

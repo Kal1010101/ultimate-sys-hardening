@@ -138,6 +138,111 @@ _uh_init_log() {
 # first write wins, and full_system_revert() restores from it.
 : "${BACKUP_GENESIS_DIR:=/root/.ultimate_hardening_genesis}"
 
+# ------------------------------------------------------- hardening profile --
+# Two targets for the same engine: "cis" (CIS Benchmark defaults) and "modern"
+# (shared/multi-user servers, NIST SP 800-63B-4 password guidance). Today they
+# differ in modules 8, 20 and 22 only.
+#
+# Which profile a run uses, highest first: --profile, the UH_PROFILE
+# environment variable, the profile last applied on this host, then cis. The
+# host record matters for unattended checks: a host hardened as modern and
+# scored nightly by `--cis-only` from cron must not be scored as cis.
+#
+# The record lives next to the genesis backup and is a list of key=profile
+# lines: "profile" for the run as a whole, plus one line per profile-dependent
+# module (password, umask) naming the profile that applied it, so the menu can
+# say a module was hardened under the other profile.
+UH_PROFILE_DEFAULT=cis
+UH_PROFILE_RECORD_NAME="profile-record"
+: "${UH_PROFILE:=}"
+UH_PROFILE_SOURCE=""
+
+is_valid_profile() { [[ "${1:-}" == modern || "${1:-}" == cis ]]; }
+
+# The profile in force. Anything unset or invalid reads as the default, so
+# code that sources lib/ without resolve_profile (tests, the paid tiers'
+# helpers) still behaves as cis did before profiles existed.
+active_profile() {
+    if is_valid_profile "$UH_PROFILE"; then
+        printf '%s' "$UH_PROFILE"
+    else
+        printf '%s' "$UH_PROFILE_DEFAULT"
+    fi
+}
+
+_profile_record_file() { printf '%s' "$BACKUP_GENESIS_DIR/$UH_PROFILE_RECORD_NAME"; }
+
+# recorded_profile [key] — the profile recorded for key ("profile" by default)
+# on this host, or nothing. Unreadable (no root) reads as nothing.
+recorded_profile() {
+    local key="${1:-profile}" file value
+    file=$(_profile_record_file)
+    [[ -r "$file" ]] || return 0
+    value=$(awk -F= -v k="$key" '$1 == k { v = $2 } END { print v }' "$file" 2>/dev/null || true)
+    is_valid_profile "$value" && printf '%s' "$value"
+    return 0
+}
+
+# record_profile <key> — store the active profile under key. Never during a
+# dry run. A failure to write is a warning: hardening already happened, and
+# the only cost is that later unattended checks fall back to cis.
+record_profile() {
+    local key="$1" file profile
+    [[ "${DRY_RUN:-false}" == true ]] && return 0
+    file=$(_profile_record_file)
+    profile=$(active_profile)
+    if ! ( umask 077; mkdir -p "$BACKUP_GENESIS_DIR" ) 2>/dev/null; then
+        log_warning "Could not record the ${profile} profile in $BACKUP_GENESIS_DIR — later --cis-only runs will assume cis unless given --profile"
+        return 0
+    fi
+    {
+        [[ -f "$file" ]] && awk -F= -v k="$key" '$1 != k' "$file"
+        printf '%s=%s\n' "$key" "$profile"
+    } > "$file.tmp" 2>/dev/null && mv -f "$file.tmp" "$file" 2>/dev/null \
+        || log_warning "Could not record the ${profile} profile in $file"
+    chmod 600 "$file" 2>/dev/null || true
+    return 0
+}
+
+# forget_profile <key> — drop key from the record (a module was reverted).
+# With no key, drop the whole record (a full revert).
+forget_profile() {
+    local key="${1:-}" file
+    [[ "${DRY_RUN:-false}" == true ]] && return 0
+    file=$(_profile_record_file)
+    [[ -f "$file" ]] || return 0
+    if [[ -z "$key" ]]; then
+        rm -f "$file"
+        return 0
+    fi
+    awk -F= -v k="$key" '$1 != k' "$file" > "$file.tmp" 2>/dev/null && mv -f "$file.tmp" "$file"
+    return 0
+}
+
+# Decide the run's profile once, after option parsing. $1 is the --profile
+# value (may be empty). Fails with a message for an invalid value, from the
+# flag or from the environment, rather than silently hardening as cis.
+resolve_profile() {
+    local from_flag="${1:-}" recorded
+    if [[ -n "$from_flag" ]]; then
+        is_valid_profile "$from_flag" || { echo "Invalid --profile '$from_flag': use modern or cis" >&2; return 1; }
+        UH_PROFILE="$from_flag"; UH_PROFILE_SOURCE=flag
+        return 0
+    fi
+    if [[ -n "$UH_PROFILE" ]]; then
+        is_valid_profile "$UH_PROFILE" || { echo "Invalid UH_PROFILE '$UH_PROFILE': use modern or cis" >&2; return 1; }
+        UH_PROFILE_SOURCE="env"
+        return 0
+    fi
+    recorded=$(recorded_profile)
+    if [[ -n "$recorded" ]]; then
+        UH_PROFILE="$recorded"; UH_PROFILE_SOURCE=host
+        return 0
+    fi
+    UH_PROFILE="$UH_PROFILE_DEFAULT"; UH_PROFILE_SOURCE=default
+    return 0
+}
+
 FIXES_APPLIED=0
 BACKUP_CREATED=false
 

@@ -154,9 +154,9 @@ from the same compliance checks `--cis-only` runs:
 | 3 | Firewall | Medium | nftables, UFW or firewalld — default-deny inbound on **IPv4 and IPv6** |
 | 4 | Fail2Ban | Safe | SSH jail, ban after 3 failures; repeat bans grow longer up to a week (fail2ban 0.11+); a recidive jail for addresses banned 5 times a day; nginx, Apache and Postfix jails only where they are installed. Checked with `fail2ban-client -t` first, falling back to the SSH jail alone |
 | 5 | File permissions | Safe | `/etc/shadow`, `/etc/passwd`, sticky `/tmp` |
-| 6 | Kernel / network | Safe | 36 sysctl parameters, each with its CIS or STIG source in the file — ASLR, BPF and ptrace limits, SYN cookies, redirects, martians, IPv6 source routing and router adverts (left on where they give the host its IPv6 address) |
-| 7 | Auditd | Safe | The CIS 6.3.3 rule groups (identity, sudoers and sudo log, time and network changes, logins and sessions, permission changes, failed access, deletions, MAC policy, module loading, mounts) plus one rule per setuid/setgid program; 32- and 64-bit syscalls, each checked against the kernel's table so none is rejected. `UH_AUDIT_IMMUTABLE=true` locks the rules until reboot (`-e 2`) |
-| 8 | Password policy | Safe | `login.defs` only — **PAM is never modified**. Maximum password age 365 days, as in current CIS Benchmarks (applies to accounts created afterwards) |
+| 6 | Kernel / network | Safe | 36 sysctl parameters, each with its CIS or STIG source in the file — ASLR, BPF and ptrace limits, SYN cookies, redirects, martians, IPv6 source routing and router adverts (left on where they give the host its IPv6 address). IP forwarding is left as it is on hosts that route traffic: container hosts and Kubernetes nodes (dockerd, containerd, podman, crio, kubelet, k3s, rke2, lxd, incusd), WireGuard or tun interfaces, or a sysctl file that turns forwarding on. The run says why, an interactive run asks first, and the CIS check reports it as waived. `UH_KEEP_FORWARDING=yes` or `no` decides for you. A key that a Kubernetes sysctl file also sets (RKE2's `60-rke2-cis.conf`, `90-kubelet.conf`) is left to it, and a warning names the fix when RKE2's CIS profile is set without that file |
+| 7 | Auditd | Safe | The CIS 6.3.3 rule groups (identity, sudoers and sudo log, time and network changes, logins and sessions, permission changes, failed access, deletions, MAC policy, module loading, mounts) plus one rule per setuid/setgid program; 32- and 64-bit syscalls, each checked against the kernel's table so none is rejected. `UH_AUDIT_IMMUTABLE=true` locks the rules until reboot (`-e 2`). The kernel's audit buffer is 8192 events, 32768 on container or Kubernetes hosts, where container starts and mounts come in bursts (`UH_AUDIT_BACKLOG` sets it); the compliance check reports any events the kernel dropped |
+| 8 | Password policy | Safe | `login.defs` only — **PAM is never modified**. cis: maximum password age 365 days, as in current CIS Benchmarks; modern: no forced expiry (NIST SP 800-63B-4), and the age check is reported as waived. Applies to accounts created afterwards |
 | 9 | SUID/SGID | **High** | Strips SUID outside a safe list, inventory recorded |
 | 10 | AIDE | Safe | File integrity baseline + daily cron check |
 | 11 | rkhunter | Safe | Rootkit scanner with daily scan |
@@ -168,9 +168,9 @@ from the same compliance checks `--cis-only` runs:
 | 17 | Docker security | Medium | Inter-container comms off, live-restore, log rotation, merged into your daemon.json; userns-remap where Docker holds no data yet. `--dry-run` says whether Docker would restart and warns when containers share the default bridge |
 | 18 | ModSecurity | Medium | WAF + core rule set, only if Apache/httpd is present |
 | 19 | Unused kernel modules | Safe | Blacklists DCCP, SCTP, RDS, TIPC, ATM and CAN, the CIS uncommon filesystems (cramfs, freevxfs, hfs, hfsplus, jffs2, squashfs, udf) and FireWire (STIG); Bluetooth too with `UH_BLACKLIST_BLUETOOTH=true`. squashfs is left alone where snapd needs it. |
-| 20 | Compiler access | Medium | Restricts gcc/clang to root, records original modes |
+| 20 | Compiler access | Medium | Restricts gcc/clang to root, records original modes. Left out of "apply all" under the modern profile |
 | 21 | Remote syslog | Safe | Forwards to a collector over UDP, TCP or TLS (`UH_SYSLOG_PROTO`, `UH_SYSLOG_TLS_CA`). TLS verifies the collector and queues to disk while it is unreachable. |
-| 22 | UMASK hardening | Safe | Default umask 027 |
+| 22 | UMASK hardening | Safe | cis: default umask 027. modern: 007, falling back to 027 where users share a primary group or accounts come from a directory service (SSSD, LDAP, NIS, winbind); `UH_SHARED_DIRS` turns listed directories into group workspaces (setgid 2770 and default ACLs), reverted with the module |
 | 23 | Base system | Medium | `/dev/shm` mounted nodev,nosuid,noexec (fstab line checked with `findmnt --verify`, then remounted); time sync on (the running daemon kept, else systemd-timesyncd or chrony); sudo `use_pty` and a log file in a drop-in checked with `visudo`, never editing `/etc/sudoers`. `UH_SKIP_SETTINGS=dev_shm`, `time_sync`, `use_pty` or `logfile` leaves a part out |
 
 ## Trust
@@ -237,6 +237,8 @@ Init systems: systemd, OpenRC, SysV, BSD rc.d
 ```
 sudo ./src/free/ultimate_hardening.sh [OPTIONS]
 
+  --profile <modern|cis>
+                   Hardening profile (see Profiles below)
   --auto-mode      Run without interactive prompts
   --safe-only      With --auto-mode, skip the two High-risk modules (9, 16)
   --dry-run        Show what would change, apply nothing
@@ -261,6 +263,29 @@ Settings such as the USB storage blacklist, backup location and retention, and
 the remote syslog destination are environment variables. They are listed with
 their defaults in [`examples/.env.example`](examples/.env.example); pass one
 directly with `sudo UH_USB_STORAGE_BLACKLIST=false ./src/free/ultimate_hardening.sh`.
+
+### Profiles
+
+Two targets for the same engine. The interactive menu opens on a profile
+screen; P in the hardening menu goes back to it, and Q there quits.
+
+| Module | modern — shared/multi-user servers | cis — CIS Benchmark defaults |
+|---|---|---|
+| 8 Password policy | no forced expiry (NIST SP 800-63B-4); the age check is reported as `waived` | maximum age 365 days; the check passes or fails |
+| 20 Compiler access | left out of "apply all" (24/25), still in the menu | included in "apply all" |
+| 22 UMASK | `007`, or `027` where users share a primary group or accounts come from a directory service; optional `UH_SHARED_DIRS` | `027` |
+
+Every other module is the same under both. Interactive: you choose. Scripts:
+cis unless you pass `--profile modern` (or set `UH_PROFILE=modern`). A run
+without either uses the profile last applied on the host, so a host hardened
+as modern is not scored as cis by a nightly `--cis-only`. The menu tags a
+module applied with the other profile `[modern ]` or `[cis    ]`.
+
+```
+sudo ./src/free/ultimate_hardening.sh --auto-mode --profile modern
+sudo UH_SHARED_DIRS="/srv/team" ./src/free/ultimate_hardening.sh --auto-mode --profile modern
+./src/free/ultimate_hardening.sh --cis-only --profile modern
+```
 
 ### Skipping single settings
 

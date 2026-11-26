@@ -6,6 +6,66 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+- Two hardening profiles, chosen on a new first screen: **cis** (CIS
+  Benchmark defaults, as before) and **modern** (shared/multi-user servers,
+  NIST SP 800-63B-4 password guidance). They differ in modules 8, 20 and 22
+  only. Modern sets no forced password expiry and reports the age check as
+  `waived`, leaves module 20 out of "apply all", and sets umask 007, falling
+  back to 027 where users share a primary group. A primary group counts as
+  shared when another login uses it, when it lists any member besides its
+  own user (for example `www-data` added to read a home directory), or when
+  another group has the same GID. It also falls back when accounts come from
+  a directory service (an LDAP, NIS or winbind source in nsswitch.conf, `sss`
+  with an SSSD domain configured, or +/- lines in passwd or group): those
+  users' groups are not in the local files and are often shared, such as
+  AD's Domain Users.
+- `--profile modern|cis` and `UH_PROFILE` for runs without a menu. Without
+  either, a run uses the profile last applied on the host, else cis, so
+  existing automation is unchanged.
+- `UH_SHARED_DIRS` (modern): turns listed directories into group workspaces
+  (setgid 2770 and default ACLs). Module 22's revert and the full revert put
+  each directory's mode and ACLs back. Both work from inside the directory
+  and revert touches only the very directory that was recorded (same inode
+  and owner), so a symlink swapped in by a user cannot redirect them.
+- The menu tags a module applied with the other profile `[modern ]` or
+  `[cis    ]`; `--json` gains a `profile` field; the score footer names the
+  profile and counts waived checks.
+
+- Module 6 leaves IP forwarding as it is on hosts that route traffic:
+  container hosts and Kubernetes nodes (dockerd, containerd, podman, crio,
+  kubelet, k3s, rke2, lxd, incusd installed), WireGuard or tun interfaces, or
+  a sysctl file (or ufw's) that turns forwarding on. The log says why, an
+  interactive run asks first (Enter keeps it), and the CIS check reports kept
+  forwarding as waived with the reason. `UH_KEEP_FORWARDING=auto|yes|no`.
+- Module 6 leaves out any key that a Kubernetes sysctl file also sets
+  (RKE2's `60-rke2-cis.conf`, the hardening guides' `90-kubelet.conf`), so
+  kubelet's protect-kernel-defaults check is never overridden, and warns when
+  RKE2's CIS profile is configured without its sysctl file. RKE2's documented
+  CIS values do not overlap with module 6 today.
+- CIS checks for /tmp's mount options (nodev, nosuid, noexec; CIS 1.1.2.1.x)
+  when /tmp is its own mount. They are reported, not fixed: no module changes
+  mount options. On a container or Kubernetes host a missing noexec is waived
+  with the reason, since container tools run programs from /tmp. Scores can
+  drop on hosts whose /tmp lacks these options. The options are read from
+  `/proc/self/mountinfo`, where the mount point is its own field, so a
+  user's FUSE mount named like a hardened /tmp cannot make the checks pass.
+- Audit load: module 7 sets the kernel audit buffer to 32768 events on
+  container or Kubernetes hosts (8192, the CIS value, elsewhere; override
+  with `UH_AUDIT_BACKLOG`), since container starts and volume mounts fire
+  the mounts and setuid/setgid rules in bursts. A new CIS check, "No audit
+  events lost", reads `auditctl -s` as root and names the fix when the
+  kernel has dropped events. Every CIS audit rule stays.
+
+### Changed
+- The interactive run opens on the profile screen, then the OS menu (first
+  pass only), then the hardening menu. Q in the hardening menu is replaced by
+  P, back to the profile screen; Q there quits. Ctrl-C still quits anywhere.
+- A CIS check's label and detail are kept to one line: newlines and carriage
+  returns become spaces when the result is recorded, so exports that read
+  results line by line (Enterprise's evidence pack from the state database)
+  cannot be given a forged extra row.
+
 ## [2.7.0] — 2026-11-24
 
 ### Added

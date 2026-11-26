@@ -83,12 +83,13 @@ block_modules() {
         demo_states
         box_top
         box_line "${CYAN}       ULTIMATE HARDENING ${UH_VERSION} — FREE TIER${NC}"
-        box_line "${CYAN}       Platform: ${WHITE}rhel${NC}"
+        box_line "${CYAN}       Platform: ${WHITE}rhel${CYAN}   Profile: ${WHITE}cis${NC}"
         box_bottom
         echo ""
         echo -e "  ${YELLOW}${WARNING} DRY RUN — nothing will be modified${NC}"
         echo ""
         echo -e "  ${WHITE}[enable ]${NC} already in place   ${WHITE}[disable]${NC} not applied yet   ${WHITE}[  N/A  ]${NC} not applicable here"
+        echo -e "  ${WHITE}[cis    ]${NC} ${WHITE}[modern ]${NC} in place, applied with that profile"
         echo ""
         render_module_list
         echo ""
@@ -96,7 +97,7 @@ block_modules() {
         printf "  ${WHITE}%2s)${NC} %s\n" $(( ${#MOD_KEYS[@]} + 2 )) "Apply all ${#MOD_KEYS[@]} modules (includes High risk)"
         printf "  ${WHITE}%2s)${NC} %s\n"  C "Run compliance checks (read-only)"
         printf "  ${WHITE}%2s)${NC} %s\n"  R "Revert everything from backup"
-        printf "  ${WHITE}%2s)${NC} %s\n"  Q "Quit"
+        printf "  ${WHITE}%2s)${NC} %s\n"  P "Back to profile selection"
     '
 }
 
@@ -111,6 +112,9 @@ block_cis() {
         done
         for part in /var /var/log /var/tmp; do
             record_check "$part is a separate partition" false "Not a separate mount point"
+        done
+        for opt in nodev nosuid noexec; do
+            record_check "/tmp mounted $opt" true
         done
         for c in "SSH root login disabled" \
                  "SSH password authentication disabled" \
