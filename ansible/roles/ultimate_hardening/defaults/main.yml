@@ -1,7 +1,7 @@
 ---
 # Release to install. Bumped with every release (tests/cases/test_install_docs_version.sh
 # checks it matches lib/core.sh).
-uh_version: "2.7.0"
+uh_version: "2.8.0"
 
 # What the role does on each host:
 #   dry-run  preview every change, modify nothing (the default: opt in to change)

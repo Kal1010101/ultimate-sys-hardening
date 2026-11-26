@@ -18,7 +18,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-PKG_VERSION="${UH_ANSIBLE_PKG_VERSION:-2.7.0}"
+PKG_VERSION="${UH_ANSIBLE_PKG_VERSION:-2.8.0}"
 # The commit tag v$PKG_VERSION points at on GitHub, for the uh_git_commit test.
 # Looked up rather than written here: a release commit cannot contain its own
 # hash. An annotated tag lists its commit as "<tag>^{}"; a lightweight one

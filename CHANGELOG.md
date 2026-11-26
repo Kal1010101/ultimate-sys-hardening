@@ -6,6 +6,8 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [2.8.0] — 2026-11-26
+
 ### Added
 - Two hardening profiles, chosen on a new first screen: **cis** (CIS
   Benchmark defaults, as before) and **modern** (shared/multi-user servers,
@@ -822,7 +824,8 @@ families, macOS, and the BSDs). No telemetry, no licence check, no account — t
 only outbound request is the optional, explicitly-invoked `--check-update`. MIT
 licensed.
 
-[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.7.0...HEAD
+[Unreleased]: https://github.com/Kal1010101/ultimate-sys-hardening/compare/v2.8.0...HEAD
+[2.8.0]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.8.0
 [2.7.0]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.7.0
 [2.6.4]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.4
 [2.6.3]: https://github.com/Kal1010101/ultimate-sys-hardening/releases/tag/v2.6.3
