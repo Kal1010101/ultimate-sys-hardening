@@ -557,43 +557,68 @@ menu_box_row() {
 # here; Q on this screen is the only menu way out (Ctrl-C works everywhere).
 # Sets UH_PROFILE and returns 0, or returns 1 for Q or end of input.
 #
-# The screen names the three modules that differ so the two profiles do not
-# read as two different products, and frames modern as a different target
-# rather than a weaker one.
+# Each profile is a card saying who it is for and what it changes, in
+# effects rather than module numbers: the three bullets are modules 8, 20
+# and 22, the only ones that differ. Modern is framed as a different target,
+# not a weaker one. The per-module detail (the umask fallback, the waived
+# password check) is logged when those modules run.
+
+# Inner width of a card: the cards line up with the 68-column banner above.
+UH_PROFILE_CARD_WIDTH=64
+
+# One profile card. $1 = key, $2 = name, $3 = who it is for, $4..$6 = what
+# it does. Text must be plain ASCII: padding is counted with ${#}, which
+# counts bytes in the C locale, and the bullet is added outside the count.
+_profile_card() {
+    local key="$1" name="$2" tagline="$3" title fill pad line
+    title=" ${key}) ${name} "
+    printf -v fill '%*s' $(( UH_PROFILE_CARD_WIDTH - ${#title} - 1 )) ''
+    echo -e "  ${CYAN}┌─${NC}${GREEN} ${key})${NC} ${WHITE}${name}${NC} ${CYAN}${fill// /─}┐${NC}"
+    printf -v pad '%*s' $(( UH_PROFILE_CARD_WIDTH - ${#tagline} - 2 )) ''
+    echo -e "  ${CYAN}│${NC}  ${tagline}${pad}${CYAN}│${NC}"
+    shift 3
+    for line in "$@"; do
+        printf -v pad '%*s' $(( UH_PROFILE_CARD_WIDTH - ${#line} - 4 )) ''
+        echo -e "  ${CYAN}│${NC}  • ${line}${pad}${CYAN}│${NC}"
+    done
+    printf -v fill '%*s' "$UH_PROFILE_CARD_WIDTH" ''
+    echo -e "  ${CYAN}└${fill// /─}┘${NC}"
+}
+
 show_profile_menu() {
     local choice recorded
     recorded=$(recorded_profile)
     clear 2>/dev/null || true
     box_top
-    box_line "${CYAN}                 SELECT HARDENING PROFILE${NC}"
+    box_line "${CYAN}                   CHOOSE A HARDENING PROFILE${NC}"
     box_bottom
     echo ""
-    echo -e "  ${GREEN}1)${NC} ${WHITE}Modern${NC}  for shared/multi-user servers (NIST password guidance)"
-    echo -e "  ${GREEN}2)${NC} ${WHITE}CIS${NC}     CIS Benchmark defaults"
+    _profile_card 1 Modern "For shared servers where people work together" \
+        "No forced password changes (NIST SP 800-63B-4)" \
+        "Compilers stay available to developers" \
+        "Team members can edit each other's files"
+    _profile_card 2 CIS "CIS Benchmark defaults, for audits and locked-down servers" \
+        "Passwords expire after 365 days" \
+        "Compiler restriction included in \"apply all\"" \
+        "New files are private to their owner"
     echo ""
-    echo -e "  The profiles differ in three modules today; every other module is"
-    echo -e "  the same under both:"
-    echo -e "     8 Password policy  modern: no forced expiry (NIST SP 800-63B-4),"
-    echo -e "                                its compliance check is reported as waived"
-    echo -e "                        cis:    passwords expire after 365 days"
-    echo -e "    20 Compiler access  modern: left out of \"apply all\", still in the menu"
-    echo -e "                        cis:    included in \"apply all\""
-    echo -e "    22 UMASK            modern: 007, or 027 where users share a primary group"
-    echo -e "                        cis:    027"
+    echo -e "  Every other module is the same under both. You can switch later."
     echo ""
     if [[ -n "$recorded" ]]; then
-        echo -e "  This host was last hardened with the ${WHITE}${recorded}${NC} profile."
-        echo ""
+        echo -e "  ${GREEN}Enter)${NC} Keep ${WHITE}${recorded}${NC}, used last time on this host          ${GREEN}Q)${NC} Quit"
+    else
+        echo -e "  ${GREEN}Q)${NC} Quit"
     fi
-    echo -e "  ${GREEN}Q)${NC} Quit program"
     echo ""
     while true; do
         read -r -p "$(echo -e "  ${WHITE}Choice:${NC} ")" choice || return 1
+        # Enter keeps the profile this host was last hardened with.
+        [[ -z "$choice" && -n "$recorded" ]] && choice="$recorded"
         case "$choice" in
-            1) UH_PROFILE=modern; UH_PROFILE_SOURCE=menu; return 0 ;;
-            2) UH_PROFILE=cis;    UH_PROFILE_SOURCE=menu; return 0 ;;
+            1|modern) UH_PROFILE=modern; UH_PROFILE_SOURCE=menu; return 0 ;;
+            2|cis)    UH_PROFILE=cis;    UH_PROFILE_SOURCE=menu; return 0 ;;
             Q|q) return 1 ;;
-            *) log_error "Invalid choice: '$choice' (1, 2 or Q)" ;;
+            *) log_error "Invalid choice: '$choice' (1, 2$( [[ -n "$recorded" ]] && echo ", Enter") or Q)" ;;
         esac
     done
 }

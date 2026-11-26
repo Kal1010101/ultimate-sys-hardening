@@ -6,6 +6,13 @@ and the project follows [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Changed
+- The profile screen shows each profile as a card that says who it is for
+  and what it changes, in plain words rather than module numbers and umask
+  values. When this host was hardened before, Enter keeps the profile used
+  last time. 1, 2 and Q are unchanged, so scripts that answer the menu on
+  stdin still work.
+
 ## [2.8.0] — 2026-11-26
 
 ### Added

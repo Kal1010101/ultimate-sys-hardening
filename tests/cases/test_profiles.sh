@@ -52,18 +52,22 @@ mkdir -p /etc/profile.d
 
 # --- interactive flow -----------------------------------------------------------
 out=$(printf 'Q\n' | bash "$FREE_SCRIPT" 2>&1 | strip); rc=$?
-assert_output_contains "$out" 'SELECT HARDENING PROFILE' "the program opens on the profile screen"
+assert_output_contains "$out" 'CHOOSE A HARDENING PROFILE' "the program opens on the profile screen"
 [[ "$(count "$out" 'SELECT YOUR OPERATING SYSTEM')" -eq 0 ]] \
     && pass_msg "Q on the profile screen quits before the OS menu" \
     || fail "Q on the profile screen still showed the OS menu"
-assert_output_contains "$out" 'differ in three modules' "the profile screen says which modules differ"
+assert_output_contains "$out" 'Every other module is the same under both' "the profile screen says only these differences apply"
+assert_output_contains "$out" 'Team members can edit each other' "the modern card says what it does in plain words"
+assert_output_contains "$out" 'Passwords expire after 365 days' "the cis card says what it does in plain words"
+! grep -q 'Keep .*used last time' <<<"$out" && pass_msg "no Enter shortcut offered when nothing is recorded" \
+    || fail "Enter shortcut offered with no recorded profile"
 
 # cis, auto-detect, back (P), modern, back, quit.
 out=$(printf '2\n0\nP\n1\nP\nQ\n' | bash "$FREE_SCRIPT" 2>&1 | strip); rc=$?
 [[ $rc -eq 0 ]] && pass_msg "quitting from the profile screen exits 0" || fail "the loop exited $rc"
-[[ "$(count "$out" 'SELECT HARDENING PROFILE')" -eq 3 ]] \
+[[ "$(count "$out" 'CHOOSE A HARDENING PROFILE')" -eq 3 ]] \
     && pass_msg "P returns to the profile screen each time" \
-    || fail "profile screen shown $(count "$out" 'SELECT HARDENING PROFILE') times, expected 3"
+    || fail "profile screen shown $(count "$out" 'CHOOSE A HARDENING PROFILE') times, expected 3"
 [[ "$(count "$out" 'SELECT YOUR OPERATING SYSTEM')" -eq 1 ]] \
     && pass_msg "the OS menu appears on the first pass only" \
     || fail "OS menu shown $(count "$out" 'SELECT YOUR OPERATING SYSTEM') times, expected 1"
@@ -73,16 +77,24 @@ assert_output_contains "$out" 'P\) Back to profile selection' "the hardening men
 
 out=$(printf 'x\nQ\n' | bash "$FREE_SCRIPT" 2>&1 | strip)
 assert_output_contains "$out" "Invalid choice: 'x'" "an invalid profile choice is refused and asked again"
+out=$(printf '\nQ\n' | bash "$FREE_SCRIPT" 2>&1 | strip)
+assert_output_contains "$out" "Invalid choice: '' \\(1, 2 or Q\\)" "with nothing recorded, Enter alone is refused"
+# Enter keeps the profile this host was last hardened with.
+mkdir -p "$GENESIS"; printf 'profile=modern\n' > "$RECORD"
+out=$(printf '\n0\nP\nQ\n' | bash "$FREE_SCRIPT" 2>&1 | strip)
+assert_output_contains "$out" 'Keep modern, used last time on this host' "the screen offers to keep the recorded profile"
+assert_output_contains "$out" 'Profile: modern' "Enter keeps the recorded profile"
+rm -f "$RECORD"
 
 out=$(printf '0\nP\nQ\n' | bash "$FREE_SCRIPT" --profile modern 2>&1 | strip)
-first_screen=$(grep -m1 -oE 'SELECT (HARDENING PROFILE|YOUR OPERATING SYSTEM)' <<<"$out")
+first_screen=$(grep -m1 -oE 'CHOOSE A HARDENING PROFILE|SELECT YOUR OPERATING SYSTEM' <<<"$out")
 [[ "$first_screen" == "SELECT YOUR OPERATING SYSTEM" ]] \
     && pass_msg "--profile skips the first profile screen" \
     || fail "--profile still opened on: $first_screen"
 assert_output_contains "$out" 'Profile: modern' "--profile modern reaches the menu as modern"
-[[ "$(count "$out" 'SELECT HARDENING PROFILE')" -eq 1 ]] \
+[[ "$(count "$out" 'CHOOSE A HARDENING PROFILE')" -eq 1 ]] \
     && pass_msg "P after --profile still returns to the profile screen" \
-    || fail "profile screen count after --profile: $(count "$out" 'SELECT HARDENING PROFILE')"
+    || fail "profile screen count after --profile: $(count "$out" 'CHOOSE A HARDENING PROFILE')"
 
 # --- which profile an unattended run uses ---------------------------------------
 profile_of() { "$@" 2>&1 | strip | grep -oE 'Profile: [a-z]+' | tail -1; }
