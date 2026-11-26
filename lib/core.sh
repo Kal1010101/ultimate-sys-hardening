@@ -174,6 +174,7 @@ _profile_record_file() { printf '%s' "$BACKUP_GENESIS_DIR/$UH_PROFILE_RECORD_NAM
 
 # recorded_profile [key] — the profile recorded for key ("profile" by default)
 # on this host, or nothing. Unreadable (no root) reads as nothing.
+# shellcheck disable=SC2120  # the key argument is passed from lib/menu.sh
 recorded_profile() {
     local key="${1:-profile}" file value
     file=$(_profile_record_file)
