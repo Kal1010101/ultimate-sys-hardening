@@ -13,9 +13,10 @@ and the project follows [Semantic Versioning](https://semver.org).
   only. Modern sets no forced password expiry and reports the age check as
   `waived`, leaves module 20 out of "apply all", and sets umask 007, falling
   back to 027 where users share a primary group. A primary group counts as
-  shared when another login uses it, when it lists any member besides its
-  own user (for example `www-data` added to read a home directory), or when
-  another group has the same GID. It also falls back when accounts come from
+  shared when another account of any UID uses it (a `useradd -r -g alice`
+  service account too), when it lists any member besides its own user (for
+  example `www-data` added to read a home directory), or when another group
+  has the same GID. It also falls back when accounts come from
   a directory service (an LDAP, NIS or winbind source in nsswitch.conf, `sss`
   with an SSSD domain configured, or +/- lines in passwd or group): those
   users' groups are not in the local files and are often shared, such as

@@ -3638,19 +3638,23 @@ primary_groups_are_shared() {
     # other group has its GID. A member added with `usermod -aG alice www-data`
     # (often done so a web server can read ~alice) would otherwise get write
     # access to everything alice creates once the umask is 007.
+    # The UID range picks whose groups must be private; accounts of any UID
+    # count as users of them, so `useradd -r -g alice alice-app` (a UID-998
+    # service account in alice's group) makes the group shared.
     awk -F: -v min="${uid_min:-1000}" -v max="${uid_max:-60000}" '
         NR == FNR {
             if ($3 in group_name) dup_gid[$3] = 1
             group_name[$3] = $1; members[$3] = $4; next
         }
+        { users_in[$4]++ }
         $3 >= min && $3 <= max {
-            users_in[$4]++
+            login_gid[$4] = 1
             if (group_name[$4] != $1 || ($4 in dup_gid)) shared = 1
             n = split(members[$4], m, ",")
             for (i = 1; i <= n; i++) if (m[i] != "" && m[i] != $1) shared = 1
         }
         END {
-            for (gid in users_in) if (users_in[gid] > 1) shared = 1
+            for (gid in login_gid) if (users_in[gid] > 1) shared = 1
             exit shared ? 0 : 1
         }' "$UH_GROUP_FILE" "$UH_PASSWD_FILE" 2>/dev/null
 }

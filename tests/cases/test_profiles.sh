@@ -146,6 +146,20 @@ printf 'root:x:0:\nalice:x:1000:alice\nbob:x:1001:\n' > "$W/group.self"
 printf 'root:x:0:\nalice:x:1000:\nbob:x:1001:\nprojects:x:1000:carol\n' > "$W/group.dupgid"
 [[ "$(umask_for modern "$W/passwd.private" "$W/group.dupgid")" == 027 ]] \
     && pass_msg "modern: a second group with the same GID counts as shared (027)" || fail "duplicate GID is not 027"
+# Accounts outside UID_MIN..UID_MAX that use a login user's group count too:
+# `useradd -r -g alice alice-app` gives a UID-998 service account alice's
+# group, and it would write everything alice creates under 007.
+cp "$W/passwd.private" "$W/passwd.svc"; echo 'alice-app:x:998:1000::/srv/app:/usr/sbin/nologin' >> "$W/passwd.svc"
+[[ "$(umask_for modern "$W/passwd.svc" "$W/group.private")" == 027 ]] \
+    && pass_msg "modern: a system account in a login user's group falls back to 027" || fail "system account in alice's group is not 027"
+cp "$W/passwd.private" "$W/passwd.high"; echo 'backup:x:70000:1001::/var/backup:/bin/sh' >> "$W/passwd.high"
+[[ "$(umask_for modern "$W/passwd.high" "$W/group.private")" == 027 ]] \
+    && pass_msg "modern: an account above UID_MAX in a login user's group falls back to 027" || fail "high-UID account in bob's group is not 027"
+cp "$W/passwd.private" "$W/passwd.ownsvc"; echo 'postgres:x:998:998::/var/lib/postgresql:/bin/sh' >> "$W/passwd.ownsvc"
+cp "$W/group.private" "$W/group.ownsvc"; echo 'postgres:x:998:' >> "$W/group.ownsvc"
+[[ "$(umask_for modern "$W/passwd.ownsvc" "$W/group.ownsvc")" == 007 ]] \
+    && pass_msg "modern: a system account with its own group does not matter (007)" || fail "system account with its own group is not 007"
+
 # Accounts from a directory service: their primary groups are not in the
 # files, so modern falls back to 027. "sss" alone (RHEL's default
 # nsswitch.conf) counts only when SSSD has a domain configured.
