@@ -48,6 +48,10 @@ CLASS = {"0;32": "c-g", "0;36": "c-c", "1;33": "c-a", "1;37": "c-w",
 PRESS_ENTER = "  Press Enter to return to the menu..."
 CHOICE_PROMPT = "\x1b[1;37mChoice:\x1b[0m "
 DISTRO_PROMPT = "Enter choice (0-13): "
+# The run opens on the profile screen (same Choice: prompt as the menu); the
+# demo answers it with cis, and P at the end of each run comes back to it.
+PROFILE_TITLE = "CHOOSE A HARDENING PROFILE"
+PROFILE_KEY = "2"
 
 
 def fail(msg):
@@ -79,12 +83,20 @@ def load(choice):
     if not path.is_file():
         fail("missing recording %s" % path)
     raw = path.read_bytes().decode("utf-8", "replace").replace("\r\n", "\n").replace("\r", "")
-    screens = raw.split(CLEAR)[1:]          # [distro, menu+choice, menu+..., ...]
+    # [profile, distro, menu+choice, menu+..., profile+Q] (no trailing profile
+    # screen when the tool exited after the choice)
+    screens = raw.split(CLEAR)[1:]
     screens = [OTHER_ESC.sub("", s) for s in screens]
-    if len(screens) < 2:
-        fail("%s: expected the distro menu and the main menu, got %d screens"
-             % (path.name, len(screens)))
+    if len(screens) < 3:
+        fail("%s: expected the profile screen, the distro menu and the main menu, "
+             "got %d screens" % (path.name, len(screens)))
+    if PROFILE_TITLE not in screens[0]:
+        fail("%s: the recording does not open on the profile screen" % path.name)
     return path.name, screens
+
+
+def is_profile(screen):
+    return PROFILE_TITLE in screen
 
 
 def split_menu(name, screen):
@@ -117,46 +129,65 @@ def choice_output(name, choice, after_prompt, is_last_screen):
 
 
 name, first = load(ORDER[0])
-distro_screen = first[0]
+profile_screen = first[0]
+profile, after = split_menu(name, profile_screen)
+if after.partition("\n")[0].strip() != PROFILE_KEY:
+    fail("%s: the profile screen was not answered %s (cis)" % (name, PROFILE_KEY))
+profile = profile.rstrip("\n") + "\n"
+distro_screen = first[1]
 d = distro_screen.find(DISTRO_PROMPT)
 if d < 0:
     fail("%s: no distro prompt" % name)
 distro = distro_screen[:d].rstrip("\n") + "\n"
 detected = distro_screen[d + len(DISTRO_PROMPT):].partition("\n")[2].strip("\n")
-menu, _ = split_menu(name, first[1])
+menu, _ = split_menu(name, first[2])
 menu = menu.rstrip("\n") + "\n"
 
 choices = {}
 for choice in ORDER:
     name, screens = load(choice)
-    if screens[0] != distro_screen:
+    if screens[0] != profile_screen:
+        fail("%s: the profile screen differs from %s" % (name, "choice-1.raw"))
+    if screens[1] != distro_screen:
         fail("%s: the distro screen differs from %s" % (name, "choice-1.raw"))
-    for n, screen in enumerate(screens[1:], start=1):
+    body = screens[2:]
+    back_to_profile = is_profile(body[-1])
+    menus = body[:-1] if back_to_profile else body
+    if not menus:
+        fail("%s: no main menu between the distro screen and the profile screen" % name)
+    for n, screen in enumerate(menus, start=1):
         this_menu, _ = split_menu(name, screen)
         if this_menu.rstrip("\n") + "\n" != menu:
             fail("%s: menu #%d differs from the first one. A --dry-run choice changed "
                  "a module's state, which is a bug to fix before this is published." % (name, n))
-    text, exits = choice_output(name, choice, split_menu(name, screens[1])[1], len(screens) == 2)
+    if back_to_profile and split_menu(name, body[-1])[0].rstrip("\n") + "\n" != profile:
+        fail("%s: the profile screen after P differs from the first one" % name)
+    exited = not back_to_profile and len(menus) == 1
+    text, exits = choice_output(name, choice, split_menu(name, menus[0])[1], exited)
     choices[choice] = {"html": to_html(text), "exits": exits}
 
-# The quit screen: the last menu was answered Q, and what follows is the
-# tool's goodbye (log file, backup location).
+# The quit screen: P went back to the profile screen, which was answered Q;
+# what follows is the tool's goodbye (log file, backup location).
 name, screens = load(ORDER[0])
+if not is_profile(screens[-1]):
+    fail("%s: the recording does not end on the profile screen" % name)
 _, after = split_menu(name, screens[-1])
 typed, _, quit_text = after.partition("\n")
 if typed.strip() != "Q":
-    fail("%s: the last menu was not answered Q" % name)
+    fail("%s: the profile screen at the end was not answered Q" % name)
 
 meta = {}
 for line in (rec_dir / "meta.txt").read_text(encoding="utf-8").splitlines():
     k, _, v = line.partition("=")
     meta[k] = v
-for key in ("version", "os", "date"):
+for key in ("version", "profile", "os", "date"):
     if not meta.get(key):
         fail("meta.txt has no %s" % key)
 
 data = {
     "launch": '<span class="c-f">#</span> <span class="c-w">./src/free/ultimate_hardening.sh --dry-run</span>',
+    "profile": to_html(profile),
+    "profileKey": PROFILE_KEY,
     "distro": to_html(distro),
     "distroPrompt": html.escape(DISTRO_PROMPT),
     "detected": to_html(detected),
@@ -166,10 +197,10 @@ data = {
     "pressEnter": html.escape(PRESS_ENTER),
     "quit": to_html(quit_text.rstrip("\n")),
     "quick": [{"key": k, "label": label} for k, label in QUICK],
-    "provenance": ("Recorded with Ultimate Hardening %s on %s, a fresh lab VM, on %s, "
-                   "by docs/capture-demo.sh. Every line is the tool's own output; "
+    "provenance": ("Recorded with Ultimate Hardening %s (%s profile) on %s, a fresh lab VM, "
+                   "on %s, by docs/capture-demo.sh. Every line is the tool's own output; "
                    "only the colours were converted to HTML."
-                   % (meta["version"], meta["os"], meta["date"])),
+                   % (meta["version"], meta["profile"], meta["os"], meta["date"])),
 }
 
 # "</" inside a <script> block would end it early; JSON allows "<\/".

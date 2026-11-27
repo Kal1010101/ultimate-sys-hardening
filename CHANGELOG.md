@@ -12,6 +12,11 @@ and the project follows [Semantic Versioning](https://semver.org).
   values. When this host was hardened before, Enter keeps the profile used
   last time. 1, 2 and Q are unchanged, so scripts that answer the menu on
   stdin still work.
+- The site's replay demo (docs/demo.html) is re-recorded with 2.8.0 and
+  opens on the profile screen, as the tool does. It was recorded with the
+  cis profile; choosing Modern explains that it differs only in modules 8,
+  20 and 22. P goes back to the profile screen and Q quits from there.
+  capture-demo.sh and build-demo.sh follow the new screen order.
 
 ## [2.8.0] — 2026-11-26
 

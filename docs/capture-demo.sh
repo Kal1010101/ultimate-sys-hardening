@@ -50,23 +50,33 @@ mkdir -p "$OUT"
 
 # Feed one menu path to the tool through a pty, a line at a time with pauses,
 # so the terminal echo of each answer lands where a person typing it would see
-# it. The answers after the choice cover both shapes a choice can take:
+# it. The run opens on the profile screen, answered with the cis profile (the
+# demo records cis only; the page explains that modern differs in modules 8,
+# 20 and 22). "Press Enter to return to the menu" takes any line, and an
+# invalid menu choice also ends at it. One answer sequence after the choice
+# ends on the profile screen and quits for both shapes a choice can take:
 #   choice asks to confirm:  "yes" confirms (also satisfies type-'yes' prompts),
-#                            "" dismisses "Press Enter", "Q" quits.
+#                            "" dismisses "Press Enter", "P" goes back to the
+#                            profile screen, "Q" quits; the rest find no tool.
 #   choice does not confirm: "yes" dismisses "Press Enter", "" is an invalid
-#                            choice, "Q" dismisses that, the last "Q" quits.
-# The trailing Qs make sure the run ends either way; timeout is the backstop.
-# On a confirming choice the tool has quit before the last Q is written, so
-# that write fails with a broken pipe; the feeder's stderr is dropped for it.
+#                            choice, "P" dismisses its "Press Enter", "Q" is
+#                            invalid too (Q quits only from the profile
+#                            screen), "P" dismisses that, "P" goes back,
+#                            "Q" quits.
+# The extra menus drawn on the way are identical, which build-demo.sh checks.
+# Writes after the tool has quit fail with a broken pipe; the feeder's stderr
+# is dropped for them. timeout is the backstop.
+DEMO_PROFILE_KEY=2   # the profile screen's key for cis
 record_choice() {
-    local choice="$1" file="$2"
+    local choice="$1" file="$2" answer
     {
+        sleep "$MENU_WAIT";   printf '%s\n' "$DEMO_PROFILE_KEY"   # profile screen: cis
         sleep "$MENU_WAIT";   printf '0\n'          # distro menu: auto-detect
         sleep "$MENU_WAIT";   printf '%s\n' "$choice"
         sleep "$CHOICE_WAIT"; printf 'yes\n'
-        sleep "$MENU_WAIT";   printf '\n'
-        sleep "$MENU_WAIT";   printf 'Q\n'
-        sleep "$MENU_WAIT";   printf 'Q\n'
+        for answer in '' P Q P P Q; do
+            sleep "$MENU_WAIT"; printf '%s\n' "$answer"
+        done
         sleep "$MENU_WAIT"
     } 2>/dev/null | TERM=xterm-256color timeout $((CHOICE_WAIT * 3)) \
         script -qfec "stty cols $COLS rows $ROWS; cd '$REPO' && '$UH' --dry-run" /dev/null \
@@ -83,6 +93,7 @@ done
 # tool itself so the caption cannot drift from what was actually run.
 {
     echo "version=$("$UH" --version | awk '{print $3}')"
+    echo "profile=cis"
     . /etc/os-release && echo "os=$PRETTY_NAME"
     echo "date=$(date -u +%Y-%m-%d)"
 } > "$OUT/meta.txt"
