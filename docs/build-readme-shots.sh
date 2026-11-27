@@ -99,13 +99,14 @@ def render(name, out, lines_mode):
     open("%s/%s.svg" % (outdir, out), "w", encoding="utf-8").write("\n".join(s))
     print("  %-16s %d rows, %d cols" % (out, len(rows), cols))
 
+render("profile", "profile-menu",     False)
 render("distro",  "distro-menu",      False)
 render("modules", "overview",         False)
 render("cis",     "compliance-check", True)
 PY
 
 python3 -I "$tmp/render.py" "$DOCS/index.html" "$tmp"
-for n in distro-menu overview compliance-check; do
+for n in profile-menu distro-menu overview compliance-check; do
     rsvg-convert --zoom 2 -o "$OUT/$n.png" "$tmp/$n.svg"
 done
-echo "  wrote $OUT/{distro-menu,overview,compliance-check}.png"
+echo "  wrote $OUT/{profile-menu,distro-menu,overview,compliance-check}.png"

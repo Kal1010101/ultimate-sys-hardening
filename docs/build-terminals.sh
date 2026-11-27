@@ -78,6 +78,18 @@ block_distro() {
     '
 }
 
+block_profile() {
+    run_block '
+        # show_profile_menu draws the two cards, then reads a choice. The page
+        # shows a first run: no profile recorded, so no Enter line; the read
+        # stub returns at once, which the menu treats as end of input.
+        clear()            { :; }
+        read()             { return 1; }
+        recorded_profile() { :; }
+        show_profile_menu || true
+    '
+}
+
 block_modules() {
     run_block '
         demo_states
@@ -212,6 +224,7 @@ PYSPLICE
     return $rc
 }
 
+splice profile "$(block_profile | ansi_to_html)"
 splice distro  "$(block_distro  | ansi_to_html)"
 splice modules "$(block_modules | ansi_to_html)"
 splice cis     "$(block_cis     | ansi_to_html lines)"

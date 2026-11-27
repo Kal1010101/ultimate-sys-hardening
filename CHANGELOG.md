@@ -17,6 +17,11 @@ and the project follows [Semantic Versioning](https://semver.org).
   cis profile; choosing Modern explains that it differs only in modules 8,
   20 and 22. P goes back to the profile screen and Q quits from there.
   capture-demo.sh and build-demo.sh follow the new screen order.
+- The site's "See it" section and the README's screenshot row start with
+  the profile screen, generated from the code like the other screens
+  (docs/build-terminals.sh, docs/build-readme-shots.sh). The README's
+  compliance screenshot description gives the current score, 89% (25 of
+  28).
 
 ## [2.8.0] — 2026-11-26
 

@@ -425,19 +425,24 @@ What the free tier looks like:
 <div align="center">
 <table>
 <tr>
-<td align="center" width="33%">
-  <a href="docs/images/readme/distro-menu.png"><img src="docs/images/readme/distro-menu.png" width="220"
+<td align="center" width="25%">
+  <a href="docs/images/readme/profile-menu.png"><img src="docs/images/readme/profile-menu.png" width="200"
+     alt="The profile screen: two cards, Modern for shared servers (no forced password changes, compilers stay available, team members can edit each other's files) and CIS for audits and locked-down servers (passwords expire after 365 days, compiler restriction in apply all, new files private to their owner)."></a>
+  <br><sub><b>Pick a profile</b><br>modern or CIS, in plain words</sub>
+</td>
+<td align="center" width="25%">
+  <a href="docs/images/readme/distro-menu.png"><img src="docs/images/readme/distro-menu.png" width="200"
      alt="The platform selection menu: eight Linux families and five Unix/BSD systems, with auto-detect as the recommended default."></a>
   <br><sub><b>Pick a platform</b><br>or let it auto-detect</sub>
 </td>
-<td align="center" width="33%">
-  <a href="docs/images/readme/overview.png"><img src="docs/images/readme/overview.png" width="220"
+<td align="center" width="25%">
+  <a href="docs/images/readme/overview.png"><img src="docs/images/readme/overview.png" width="200"
      alt="The interactive menu listing 23 hardening modules. Each row carries a risk level and a live status tag: [enable ] where the settings are already in place, [disable] where they are not, and [N/A] for modules that cannot apply on this host."></a>
   <br><sub><b>All 23 modules</b><br>status read live, never remembered</sub>
 </td>
-<td align="center" width="33%">
-  <a href="docs/images/readme/compliance-check.png"><img src="docs/images/readme/compliance-check.png" width="220"
-     alt="Read-only compliance output: passed checks, warnings explaining why each is not automatable, and a CIS score of 88 percent with 22 of 25 checks passed."></a>
+<td align="center" width="25%">
+  <a href="docs/images/readme/compliance-check.png"><img src="docs/images/readme/compliance-check.png" width="200"
+     alt="Read-only compliance output: passed checks, warnings explaining why each is not automatable, and a CIS score of 89 percent with 25 of 28 checks passed."></a>
   <br><sub><b>Score it, change nothing</b><br>each failure names its fix</sub>
 </td>
 </tr>
